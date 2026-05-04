@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/autogen"
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/orchestrator"
 	"github.com/jgabor/agora/internal/output"
@@ -45,15 +47,52 @@ var (
 	runSynthesize  bool
 	runFullContext bool
 	runDryRun      bool
+	runAuto        string
+	runModel       string = "opencode-go/deepseek-v4-flash"
 )
 
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run a multi-agent deliberation",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.LoadConfig(runConfig)
-		if err != nil {
-			return fmt.Errorf("loading config: %w", err)
+		var cfg *types.DeliberationConfig
+		var levelCaps types.LevelCaps
+		autoMode := runAuto != ""
+
+		if autoMode {
+			level, err := types.ParseAutoLevel(runAuto)
+			if err != nil {
+				return err
+			}
+			levelCaps = types.CapsForLevel(level)
+
+			runner := agent.NewAgentRunner(runDryRun)
+			cfg, err = autogen.GenerateConfig(runTopic, level, runModel, runner)
+			if err != nil {
+				return fmt.Errorf("auto config generation: %w", err)
+			}
+
+			outMgr := output.NewOutputManager(runVerbose)
+			outMgr.ConfigPreview(cfg, level, levelCaps)
+
+			fi, _ := os.Stdin.Stat()
+			isTerminal := (fi.Mode() & os.ModeCharDevice) != 0
+			if isTerminal {
+				fmt.Print("Proceed with deliberation? [y/N] ")
+				reader := bufio.NewReader(os.Stdin)
+				line, _ := reader.ReadString('\n')
+				line = strings.TrimSpace(line)
+				if line != "y" && line != "Y" {
+					fmt.Println("Aborted.")
+					return nil
+				}
+			}
+		} else {
+			var err error
+			cfg, err = config.LoadConfig(runConfig)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 		}
 
 		var budget *float64
@@ -71,6 +110,12 @@ var runCmd = &cobra.Command{
 			FullContext: runFullContext,
 		}
 
+		// Override MaxTurns and TimeLimit with level caps for auto mode
+		if autoMode {
+			state.MaxTurns = levelCaps.MaxTurns
+			state.TimeLimit = levelCaps.TimeLimit
+		}
+
 		tm := transcript.NewTranscriptManager(runOutput)
 		outMgr := output.NewOutputManager(runVerbose)
 		runner := agent.NewAgentRunner(runDryRun)
@@ -83,7 +128,8 @@ var runCmd = &cobra.Command{
 
 		outMgr.FinalStats(tm.Records(), state)
 
-		if runSynthesize {
+		// Force synthesis ON for auto mode
+		if runSynthesize || autoMode {
 			result := orch.Synthesize()
 			if result != nil {
 				outMgr.SynthesizeHeader()
@@ -112,12 +158,39 @@ func init() {
 	runCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
 	runCmd.Flags().BoolVar(&runFullContext, "full-context", false, "Show last K messages from ALL agents")
 	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Run with simulated agent responses")
+	runCmd.Flags().StringVar(&runAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
+	runCmd.Flags().StringVarP(&runModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
 
-	_ = runCmd.MarkFlagRequired("config")
 	_ = runCmd.MarkFlagRequired("topic")
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
+
+		autoSet := runAuto != ""
+		configSet := runConfig != ""
+
+		if autoSet && configSet {
+			return fmt.Errorf("cannot use --auto and --config together")
+		}
+
+		if autoSet {
+			level, err := types.ParseAutoLevel(runAuto)
+			if err != nil {
+				return err
+			}
+			if level == types.AutoOff {
+				return fmt.Errorf("--auto off is not a valid mode; omit --auto to run with a config file")
+			}
+			if runTopic == "" {
+				return fmt.Errorf("--topic is required with --auto")
+			}
+		} else {
+			// When --auto is not set, --config is required
+			if err := cmd.MarkFlagRequired("config"); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	}
 }

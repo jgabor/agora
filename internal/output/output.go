@@ -64,6 +64,106 @@ func NewOutputManager(verbose bool) *OutputManager {
 	return &OutputManager{verbose: verbose}
 }
 
+// ConfigPreview displays a preview of an auto-generated configuration
+// before deliberation begins, including topology, agents, and level caps.
+func (o *OutputManager) ConfigPreview(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) {
+	fmt.Println()
+	fmt.Println(drawAutoConfigPanel(cfg, level, caps))
+}
+
+func drawAutoConfigPanel(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) string {
+	const panelWidth = 76
+	var sb strings.Builder
+
+	// Top border with title
+	sb.WriteString(ansiCyan)
+	sb.WriteString("╭")
+	titleStr := " Generated Config "
+	remaining := panelWidth - 2 - len(titleStr)
+	left := remaining / 2
+	right := remaining - left
+	sb.WriteString(strings.Repeat("─", left))
+	sb.WriteString(ansiReset)
+	sb.WriteString(ansiBold)
+	sb.WriteString(titleStr)
+	sb.WriteString(ansiReset)
+	sb.WriteString(ansiCyan)
+	sb.WriteString(strings.Repeat("─", right))
+	sb.WriteString("╮")
+	sb.WriteString(ansiReset)
+	sb.WriteString("\n")
+
+	// Helper to write a content line
+	writeLine := func(content string) {
+		sb.WriteString(ansiCyan)
+		sb.WriteString("│")
+		sb.WriteString(ansiReset)
+		sb.WriteString(" ")
+		sb.WriteString(content)
+		padLen := panelWidth - 4 - visualLen(content)
+		if padLen > 0 {
+			sb.WriteString(strings.Repeat(" ", padLen))
+		}
+		sb.WriteString(" ")
+		sb.WriteString(ansiCyan)
+		sb.WriteString("│")
+		sb.WriteString(ansiReset)
+		sb.WriteString("\n")
+	}
+
+	// Empty line
+	writeLine("")
+
+	// Topology
+	writeLine(fmt.Sprintf("Topology: %s", string(cfg.Topology)))
+
+	// Consensus threshold
+	writeLine(fmt.Sprintf("Consensus threshold: %d", cfg.ConsensusThreshold))
+
+	// Level with caps
+	levelStr := fmt.Sprintf("Level: %s (max %d agents, %d turns, %ds)", string(level), caps.MaxAgents, caps.MaxTurns, caps.TimeLimit)
+	if caps.MaxAgents == 0 {
+		levelStr = fmt.Sprintf("Level: %s (unlimited agents, unlimited turns, no time limit)", string(level))
+	}
+	writeLine(levelStr)
+
+	// Empty separator
+	writeLine("")
+
+	// Agents header
+	writeLine("Agents:")
+
+	// Agent lines
+	for i, a := range cfg.Agents {
+		firstLine := a.SystemPrompt
+		if idx := strings.Index(a.SystemPrompt, "\n"); idx >= 0 {
+			firstLine = a.SystemPrompt[:idx]
+		}
+		// Truncate first line if too long for panel
+		prefix := fmt.Sprintf("  %d. %s — ", i+1, a.ID)
+		availLen := panelWidth - 4 - len(prefix)
+		if availLen < 10 {
+			availLen = 10
+		}
+		if len(firstLine) > availLen {
+			firstLine = firstLine[:availLen-3] + "..."
+		}
+		writeLine(prefix + firstLine)
+	}
+
+	// Empty line
+	writeLine("")
+
+	// Bottom border
+	sb.WriteString(ansiCyan)
+	sb.WriteString("╰")
+	sb.WriteString(strings.Repeat("─", panelWidth-2))
+	sb.WriteString("╯")
+	sb.WriteString(ansiReset)
+
+	return sb.String()
+}
+
 // DeliberationHeader prints the deliberation start banner.
 func (o *OutputManager) DeliberationHeader(state *types.DeliberationState) {
 	fmt.Println()
