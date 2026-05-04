@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 10 · 2026-05-04
+
+**Phase**: Feature
+
+**What**: Added cross-platform global settings path resolution and settings loading for Agora. The config package now exposes platform-aware config/data dirs, the default `settings.yaml` path, the managed transcript store directory, and a four-key `Settings` loader.
+
+**Commit**: pending
+
+**Inspiration**: Decision 5 and the active PLAN.md Task 1 acceptance criteria.
+
+**Discovered**: CLI default application belongs to Task 2; Task 1 now makes settings loadable and exported without changing run/resume precedence yet.
+
+**Verified**: `go test ./...`, `go build ./...`, and `go vet ./...` pass. Targeted acceptance tests pass: Linux `XDG_CONFIG_HOME` reads `/tmp/cfg/agora/settings.yaml`; Linux `XDG_DATA_HOME` produces `/tmp/data/agora/transcripts`; macOS fallback resolves to `~/Library/Application Support/agora`; valid YAML exposes `DefaultModel == "gpt-4"`; missing settings returns zero value with nil error; invalid YAML returns a non-nil error.
+
+**Next**: Task 2 — wire settings into config merge and CLI default resolution with explicit flags winning.
+
+**Context**: intent: execute PLAN.md Task 1 only · constraints: no CLI default semantics yet, stdlib path resolution, no new dependencies · scope: internal/config path helpers, settings loader, focused tests, artifacts
+
 ## Cycle 9 · 2026-05-04
 
 **Phase**: Feature

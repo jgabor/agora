@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Global settings path/loading layer: XDG config/data dirs on Linux, Application Support on macOS, LOCALAPPDATA on Windows, plus `settings.yaml` parsing.
 - `--auto <level>` flag on `agora resume` — generates agent configs when resuming from existing transcript
 - `--yes` flag to skip preview confirmation prompt on both `run` and `resume`
 - `--auto <level>` flag on `agora run` — generates agent configs via LLM meta-call (levels: off/quick/normal/deep/yolo)

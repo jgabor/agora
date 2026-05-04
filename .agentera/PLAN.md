@@ -35,7 +35,7 @@ Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on
 
 ### Task 1: Cross-platform XDG paths and settings loading
 **Depends on**: none
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN `XDG_CONFIG_HOME=/tmp/cfg` on Linux WHEN loading settings THEN settings are read from `/tmp/cfg/agora/settings.yaml`
 ▸ GIVEN `XDG_DATA_HOME=/tmp/data` on Linux WHEN generating a store path THEN path is under `/tmp/data/agora/transcripts/`
