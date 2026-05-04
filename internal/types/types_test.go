@@ -1,4 +1,4 @@
-package kumbaja
+package types
 
 import (
 	"encoding/json"
@@ -444,16 +444,16 @@ func TestComputeStats(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// intVal helper
+// IntVal helper
 // ---------------------------------------------------------------------------
 
 func TestIntVal(t *testing.T) {
-	if got := intVal(nil); got != 0 {
-		t.Errorf("intVal(nil) = %d, want 0", got)
+	if got := IntVal(nil); got != 0 {
+		t.Errorf("IntVal(nil) = %d, want 0", got)
 	}
 	n := 42
-	if got := intVal(&n); got != 42 {
-		t.Errorf("intVal(&42) = %d, want 42", got)
+	if got := IntVal(&n); got != 42 {
+		t.Errorf("IntVal(&42) = %d, want 42", got)
 	}
 }
 

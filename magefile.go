@@ -10,7 +10,7 @@ import (
 var Default = Build
 
 func Build() error {
-	return sh.RunV("go", "build", "-o", "kumbaja", "./cmd/kumbaja")
+	return sh.RunV("go", "build", "-o", "agora", "./cmd/agora")
 }
 
 func Test() error {
@@ -33,5 +33,5 @@ func (Check) All() error {
 }
 
 func Clean() error {
-	return sh.Rm("kumbaja")
+	return sh.Rm("agora")
 }

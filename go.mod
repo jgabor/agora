@@ -1,4 +1,4 @@
-module github.com/jgabor/kumbaja
+module github.com/jgabor/agora
 
 go 1.26.2
 

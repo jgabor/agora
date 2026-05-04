@@ -1,22 +1,24 @@
-package kumbaja
+// Package config loads YAML configuration for Agora deliberation.
+package config
 
 import (
 	"fmt"
 	"os"
 
+	"github.com/jgabor/agora/internal/types"
 	"gopkg.in/yaml.v3"
 )
 
 // rawConfig mirrors the YAML structure for unmarshaling.
 type rawConfig struct {
-	Topology           string        `yaml:"topology"`
-	Agents             []AgentConfig `yaml:"agents"`
-	ConsensusThreshold int           `yaml:"consensus_threshold"`
-	SynthesisModel     *string       `yaml:"synthesis_model"`
+	Topology           string              `yaml:"topology"`
+	Agents             []types.AgentConfig `yaml:"agents"`
+	ConsensusThreshold int                 `yaml:"consensus_threshold"`
+	SynthesisModel     *string             `yaml:"synthesis_model"`
 }
 
 // LoadConfig loads and validates a deliberation configuration from a YAML file.
-func LoadConfig(path string) (*DeliberationConfig, error) {
+func LoadConfig(path string) (*types.DeliberationConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
@@ -27,9 +29,9 @@ func LoadConfig(path string) (*DeliberationConfig, error) {
 		return nil, fmt.Errorf("parsing config YAML: %w", err)
 	}
 
-	topology := TopologyRing // default
+	topology := types.TopologyRing
 	if raw.Topology != "" {
-		t, err := ParseTopology(raw.Topology)
+		t, err := types.ParseTopology(raw.Topology)
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +42,7 @@ func LoadConfig(path string) (*DeliberationConfig, error) {
 		return nil, fmt.Errorf("configuration must contain at least one agent")
 	}
 
-	cfg := &DeliberationConfig{
+	cfg := &types.DeliberationConfig{
 		Agents:             raw.Agents,
 		Topology:           topology,
 		ConsensusThreshold: raw.ConsensusThreshold,

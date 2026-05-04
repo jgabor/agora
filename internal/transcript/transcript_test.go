@@ -1,4 +1,4 @@
-package kumbaja
+package transcript
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
 // newTestTranscript creates a new TranscriptManager backed by a temp file.
@@ -15,10 +17,10 @@ func newTestTranscript(t *testing.T) *TranscriptManager {
 	return NewTranscriptManager(path)
 }
 
-// helper to create a TurnRecord with minimal fields for testing.
-func mkRecord(turn int, agentID, content string, consensus bool, consensusStmt string) TurnRecord {
+// helper to create a types.TurnRecord with minimal fields for testing.
+func mkRecord(turn int, agentID, content string, consensus bool, consensusStmt string) types.TurnRecord {
 	model := "test-model"
-	return TurnRecord{
+	return types.TurnRecord{
 		Turn:               turn,
 		AgentID:            agentID,
 		Model:              &model,
@@ -30,16 +32,16 @@ func mkRecord(turn int, agentID, content string, consensus bool, consensusStmt s
 	}
 }
 
-// mkRecordWithCost creates a TurnRecord with cost and tokens.
-func mkRecordWithCost(turn int, agentID, content string, cost float64, tokens int) TurnRecord {
+// mkRecordWithCost creates a types.TurnRecord with cost and tokens.
+func mkRecordWithCost(turn int, agentID, content string, cost float64, tokens int) types.TurnRecord {
 	model := "test-model"
-	return TurnRecord{
+	return types.TurnRecord{
 		Turn:      turn,
 		AgentID:   agentID,
 		Model:     &model,
 		Timestamp: float64(time.Now().Unix()),
 		Content:   content,
-		Tokens:    TokenUsage{Total: &tokens},
+		Tokens:    types.TokenUsage{Total: &tokens},
 		Cost:      &cost,
 		Elapsed:   1.0,
 	}
@@ -134,7 +136,7 @@ func TestHistoryRingTopology(t *testing.T) {
 	_ = tm.Append(mkRecord(1, "b", "msg from b", false, ""))
 
 	// Turn 0: predecessor is orchestrator (seed).
-	history := tm.HistoryForAgent("a", 5, TopologyRing, 2, 0)
+	history := tm.HistoryForAgent("a", 5, types.TopologyRing, 2, 0)
 	if len(history) != 1 {
 		t.Fatalf("turn 0 history: got %d, want 1", len(history))
 	}
@@ -143,7 +145,7 @@ func TestHistoryRingTopology(t *testing.T) {
 	}
 
 	// Turn 1: predecessor should be 'a' (index (1-1)%2 = 0).
-	history = tm.HistoryForAgent("b", 5, TopologyRing, 2, 1)
+	history = tm.HistoryForAgent("b", 5, types.TopologyRing, 2, 1)
 	if len(history) != 1 {
 		t.Fatalf("turn 1 history: got %d, want 1", len(history))
 	}
@@ -152,7 +154,7 @@ func TestHistoryRingTopology(t *testing.T) {
 	}
 
 	// Turn 2: predecessor should be 'b' (index (2-1)%2 = 1).
-	history = tm.HistoryForAgent("a", 5, TopologyRing, 2, 2)
+	history = tm.HistoryForAgent("a", 5, types.TopologyRing, 2, 2)
 	if len(history) != 1 {
 		t.Fatalf("turn 2 history: got %d, want 1", len(history))
 	}
@@ -175,7 +177,7 @@ func TestHistoryRingTopologyWindow(t *testing.T) {
 
 	// Turn 6: predecessor should be 'c' (index (6-1)%3 = 2).
 	// With window=2, should get last 2 messages from 'c'.
-	history := tm.HistoryForAgent("a", 2, TopologyRing, 3, 6)
+	history := tm.HistoryForAgent("a", 2, types.TopologyRing, 3, 6)
 	if len(history) != 2 {
 		t.Fatalf("history len: got %d, want 2", len(history))
 	}
@@ -199,7 +201,7 @@ func TestHistoryStarTopology(t *testing.T) {
 	_ = tm.Append(mkRecord(1, "b", "msg b", false, ""))
 
 	// Star: last K messages from ANY agent.
-	history := tm.HistoryForAgent("c", 3, TopologyStar, 2, 2)
+	history := tm.HistoryForAgent("c", 3, types.TopologyStar, 2, 2)
 	if len(history) != 3 {
 		t.Fatalf("star history: got %d, want 3", len(history))
 	}
@@ -221,7 +223,7 @@ func TestHistoryMeshTopology(t *testing.T) {
 	_ = tm.Append(mkRecord(1, "y", "y-msg", false, ""))
 
 	// Mesh: same as star — last K from any agent.
-	history := tm.HistoryForAgent("z", 2, TopologyMesh, 2, 2)
+	history := tm.HistoryForAgent("z", 2, types.TopologyMesh, 2, 2)
 	if len(history) != 2 {
 		t.Fatalf("mesh history: got %d, want 2", len(history))
 	}
@@ -238,7 +240,7 @@ func TestHistoryWindowLargerThanRecords(t *testing.T) {
 	_ = tm.Append(mkRecord(0, "a", "msg a", false, ""))
 
 	// Window=10 but only 2 records exist.
-	history := tm.HistoryForAgent("b", 10, TopologyStar, 2, 1)
+	history := tm.HistoryForAgent("b", 10, types.TopologyStar, 2, 1)
 	if len(history) != 2 {
 		t.Errorf("window overflow: got %d, want 2", len(history))
 	}
@@ -249,7 +251,7 @@ func TestHistoryRingEmptyTurn0(t *testing.T) {
 
 	// No records at all — empty transcript.
 	// Turn 0: predecessor is "orchestrator" but no orchestrator records exist.
-	history := tm.HistoryForAgent("a", 5, TopologyRing, 2, 0)
+	history := tm.HistoryForAgent("a", 5, types.TopologyRing, 2, 0)
 	if len(history) != 0 {
 		t.Errorf("empty history for no records: got %d, want 0", len(history))
 	}
@@ -378,13 +380,13 @@ func TestGoMarshaledRecordJSONKeysForPython(t *testing.T) {
 	model := "openai/gpt-4"
 	total := 100
 	cost := 0.001
-	record := TurnRecord{
+	record := types.TurnRecord{
 		Turn:               0,
 		AgentID:            "test_agent",
 		Model:              &model,
 		Timestamp:          1.0,
 		Content:            "hello",
-		Tokens:             TokenUsage{Total: &total},
+		Tokens:             types.TokenUsage{Total: &total},
 		Cost:               &cost,
 		Consensus:          true,
 		ConsensusStatement: "agreed",

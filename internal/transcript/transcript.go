@@ -1,4 +1,5 @@
-package kumbaja
+// Package transcript manages the deliberation transcript as a JSONL file.
+package transcript
 
 import (
 	"bufio"
@@ -6,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
 // TranscriptManager manages the deliberation transcript as a JSONL file.
 type TranscriptManager struct {
 	path    string
-	records []TurnRecord
+	records []types.TurnRecord
 	written int
 }
 
@@ -20,14 +23,13 @@ func NewTranscriptManager(path string) *TranscriptManager {
 	return &TranscriptManager{path: path}
 }
 
-// Records returns the in-memory slice of all loaded/appended turn records.
-func (tm *TranscriptManager) Records() []TurnRecord {
+// Records returns the in-memory slice of all turn records.
+func (tm *TranscriptManager) Records() []types.TurnRecord {
 	return tm.records
 }
 
 // LoadExisting loads an existing JSONL transcript file into memory.
-// Returns all loaded records or an empty slice if the file does not exist.
-func (tm *TranscriptManager) LoadExisting() ([]TurnRecord, error) {
+func (tm *TranscriptManager) LoadExisting() ([]types.TurnRecord, error) {
 	if _, err := os.Stat(tm.path); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -38,16 +40,16 @@ func (tm *TranscriptManager) LoadExisting() ([]TurnRecord, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	var loaded []TurnRecord
+	var loaded []types.TurnRecord
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
-		var r TurnRecord
+		var r types.TurnRecord
 		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			continue // skip corrupted lines silently, matching Python behavior
+			continue
 		}
 		loaded = append(loaded, r)
 	}
@@ -61,10 +63,9 @@ func (tm *TranscriptManager) LoadExisting() ([]TurnRecord, error) {
 }
 
 // Append appends a single record and writes all unwritten records to disk.
-func (tm *TranscriptManager) Append(record TurnRecord) error {
+func (tm *TranscriptManager) Append(record types.TurnRecord) error {
 	tm.records = append(tm.records, record)
 
-	// Ensure the parent directory exists.
 	if err := os.MkdirAll(filepath.Dir(tm.path), 0o755); err != nil {
 		return fmt.Errorf("creating transcript directory: %w", err)
 	}
@@ -114,16 +115,9 @@ func (tm *TranscriptManager) WriteAll() error {
 }
 
 // HistoryForAgent builds the history envelope for the next agent turn.
-//
-// For star and mesh topologies, returns the last K messages from any agent.
-// For ring topology, returns the last K messages from the predecessor agent only.
-// At turn 0, the predecessor is "orchestrator".
-// Otherwise, the predecessor is determined by (turn-1) % numAgents index
-// using the agent order inferred from the first non-orchestrator turns.
-func (tm *TranscriptManager) HistoryForAgent(agentID string, window int, topology Topology, numAgents int, turn int) []map[string]string {
+func (tm *TranscriptManager) HistoryForAgent(agentID string, window int, topology types.Topology, numAgents int, turn int) []map[string]string {
 	switch topology {
-	case TopologyStar, TopologyMesh:
-		// Star and mesh: last K messages from any agent.
+	case types.TopologyStar, types.TopologyMesh:
 		start := len(tm.records) - window
 		if start < 0 {
 			start = 0
@@ -138,7 +132,6 @@ func (tm *TranscriptManager) HistoryForAgent(agentID string, window int, topolog
 		return history
 
 	default:
-		// Ring: last K messages from the predecessor agent.
 		var predecessorID string
 		if turn == 0 {
 			predecessorID = "orchestrator"
@@ -148,7 +141,6 @@ func (tm *TranscriptManager) HistoryForAgent(agentID string, window int, topolog
 			if predecessorIdx < len(agentOrder) {
 				predecessorID = agentOrder[predecessorIdx]
 			} else {
-				// Fallback: not enough agents inferred yet, return empty.
 				return nil
 			}
 		}
@@ -165,7 +157,6 @@ func (tm *TranscriptManager) HistoryForAgent(agentID string, window int, topolog
 				break
 			}
 		}
-		// Reverse to maintain chronological order.
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
 			history[i], history[j] = history[j], history[i]
 		}
@@ -173,8 +164,6 @@ func (tm *TranscriptManager) HistoryForAgent(agentID string, window int, topolog
 	}
 }
 
-// inferAgentOrder infers the agent participation order from the first N
-// non-orchestrator turns in the transcript.
 func (tm *TranscriptManager) inferAgentOrder(numAgents int) []string {
 	var seen []string
 	for _, r := range tm.records {
@@ -198,8 +187,7 @@ func (tm *TranscriptManager) inferAgentOrder(numAgents int) []string {
 	return seen
 }
 
-// ConsecutiveConsensusCount counts how many consecutive trailing records
-// have consensus=true.
+// ConsecutiveConsensusCount counts consecutive trailing records with consensus=true.
 func (tm *TranscriptManager) ConsecutiveConsensusCount() int {
 	count := 0
 	for i := len(tm.records) - 1; i >= 0; i-- {
@@ -212,7 +200,7 @@ func (tm *TranscriptManager) ConsecutiveConsensusCount() int {
 	return count
 }
 
-// TotalCost returns the sum of all non-nil cost values across records.
+// TotalCost returns the sum of all cost values across records.
 func (tm *TranscriptManager) TotalCost() float64 {
 	var total float64
 	for _, r := range tm.records {
@@ -223,11 +211,11 @@ func (tm *TranscriptManager) TotalCost() float64 {
 	return total
 }
 
-// TotalTokens returns the sum of all non-nil total token counts across records.
+// TotalTokens returns the sum of all total token counts across records.
 func (tm *TranscriptManager) TotalTokens() int {
 	total := 0
 	for _, r := range tm.records {
-		total += intVal(r.Tokens.Total)
+		total += types.IntVal(r.Tokens.Total)
 	}
 	return total
 }

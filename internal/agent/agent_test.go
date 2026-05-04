@@ -1,9 +1,11 @@
-package kumbaja
+package agent
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -236,7 +238,7 @@ func TestExtractConsensusRegexEdgeCases(t *testing.T) {
 
 func TestAgentRunnerDryRun(t *testing.T) {
 	runner := NewAgentRunner(true)
-	agent := AgentConfig{
+	agent := types.AgentConfig{
 		ID:           "test_agent",
 		Model:        "test-model",
 		SystemPrompt: "You are a test.",
@@ -279,7 +281,7 @@ func TestAgentRunnerDryRun(t *testing.T) {
 
 func TestAgentRunnerDryRunNoTopic(t *testing.T) {
 	runner := NewAgentRunner(true)
-	agent := AgentConfig{
+	agent := types.AgentConfig{
 		ID:           "test_agent",
 		Model:        "test-model",
 		SystemPrompt: "You are a test.",
@@ -304,7 +306,7 @@ func TestAgentRunnerDryRunNoTopic(t *testing.T) {
 
 func TestAgentRunnerMissingBinary(t *testing.T) {
 	runner := NewAgentRunner(false)
-	agent := AgentConfig{
+	agent := types.AgentConfig{
 		ID:           "test",
 		Model:        "m",
 		SystemPrompt: "prompt",
@@ -328,7 +330,7 @@ func TestAgentRunnerMissingBinary(t *testing.T) {
 func TestAgentRunnerDryRunEmptyEnvelope(t *testing.T) {
 	// When envelope has no 'topic', dry-run still succeeds.
 	runner := NewAgentRunner(true)
-	agent := AgentConfig{ID: "x", Model: "m"}
+	agent := types.AgentConfig{ID: "x", Model: "m"}
 
 	content, _, err := runner.Run(agent, map[string]any{})
 	if err != nil {
@@ -525,7 +527,7 @@ func TestConvertTokensNonMap(t *testing.T) {
 
 func TestDryRunCostIsNonNull(t *testing.T) {
 	runner := NewAgentRunner(true)
-	agent := AgentConfig{ID: "x", Model: "m"}
+	agent := types.AgentConfig{ID: "x", Model: "m"}
 	envelope := map[string]any{"topic": "test"}
 
 	_, metadata, err := runner.Run(agent, envelope)

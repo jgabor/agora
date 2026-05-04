@@ -1,12 +1,14 @@
-package kumbaja
+// Package output renders terminal output for deliberation progress.
+package output
 
 import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
-// ANSI escape codes for terminal styling.
 const (
 	ansiReset    = "\033[0m"
 	ansiBold     = "\033[1m"
@@ -19,8 +21,8 @@ const (
 	ansiMagenta  = "\033[35m"
 	ansiCyan     = "\033[36m"
 	ansiWhite    = "\033[37m"
-	ansiGray     = "\033[90m" // bright black
-	ansiBRed     = "\033[91m" // bright red
+	ansiGray     = "\033[90m"
+	ansiBRed     = "\033[91m"
 	ansiBGreen   = "\033[92m"
 	ansiBYellow  = "\033[93m"
 	ansiBBlue    = "\033[94m"
@@ -29,7 +31,6 @@ const (
 	ansiBWhite   = "\033[97m"
 )
 
-// agentColorCode maps normalized agent IDs to ANSI color codes.
 var agentColorCode = map[string]string{
 	"orchestrator":  ansiCyan,
 	"strategist":    ansiBlue,
@@ -42,8 +43,6 @@ var agentColorCode = map[string]string{
 	"synthesizer":   ansiBCyan,
 }
 
-// colorCode returns the ANSI color code for an agent ID, normalizing hyphens.
-// Unknown agent IDs default to white.
 func colorCode(agentID string) string {
 	normalized := strings.ReplaceAll(agentID, "-", "_")
 	if c, ok := agentColorCode[normalized]; ok {
@@ -65,15 +64,11 @@ func NewOutputManager(verbose bool) *OutputManager {
 	return &OutputManager{verbose: verbose}
 }
 
-// DeliberationHeader prints the deliberation start banner: topic panel, agent
-// list, and settings line with styled text.
-func (o *OutputManager) DeliberationHeader(state *DeliberationState) {
+// DeliberationHeader prints the deliberation start banner.
+func (o *OutputManager) DeliberationHeader(state *types.DeliberationState) {
 	fmt.Println()
-
-	// Topic panel.
 	fmt.Println(drawPanel(state.Topic, "Topic", ansiBlue))
 
-	// Agent list — each agent ID colored by role.
 	var agentParts []string
 	for _, a := range state.Config.Agents {
 		c := colorCode(a.ID)
@@ -81,7 +76,6 @@ func (o *OutputManager) DeliberationHeader(state *DeliberationState) {
 	}
 	fmt.Printf("%sAgents:%s %s\n", ansiBold, ansiReset, strings.Join(agentParts, ", "))
 
-	// Settings line.
 	var settings string
 	settings += fmt.Sprintf("topology=%s | ", string(state.Config.Topology))
 	settings += fmt.Sprintf("time=%ds | ", state.TimeLimit)
@@ -94,15 +88,11 @@ func (o *OutputManager) DeliberationHeader(state *DeliberationState) {
 		settings += fmt.Sprintf(" | consensus_threshold=%d", state.Config.ConsensusThreshold)
 	}
 	fmt.Printf("%sSettings:%s %s\n", ansiBold, ansiReset, settings)
-
 	fmt.Println()
 }
 
-// TurnProgress prints progress for a single turn: counter, agent name
-// (colored), model, elapsed time, tokens, and cost. If the turn has a
-// consensus marker, it prints a [CONSENSUS] line. In verbose mode it also
-// prints the agent's content.
-func (o *OutputManager) TurnProgress(record TurnRecord, turn int, maxTurns int) {
+// TurnProgress prints progress for a single turn.
+func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns int) {
 	elapsed := fmt.Sprintf("%.1fs", record.Elapsed)
 	tokensTotal := "?"
 	if record.Tokens.Total != nil {
@@ -137,13 +127,11 @@ func (o *OutputManager) TurnProgress(record TurnRecord, turn int, maxTurns int) 
 	}
 }
 
-// FinalStats prints final deliberation statistics: a summary table and a
-// per-agent metrics table.
-func (o *OutputManager) FinalStats(records []TurnRecord, state *DeliberationState) {
-	stats := ComputeStats(records)
+// FinalStats prints final deliberation statistics.
+func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.DeliberationState) {
+	stats := types.ComputeStats(records)
 	duration := float64(time.Now().UnixNano())/1e9 - state.StartTime
 
-	// Count actual turns (exclude orchestrator seed).
 	actualTurns := 0
 	for _, r := range records {
 		if r.AgentID != "orchestrator" {
@@ -162,7 +150,6 @@ func (o *OutputManager) FinalStats(records []TurnRecord, state *DeliberationStat
 
 	if len(stats.PerAgent) > 0 {
 		fmt.Println()
-		// Build per-agent rows.
 		var rows [][]string
 		for agentID, s := range stats.PerAgent {
 			rows = append(rows, []string{
@@ -176,8 +163,7 @@ func (o *OutputManager) FinalStats(records []TurnRecord, state *DeliberationStat
 	}
 }
 
-// PrintStats displays standalone statistics (from the stats command) without
-// requiring a live deliberation state.
+// PrintStats displays standalone statistics without requiring a live deliberation state.
 func (o *OutputManager) PrintStats(stats StatsDict) {
 	fmt.Println()
 
@@ -196,7 +182,6 @@ func (o *OutputManager) PrintStats(stats StatsDict) {
 
 	fmt.Println(drawTable("Transcript Statistics", []string{"Metric", "Value"}, rows, []string{"", ""}))
 
-	// Per-agent table.
 	if perAgent, ok := stats["per_agent"]; ok {
 		if pa, ok := perAgent.(map[string]any); ok && len(pa) > 0 {
 			fmt.Println()
@@ -215,7 +200,6 @@ func (o *OutputManager) PrintStats(stats StatsDict) {
 		}
 	}
 
-	// Consensus events.
 	if ce, ok := stats["consensus_events"]; ok {
 		if events, ok := ce.([]any); ok && len(events) > 0 {
 			fmt.Println()
@@ -235,9 +219,7 @@ func (o *OutputManager) SynthesizeHeader() {
 	fmt.Printf("%sSynthesis:%s\n", ansiBold, ansiReset)
 }
 
-// SynthesisResult displays the synthesis result with a recommendation panel,
-// confidence level, key arguments, points of agreement, and unresolved
-// tensions — each section using appropriate styling.
+// SynthesisResult displays the synthesis result.
 func (o *OutputManager) SynthesisResult(result map[string]any) {
 	fmt.Println()
 
@@ -321,21 +303,16 @@ func (o *OutputManager) Delimiter() {
 	fmt.Printf("%s%s%s\n", ansiDim, strings.Repeat("─", 60), ansiReset)
 }
 
-// drawPanel renders a bordered panel with a centered title at the top and
-// the content inside. The border uses the given ANSI color.
 func drawPanel(content, title string, borderColor string) string {
 	const panelWidth = 76
-
 	var sb strings.Builder
 
-	contentLines := wrapText(content, panelWidth-4) // 2 padding + 2 borders
+	contentLines := wrapText(content, panelWidth-4)
 
-	// Top border with title embedded.
 	sb.WriteString(borderColor)
 	sb.WriteString("╭")
 	titleStr := " " + title + " "
 	if len(titleStr) < panelWidth-2 {
-		// Center the title.
 		remaining := panelWidth - 2 - len(titleStr)
 		left := remaining / 2
 		right := remaining - left
@@ -353,14 +330,12 @@ func drawPanel(content, title string, borderColor string) string {
 	sb.WriteString(ansiReset)
 	sb.WriteString("\n")
 
-	// Content area.
 	for _, line := range contentLines {
 		sb.WriteString(borderColor)
 		sb.WriteString("│")
 		sb.WriteString(ansiReset)
 		sb.WriteString(" ")
 		sb.WriteString(line)
-		// Pad to panelWidth-4 visual chars.
 		padLen := panelWidth - 4 - visualLen(line)
 		if padLen > 0 {
 			sb.WriteString(strings.Repeat(" ", padLen))
@@ -372,7 +347,6 @@ func drawPanel(content, title string, borderColor string) string {
 		sb.WriteString("\n")
 	}
 
-	// Bottom border.
 	sb.WriteString(borderColor)
 	sb.WriteString("╰")
 	sb.WriteString(strings.Repeat("─", panelWidth-2))
@@ -382,8 +356,6 @@ func drawPanel(content, title string, borderColor string) string {
 	return sb.String()
 }
 
-// wrapText wraps text to fit within maxWidth, splitting at word boundaries
-// when possible but breaking mid-word if necessary.
 func wrapText(text string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		return []string{text}
@@ -417,8 +389,6 @@ func wrapText(text string, maxWidth int) []string {
 	return lines
 }
 
-// visualLen approximates the visible character width of a string, ignoring
-// ANSI escape sequences.
 func visualLen(s string) int {
 	n := 0
 	inEscape := false
@@ -431,7 +401,7 @@ func visualLen(s string) int {
 		}
 		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
 			inEscape = true
-			i++ // skip the '['
+			i++
 			continue
 		}
 		n++
@@ -439,14 +409,11 @@ func visualLen(s string) int {
 	return n
 }
 
-// drawTable renders a formatted table with a title, headers, and rows.
-// Column alignments can be "left", "right", or "" (defaults to left).
 func drawTable(title string, headers []string, rows [][]string, aligns []string) string {
 	if len(headers) == 0 {
 		return ""
 	}
 
-	// Determine column widths from headers and data.
 	colWidths := make([]int, len(headers))
 	for i, h := range headers {
 		colWidths[i] = visualLen(h)
@@ -462,7 +429,6 @@ func drawTable(title string, headers []string, rows [][]string, aligns []string)
 		}
 	}
 
-	// Minimum column width of 4 chars.
 	for i := range colWidths {
 		if colWidths[i] < 4 {
 			colWidths[i] = 4
@@ -471,7 +437,6 @@ func drawTable(title string, headers []string, rows [][]string, aligns []string)
 
 	var sb strings.Builder
 
-	// Title.
 	if title != "" {
 		sb.WriteString(ansiBold)
 		sb.WriteString(title)
@@ -479,7 +444,6 @@ func drawTable(title string, headers []string, rows [][]string, aligns []string)
 		sb.WriteString("\n")
 	}
 
-	// Separator line.
 	sep := ""
 	for i, w := range colWidths {
 		if i > 0 {
@@ -494,7 +458,6 @@ func drawTable(title string, headers []string, rows [][]string, aligns []string)
 		sb.WriteString("\n")
 	}
 
-	// Header row.
 	sb.WriteString(ansiCyan)
 	for i, h := range headers {
 		if i > 0 {
@@ -505,13 +468,11 @@ func drawTable(title string, headers []string, rows [][]string, aligns []string)
 	sb.WriteString(ansiReset)
 	sb.WriteString("\n")
 
-	// Separator after header.
 	sb.WriteString(ansiDim)
 	sb.WriteString(sep)
 	sb.WriteString(ansiReset)
 	sb.WriteString("\n")
 
-	// Data rows.
 	for _, row := range rows {
 		for i, cell := range row {
 			if i > 0 {
@@ -532,7 +493,6 @@ func drawTable(title string, headers []string, rows [][]string, aligns []string)
 	return sb.String()
 }
 
-// padCell pads a string to the given width, aligning left or right.
 func padCell(s string, width int, align string) string {
 	vLen := visualLen(s)
 	if vLen >= width {

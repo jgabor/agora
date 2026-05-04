@@ -1,9 +1,12 @@
-package kumbaja
+package orchestrator
 
 import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/jgabor/agora/internal/transcript"
+	"github.com/jgabor/agora/internal/types"
 )
 
 // mockRunner is a Runner whose Run method returns canned responses.
@@ -13,15 +16,15 @@ type mockRunner struct {
 	err      error
 }
 
-func (m *mockRunner) Run(agent AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (m *mockRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
 	if m.err != nil {
 		return "", nil, m.err
 	}
 	return m.content, m.metadata, nil
 }
 
-func newTestState(cfg *DeliberationConfig) *DeliberationState {
-	return &DeliberationState{
+func newTestState(cfg *types.DeliberationConfig) *types.DeliberationState {
+	return &types.DeliberationState{
 		Config:    cfg,
 		Topic:     "test topic",
 		Window:    2,
@@ -32,10 +35,10 @@ func newTestState(cfg *DeliberationConfig) *DeliberationState {
 	}
 }
 
-func newTestAgents(n int) []AgentConfig {
-	agents := make([]AgentConfig, n)
+func newTestAgents(n int) []types.AgentConfig {
+	agents := make([]types.AgentConfig, n)
 	for i := range n {
-		agents[i] = AgentConfig{
+		agents[i] = types.AgentConfig{
 			ID:           fmt.Sprintf("agent-%d", i),
 			Model:        "test-model",
 			SystemPrompt: "You are a test agent.",
@@ -45,8 +48,8 @@ func newTestAgents(n int) []AgentConfig {
 }
 
 func TestEmitSeed(t *testing.T) {
-	tm := NewTranscriptManager("/tmp/test_transcript.jsonl")
-	state := newTestState(&DeliberationConfig{Agents: newTestAgents(2)})
+	tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
+	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
 	o := NewOrchestrator(state, tm, &mockRunner{})
 
 	o.emitSeed()
@@ -120,8 +123,8 @@ func TestCheckTerminationConditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tm := NewTranscriptManager("/tmp/test_transcript.jsonl")
-			cfg := &DeliberationConfig{
+			tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
+			cfg := &types.DeliberationConfig{
 				Agents:             newTestAgents(2),
 				ConsensusThreshold: tt.consensusThresh,
 			}
@@ -138,7 +141,7 @@ func TestCheckTerminationConditions(t *testing.T) {
 			// Seed transcript with records that accrue cost.
 			if tt.transcriptCost > 0 {
 				cost := tt.transcriptCost
-				_ = tm.Append(TurnRecord{
+				_ = tm.Append(types.TurnRecord{
 					Turn:    0,
 					AgentID: "agent-0",
 					Content: "ok",
@@ -159,14 +162,14 @@ func TestCheckTerminationConditions(t *testing.T) {
 }
 
 func TestExecuteTurn(t *testing.T) {
-	tm := NewTranscriptManager("/tmp/test_transcript.jsonl")
-	_ = tm.Append(TurnRecord{
+	tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
+	_ = tm.Append(types.TurnRecord{
 		Turn:    -1,
 		AgentID: "orchestrator",
 		Content: "seed message",
 	})
 
-	cfg := &DeliberationConfig{Agents: newTestAgents(2)}
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
 	state := newTestState(cfg)
 
 	total := 42
@@ -215,8 +218,8 @@ func TestExecuteTurn(t *testing.T) {
 }
 
 func TestExecuteTurnRunnerError(t *testing.T) {
-	tm := NewTranscriptManager("/tmp/test_transcript.jsonl")
-	cfg := &DeliberationConfig{Agents: newTestAgents(2)}
+	tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
 	state := newTestState(cfg)
 
 	mock := &mockRunner{

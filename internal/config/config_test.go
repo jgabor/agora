@@ -1,10 +1,12 @@
-package kumbaja
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
 // writeTempYAML creates a temporary YAML file with the given content and
@@ -50,26 +52,26 @@ agents:
 		t.Errorf("agent[0].system_prompt: got %q, want %q", cfg.Agents[0].SystemPrompt, "Be helpful")
 	}
 	// Default topology should be ring.
-	if cfg.Topology != TopologyRing {
-		t.Errorf("topology: got %q, want %q", cfg.Topology, TopologyRing)
+	if cfg.Topology != types.TopologyRing {
+		t.Errorf("topology: got %q, want %q", cfg.Topology, types.TopologyRing)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Topology variants
+// types.Topology variants
 // ---------------------------------------------------------------------------
 
 func TestLoadConfigTopologyVariants(t *testing.T) {
 	tests := []struct {
 		label string
 		yaml  string
-		want  Topology
+		want  types.Topology
 	}{
-		{"ring explicit", "topology: ring\nagents:\n  - id: a\n    model: m\n", TopologyRing},
-		{"star", "topology: star\nagents:\n  - id: a\n    model: m\n", TopologyStar},
-		{"mesh", "topology: mesh\nagents:\n  - id: a\n    model: m\n", TopologyMesh},
-		{"ring default (omitted)", "agents:\n  - id: a\n    model: m\n", TopologyRing},
-		{"ring caps", "topology: RING\nagents:\n  - id: a\n    model: m\n", TopologyRing},
+		{"ring explicit", "topology: ring\nagents:\n  - id: a\n    model: m\n", types.TopologyRing},
+		{"star", "topology: star\nagents:\n  - id: a\n    model: m\n", types.TopologyStar},
+		{"mesh", "topology: mesh\nagents:\n  - id: a\n    model: m\n", types.TopologyMesh},
+		{"ring default (omitted)", "agents:\n  - id: a\n    model: m\n", types.TopologyRing},
+		{"ring caps", "topology: RING\nagents:\n  - id: a\n    model: m\n", types.TopologyRing},
 	}
 
 	for _, tt := range tests {
@@ -265,7 +267,7 @@ agents:
 		t.Logf("hyphenated topology result: %v", err)
 		return
 	}
-	if cfg.Topology != TopologyMesh {
+	if cfg.Topology != types.TopologyMesh {
 		t.Errorf("hyphenated mesh-network should parse as mesh: got %q", cfg.Topology)
 	}
 }

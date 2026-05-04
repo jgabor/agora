@@ -1,5 +1,5 @@
-// Package kumbaja implements a closed-loop multi-agent deliberation system.
-package kumbaja
+// Package types defines domain types for the Agora deliberation system.
+package types
 
 import (
 	"fmt"
@@ -15,10 +15,9 @@ const (
 	TopologyMesh Topology = "mesh"
 )
 
-// validTopologies contains all valid topology values.
 var validTopologies = []Topology{TopologyRing, TopologyStar, TopologyMesh}
 
-// ParseTopology parses a string into a Topology, returning an error with valid options if invalid.
+// ParseTopology parses a string into a Topology.
 func ParseTopology(s string) (Topology, error) {
 	normalized := strings.ToLower(strings.ReplaceAll(s, "-", "_"))
 	switch Topology(normalized) {
@@ -77,12 +76,9 @@ func (c *DeliberationConfig) Validate() error {
 	if c.ConsensusThreshold < 0 {
 		return fmt.Errorf("consensus_threshold must be >= 0")
 	}
-	// Validate topology is one of the known values
 	switch c.Topology {
 	case TopologyRing, TopologyStar, TopologyMesh:
-		// ok
 	case "":
-		// default will be applied during loading
 	default:
 		valid := make([]string, len(validTopologies))
 		for i, t := range validTopologies {
@@ -94,7 +90,6 @@ func (c *DeliberationConfig) Validate() error {
 }
 
 // TokenUsage holds token usage metadata from a model call.
-// All fields are optional (nil means absent/unknown).
 type TokenUsage struct {
 	Total     *int `yaml:"total,omitempty" json:"total,omitempty"`
 	Input     *int `yaml:"input,omitempty" json:"input,omitempty"`
@@ -141,6 +136,22 @@ type ConsensusEvent struct {
 	Statement string `json:"statement"`
 }
 
+// DeliberationState tracks the runtime state of an ongoing deliberation.
+type DeliberationState struct {
+	Config      *DeliberationConfig
+	Topic       string
+	Window      int
+	MaxTurns    int
+	TimeLimit   int
+	Budget      *float64
+	FullContext bool
+
+	Turn      int
+	StartTime float64
+	Running   bool
+	HaltedBy  string
+}
+
 // ComputeStats computes DeliberationStats from a slice of TurnRecords.
 func ComputeStats(records []TurnRecord) DeliberationStats {
 	stats := DeliberationStats{
@@ -153,7 +164,7 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 	var durationCount int
 
 	for _, r := range records {
-		stats.TotalTokens += intVal(r.Tokens.Total)
+		stats.TotalTokens += IntVal(r.Tokens.Total)
 		if r.Cost != nil {
 			stats.TotalCost += *r.Cost
 		}
@@ -164,7 +175,7 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 
 		as := stats.PerAgent[r.AgentID]
 		as.Turns++
-		as.Tokens += intVal(r.Tokens.Total)
+		as.Tokens += IntVal(r.Tokens.Total)
 		if r.Cost != nil {
 			as.Cost += *r.Cost
 		}
@@ -186,8 +197,8 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 	return stats
 }
 
-// intVal safely dereferences an *int, returning 0 for nil.
-func intVal(p *int) int {
+// IntVal safely dereferences an *int, returning 0 for nil.
+func IntVal(p *int) int {
 	if p == nil {
 		return 0
 	}

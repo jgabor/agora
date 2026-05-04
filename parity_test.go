@@ -1,9 +1,11 @@
-package kumbaja
+package agora_test
 
 import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
 func TestCrossVersionParity_PythonDryRunTranscript(t *testing.T) {
@@ -12,14 +14,14 @@ func TestCrossVersionParity_PythonDryRunTranscript(t *testing.T) {
 		t.Skipf("python testdata not available: %v", err)
 	}
 
-	var records []TurnRecord
+	var records []types.TurnRecord
 	lines := splitJSONLLines(string(data))
 	if len(lines) == 0 {
 		t.Fatal("no records in python transcript")
 	}
 
 	for _, line := range lines {
-		var rec TurnRecord
+		var rec types.TurnRecord
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			t.Fatalf("failed to unmarshal python record: %v", err)
 		}

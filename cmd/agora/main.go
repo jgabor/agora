@@ -6,7 +6,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jgabor/kumbaja"
+	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/orchestrator"
+	"github.com/jgabor/agora/internal/output"
+	"github.com/jgabor/agora/internal/transcript"
+	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -19,19 +24,13 @@ func main() {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Root command
-// ---------------------------------------------------------------------------
-
 var rootCmd = &cobra.Command{
-	Use:     "kumbaja",
-	Short:   "Kumbaja — Closed-loop multi-agent deliberation system",
+	Use:     "agora",
+	Short:   "Agora — Closed-loop multi-agent deliberation system",
 	Version: version,
 }
 
-// ---------------------------------------------------------------------------
-// run
-// ---------------------------------------------------------------------------
+// --- run ----------------------------------------------------------
 
 var (
 	runConfig      string
@@ -42,7 +41,7 @@ var (
 	runOutput      string
 	runVerbose     bool
 	runBudget      float64
-	runBudgetFlag  bool // tracks whether --budget was explicitly set
+	runBudgetFlag  bool
 	runSynthesize  bool
 	runFullContext bool
 	runDryRun      bool
@@ -52,7 +51,7 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run a multi-agent deliberation",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := kumbaja.LoadConfig(runConfig)
+		cfg, err := config.LoadConfig(runConfig)
 		if err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
@@ -62,7 +61,7 @@ var runCmd = &cobra.Command{
 			budget = &runBudget
 		}
 
-		state := &kumbaja.DeliberationState{
+		state := &types.DeliberationState{
 			Config:      cfg,
 			Topic:       runTopic,
 			Window:      runWindow,
@@ -72,19 +71,19 @@ var runCmd = &cobra.Command{
 			FullContext: runFullContext,
 		}
 
-		transcript := kumbaja.NewTranscriptManager(runOutput)
-		outMgr := kumbaja.NewOutputManager(runVerbose)
-		runner := kumbaja.NewAgentRunner(runDryRun)
-		orchestrator := kumbaja.NewOrchestrator(state, transcript, runner)
+		tm := transcript.NewTranscriptManager(runOutput)
+		outMgr := output.NewOutputManager(runVerbose)
+		runner := agent.NewAgentRunner(runDryRun)
+		orch := orchestrator.NewOrchestrator(state, tm, runner)
 
 		outMgr.DeliberationHeader(state)
 
-		stats := orchestrator.Run()
+		stats := orch.Run()
 
-		outMgr.FinalStats(transcript.Records(), state)
+		outMgr.FinalStats(tm.Records(), state)
 
 		if runSynthesize {
-			result := orchestrator.Synthesize()
+			result := orch.Synthesize()
 			if result != nil {
 				outMgr.SynthesizeHeader()
 				outMgr.SynthesisResult(result)
@@ -110,8 +109,8 @@ func init() {
 	runCmd.Flags().BoolVarP(&runVerbose, "verbose", "v", false, "Print agent responses in real-time")
 	runCmd.Flags().Float64Var(&runBudget, "budget", 0, "Cost cap in dollars")
 	runCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
-	runCmd.Flags().BoolVar(&runFullContext, "full-context", false, "Show last K messages from ALL agents (not just predecessor)")
-	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Run with simulated agent responses (no LLM calls)")
+	runCmd.Flags().BoolVar(&runFullContext, "full-context", false, "Show last K messages from ALL agents")
+	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Run with simulated agent responses")
 
 	_ = runCmd.MarkFlagRequired("config")
 	_ = runCmd.MarkFlagRequired("topic")
@@ -120,16 +119,13 @@ func init() {
 	_ = runCmd.MarkFlagRequired("max-turns")
 	_ = runCmd.MarkFlagRequired("output")
 
-	// Track whether --budget was explicitly set (since 0 is the zero-value).
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
 		return nil
 	}
 }
 
-// ---------------------------------------------------------------------------
-// stats
-// ---------------------------------------------------------------------------
+// --- stats --------------------------------------------------------
 
 var statsCmd = &cobra.Command{
 	Use:   "stats TRANSCRIPT",
@@ -144,24 +140,22 @@ var statsCmd = &cobra.Command{
 			return fmt.Errorf("transcript empty or invalid")
 		}
 
-		stats := kumbaja.ComputeStats(records)
-		outMgr := kumbaja.NewOutputManager(false)
+		stats := types.ComputeStats(records)
+		outMgr := output.NewOutputManager(false)
 		outMgr.PrintStats(statsToDict(stats))
 
 		return nil
 	},
 }
 
-// ---------------------------------------------------------------------------
-// validate
-// ---------------------------------------------------------------------------
+// --- validate -----------------------------------------------------
 
 var validateCmd = &cobra.Command{
 	Use:   "validate CONFIG",
-	Short: "Validate a configuration file without running deliberation",
+	Short: "Validate a configuration file",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := kumbaja.LoadConfig(args[0])
+		cfg, err := config.LoadConfig(args[0])
 		if err != nil {
 			return fmt.Errorf("ERROR: %w", err)
 		}
@@ -183,9 +177,7 @@ var validateCmd = &cobra.Command{
 	},
 }
 
-// ---------------------------------------------------------------------------
-// resume
-// ---------------------------------------------------------------------------
+// --- resume -------------------------------------------------------
 
 var (
 	resumeConfig      string
@@ -210,36 +202,30 @@ var resumeCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sourcePath := args[0]
-
-		cfg, err := kumbaja.LoadConfig(resumeConfig)
+		cfg, err := config.LoadConfig(resumeConfig)
 		if err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
 
-		// Load records from the source transcript.
-		sourceRecords, err := loadTranscriptFile(sourcePath)
+		sourceRecords, err := loadTranscriptFile(args[0])
 		if err != nil {
 			return fmt.Errorf("loading source transcript: %w", err)
 		}
 		if len(sourceRecords) == 0 {
-			return fmt.Errorf("no existing transcript found — use 'kumbaja run' to start")
+			return fmt.Errorf("no existing transcript found — use 'agora run' to start")
 		}
 
-		// Create transcript manager for the output path and load any existing records.
-		tm := kumbaja.NewTranscriptManager(resumeOutput)
+		tm := transcript.NewTranscriptManager(resumeOutput)
 		if _, err := tm.LoadExisting(); err != nil {
 			return fmt.Errorf("loading existing output transcript: %w", err)
 		}
 
-		// Copy source records into the output manager.
 		for _, r := range sourceRecords {
 			if err := tm.Append(r); err != nil {
 				return fmt.Errorf("copying records: %w", err)
 			}
 		}
 
-		// Determine starting turn (count non-orchestrator turns).
 		existingTurns := 0
 		for _, r := range sourceRecords {
 			if r.AgentID != "orchestrator" {
@@ -252,7 +238,7 @@ var resumeCmd = &cobra.Command{
 			budget = &resumeBudget
 		}
 
-		state := &kumbaja.DeliberationState{
+		state := &types.DeliberationState{
 			Config:      cfg,
 			Topic:       resumeTopic,
 			Window:      resumeWindow,
@@ -263,13 +249,13 @@ var resumeCmd = &cobra.Command{
 			Turn:        existingTurns,
 		}
 
-		outMgr := kumbaja.NewOutputManager(resumeVerbose)
-		runner := kumbaja.NewAgentRunner(resumeDryRun)
-		orchestrator := kumbaja.NewOrchestrator(state, tm, runner)
+		outMgr := output.NewOutputManager(resumeVerbose)
+		runner := agent.NewAgentRunner(resumeDryRun)
+		orch := orchestrator.NewOrchestrator(state, tm, runner)
 
 		outMgr.DeliberationHeader(state)
 
-		stats := orchestrator.Run()
+		stats := orch.Run()
 
 		outMgr.FinalStats(tm.Records(), state)
 		outMgr.Success(fmt.Sprintf("Resumed deliberation complete (%d total turns)", stats.TotalTurns))
@@ -288,8 +274,8 @@ func init() {
 	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "", "Path to write the updated JSONL transcript")
 	resumeCmd.Flags().BoolVarP(&resumeVerbose, "verbose", "v", false, "Print agent responses in real-time")
 	resumeCmd.Flags().Float64Var(&resumeBudget, "budget", 0, "Remaining cost budget")
-	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents (not just predecessor)")
-	resumeCmd.Flags().BoolVar(&resumeDryRun, "dry-run", false, "Run with simulated agent responses (no LLM calls)")
+	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents")
+	resumeCmd.Flags().BoolVar(&resumeDryRun, "dry-run", false, "Run with simulated agent responses")
 
 	_ = resumeCmd.MarkFlagRequired("config")
 	_ = resumeCmd.MarkFlagRequired("topic")
@@ -299,28 +285,25 @@ func init() {
 	_ = resumeCmd.MarkFlagRequired("output")
 }
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
+// --- helpers ------------------------------------------------------
 
-// loadTranscriptFile reads a JSONL transcript file and returns the parsed records.
-func loadTranscriptFile(path string) ([]kumbaja.TurnRecord, error) {
+func loadTranscriptFile(path string) ([]types.TurnRecord, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 
-	var records []kumbaja.TurnRecord
+	var records []types.TurnRecord
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
-		var r kumbaja.TurnRecord
+		var r types.TurnRecord
 		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			continue // skip malformed lines
+			continue
 		}
 		records = append(records, r)
 	}
@@ -330,9 +313,7 @@ func loadTranscriptFile(path string) ([]kumbaja.TurnRecord, error) {
 	return records, nil
 }
 
-// statsToDict converts a DeliberationStats value into the map[string]any
-// expected by OutputManager.PrintStats.
-func statsToDict(s kumbaja.DeliberationStats) map[string]any {
+func statsToDict(s types.DeliberationStats) map[string]any {
 	perAgent := make(map[string]any, len(s.PerAgent))
 	for id, as := range s.PerAgent {
 		perAgent[id] = map[string]any{

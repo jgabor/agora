@@ -1,4 +1,5 @@
-package kumbaja
+// Package agent executes LLM agent turns via opencode subprocess.
+package agent
 
 import (
 	"bytes"
@@ -7,12 +8,13 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"github.com/jgabor/agora/internal/types"
 )
 
-// Runner is the interface for executing agent turns. AgentRunner is the
-// production implementation using opencode subprocess. Tests use mockRunner.
+// Runner is the interface for executing agent turns.
 type Runner interface {
-	Run(agent AgentConfig, envelope map[string]any) (string, map[string]any, error)
+	Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error)
 }
 
 // AgentRunner executes agent turns via the opencode subprocess.
@@ -21,42 +23,29 @@ type AgentRunner struct {
 }
 
 // NewAgentRunner creates a new AgentRunner.
-// When dryRun is true, Run returns a canned response without invoking opencode.
 func NewAgentRunner(dryRun bool) *AgentRunner {
 	return &AgentRunner{dryRun: dryRun}
 }
 
-// Run executes a single agent turn. It returns the text content produced by the
-// agent, a metadata map containing "tokens" (map[string]any with int values) and
-// "cost" (*float64), and any error encountered.
-//
-// In normal mode, Run invokes opencode as a subprocess with the agent's system
-// prompt and envelope JSON piped to stdin. It parses the JSON event stream line
-// by line, accumulating text events and extracting token/cost metadata from
-// step_finish events.
-//
-// In dry-run mode, Run returns a placeholder response without invoking opencode.
-func (r *AgentRunner) Run(agent AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+// Run executes a single agent turn via opencode subprocess.
+// Returns text content, metadata (tokens, cost), and any error.
+func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
 	if r.dryRun {
 		return r.dryRunResponse(agent, envelope)
 	}
 
-	// Build the payload: system_prompt + two newlines + JSON envelope.
-	// This matches the Python behavior exactly.
 	envJSON, err := json.Marshal(envelope)
 	if err != nil {
 		return "", nil, fmt.Errorf("marshaling envelope: %w", err)
 	}
 	payload := agent.SystemPrompt + "\n\n" + string(envJSON)
 
-	// Verify opencode is available with a clear diagnostic.
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return "", nil, fmt.Errorf("opencode not found in PATH: %w", err)
 	}
 
 	cmd := exec.Command(
-		"opencode",
-		"run",
+		"opencode", "run",
 		"--model", agent.Model,
 		"--format", "json",
 		"--dangerously-skip-permissions",
@@ -68,11 +57,7 @@ func (r *AgentRunner) Run(agent AgentConfig, envelope map[string]any) (string, m
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		// Distinguish between "binary not found at start time" (exec.Error)
-		// and non-zero exit (exec.ExitError).
 		if execErr, ok := err.(*exec.Error); ok {
-			// The binary was found by LookPath but disappeared before execution,
-			// or some other system-level error occurred.
 			return "", nil, fmt.Errorf("opencode execution error: %w", execErr)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -87,7 +72,6 @@ func (r *AgentRunner) Run(agent AgentConfig, envelope map[string]any) (string, m
 		return "", nil, fmt.Errorf("opencode run error: %w", err)
 	}
 
-	// Parse the JSON event stream from stdout.
 	textParts, metadata, err := parseOpenCodeOutput(stdout.String())
 	if err != nil {
 		return "", nil, err
@@ -101,9 +85,6 @@ func (r *AgentRunner) Run(agent AgentConfig, envelope map[string]any) (string, m
 	return content, metadata, nil
 }
 
-// parseOpenCodeOutput parses the opencode JSON event stream line by line.
-// It accumulates text from "text" events, extracts tokens and cost from
-// "step_finish" events, and raises an error on "error" events.
 func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
 	var textParts []string
 	metadata := map[string]any{
@@ -119,7 +100,7 @@ func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
 
 		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue // skip non-JSON lines, matching Python behavior
+			continue
 		}
 
 		eventType, _ := event["type"].(string)
@@ -157,8 +138,6 @@ func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
 	return textParts, metadata, nil
 }
 
-// convertTokens converts JSON number values (float64 after unmarshaling) to int
-// for the tokens map, matching Python's integer token representation.
 func convertTokens(tokens any) map[string]any {
 	tokenMap, ok := tokens.(map[string]any)
 	if !ok {
@@ -175,8 +154,7 @@ func convertTokens(tokens any) map[string]any {
 	return converted
 }
 
-// dryRunResponse returns a canned placeholder response without invoking opencode.
-func (r *AgentRunner) dryRunResponse(agent AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
 	topic := "unknown topic"
 	if t, ok := envelope["topic"]; ok {
 		if s, ok := t.(string); ok {
@@ -200,30 +178,18 @@ func (r *AgentRunner) dryRunResponse(agent AgentConfig, envelope map[string]any)
 		}, nil
 }
 
-// consensusPattern matches [CONSENSUS: <statement>] case-insensitively.
-// The (?s) flag makes '.' match newlines (Go equivalent of Python re.DOTALL).
-// The (?i) flag makes matching case-insensitive (equivalent to re.IGNORECASE).
 var consensusPattern = regexp.MustCompile(`(?si)\[CONSENSUS\s*:\s*(.*?)\]`)
 
-// ExtractConsensus extracts a consensus marker from an agent response.
-//
-// Consensus is signaled with the syntax: [CONSENSUS: <statement>]
-// The marker is case-insensitive and the statement may span multiple lines.
-//
-// Returns:
-//   - cleaned: the response text with the consensus marker removed
-//   - hasConsensus: true if a consensus marker was found
-//   - statement: the extracted consensus statement (empty if no marker found)
+// ExtractConsensus extracts a [CONSENSUS: <statement>] marker from an agent response.
+// Returns the cleaned text, whether consensus was found, and the statement.
 func ExtractConsensus(content string) (cleaned string, hasConsensus bool, statement string) {
 	loc := consensusPattern.FindStringSubmatchIndex(content)
 	if loc == nil {
 		return content, false, ""
 	}
 
-	// loc[2:4] are the start/end indices of the first capture group.
 	consensusStatement := strings.TrimSpace(content[loc[2]:loc[3]])
 
-	// Remove all consensus markers from the content.
 	cleanedText := consensusPattern.ReplaceAllString(content, "")
 	cleanedText = strings.TrimSpace(cleanedText)
 
