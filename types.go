@@ -118,13 +118,13 @@ type TurnRecord struct {
 
 // DeliberationStats holds statistics computed from deliberation records.
 type DeliberationStats struct {
-	Records           []TurnRecord              `json:"records"`
-	TotalTurns        int                       `json:"total_turns"`
-	TotalTokens       int                       `json:"total_tokens"`
-	TotalCost         float64                   `json:"total_cost"`
-	AvgTurnDuration   float64                   `json:"avg_turn_duration_seconds"`
-	PerAgent          map[string]AgentTurnStats `json:"per_agent"`
-	ConsensusEvents   []ConsensusEvent          `json:"consensus_events"`
+	Records         []TurnRecord              `json:"records"`
+	TotalTurns      int                       `json:"total_turns"`
+	TotalTokens     int                       `json:"total_tokens"`
+	TotalCost       float64                   `json:"total_cost"`
+	AvgTurnDuration float64                   `json:"avg_turn_duration_seconds"`
+	PerAgent        map[string]AgentTurnStats `json:"per_agent"`
+	ConsensusEvents []ConsensusEvent          `json:"consensus_events"`
 }
 
 // AgentTurnStats holds per-agent aggregated statistics.
@@ -144,9 +144,9 @@ type ConsensusEvent struct {
 // ComputeStats computes DeliberationStats from a slice of TurnRecords.
 func ComputeStats(records []TurnRecord) DeliberationStats {
 	stats := DeliberationStats{
-		Records:      records,
-		TotalTurns:   len(records),
-		PerAgent:     make(map[string]AgentTurnStats),
+		Records:    records,
+		TotalTurns: len(records),
+		PerAgent:   make(map[string]AgentTurnStats),
 	}
 
 	var totalDuration float64

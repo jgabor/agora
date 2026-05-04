@@ -113,12 +113,12 @@ func init() {
 	runCmd.Flags().BoolVar(&runFullContext, "full-context", false, "Show last K messages from ALL agents (not just predecessor)")
 	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Run with simulated agent responses (no LLM calls)")
 
-	runCmd.MarkFlagRequired("config")
-	runCmd.MarkFlagRequired("topic")
-	runCmd.MarkFlagRequired("time")
-	runCmd.MarkFlagRequired("window")
-	runCmd.MarkFlagRequired("max-turns")
-	runCmd.MarkFlagRequired("output")
+	_ = runCmd.MarkFlagRequired("config")
+	_ = runCmd.MarkFlagRequired("topic")
+	_ = runCmd.MarkFlagRequired("time")
+	_ = runCmd.MarkFlagRequired("window")
+	_ = runCmd.MarkFlagRequired("max-turns")
+	_ = runCmd.MarkFlagRequired("output")
 
 	// Track whether --budget was explicitly set (since 0 is the zero-value).
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
@@ -223,7 +223,7 @@ var resumeCmd = &cobra.Command{
 			return fmt.Errorf("loading source transcript: %w", err)
 		}
 		if len(sourceRecords) == 0 {
-			return fmt.Errorf("no existing transcript found. Use 'kumbaja run' to start.")
+			return fmt.Errorf("no existing transcript found — use 'kumbaja run' to start")
 		}
 
 		// Create transcript manager for the output path and load any existing records.
@@ -291,12 +291,12 @@ func init() {
 	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents (not just predecessor)")
 	resumeCmd.Flags().BoolVar(&resumeDryRun, "dry-run", false, "Run with simulated agent responses (no LLM calls)")
 
-	resumeCmd.MarkFlagRequired("config")
-	resumeCmd.MarkFlagRequired("topic")
-	resumeCmd.MarkFlagRequired("time")
-	resumeCmd.MarkFlagRequired("window")
-	resumeCmd.MarkFlagRequired("max-turns")
-	resumeCmd.MarkFlagRequired("output")
+	_ = resumeCmd.MarkFlagRequired("config")
+	_ = resumeCmd.MarkFlagRequired("topic")
+	_ = resumeCmd.MarkFlagRequired("time")
+	_ = resumeCmd.MarkFlagRequired("window")
+	_ = resumeCmd.MarkFlagRequired("max-turns")
+	_ = resumeCmd.MarkFlagRequired("output")
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ func loadTranscriptFile(path string) ([]kumbaja.TurnRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var records []kumbaja.TurnRecord
 	scanner := bufio.NewScanner(f)

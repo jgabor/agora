@@ -36,7 +36,7 @@ func (tm *TranscriptManager) LoadExisting() ([]TurnRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening transcript file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var loaded []TurnRecord
 	scanner := bufio.NewScanner(f)
@@ -73,7 +73,7 @@ func (tm *TranscriptManager) Append(record TurnRecord) error {
 	if err != nil {
 		return fmt.Errorf("opening transcript file for append: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	for i := tm.written; i < len(tm.records); i++ {
 		data, err := json.Marshal(tm.records[i])
@@ -98,7 +98,7 @@ func (tm *TranscriptManager) WriteAll() error {
 	if err != nil {
 		return fmt.Errorf("creating transcript file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	for _, r := range tm.records {
 		data, err := json.Marshal(r)

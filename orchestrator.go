@@ -50,8 +50,8 @@ type Orchestrator struct {
 	transcript *TranscriptManager
 	runner     *AgentRunner
 
-	numAgents        int
-	consensusStreak  int
+	numAgents       int
+	consensusStreak int
 }
 
 // NewOrchestrator creates a new Orchestrator with the given state, transcript, and runner.
@@ -201,7 +201,6 @@ func (o *Orchestrator) executeTurn(agent AgentConfig) TurnRecord {
 	}
 
 	content, metadata, err := o.runner.Run(agent, envelope)
-
 	// If runner returned an error, record it as the agent's content.
 	if err != nil {
 		o.state.Running = false

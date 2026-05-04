@@ -8,25 +8,25 @@ import (
 
 // ANSI escape codes for terminal styling.
 const (
-	ansiReset   = "\033[0m"
-	ansiBold    = "\033[1m"
-	ansiDim     = "\033[2m"
-	ansiBlack   = "\033[30m"
-	ansiRed     = "\033[31m"
-	ansiGreen   = "\033[32m"
-	ansiYellow  = "\033[33m"
-	ansiBlue    = "\033[34m"
-	ansiMagenta = "\033[35m"
-	ansiCyan    = "\033[36m"
-	ansiWhite   = "\033[37m"
-	ansiGray    = "\033[90m" // bright black
-	ansiBRed    = "\033[91m" // bright red
-	ansiBGreen  = "\033[92m"
-	ansiBYellow = "\033[93m"
-	ansiBBlue   = "\033[94m"
+	ansiReset    = "\033[0m"
+	ansiBold     = "\033[1m"
+	ansiDim      = "\033[2m"
+	ansiBlack    = "\033[30m"
+	ansiRed      = "\033[31m"
+	ansiGreen    = "\033[32m"
+	ansiYellow   = "\033[33m"
+	ansiBlue     = "\033[34m"
+	ansiMagenta  = "\033[35m"
+	ansiCyan     = "\033[36m"
+	ansiWhite    = "\033[37m"
+	ansiGray     = "\033[90m" // bright black
+	ansiBRed     = "\033[91m" // bright red
+	ansiBGreen   = "\033[92m"
+	ansiBYellow  = "\033[93m"
+	ansiBBlue    = "\033[94m"
 	ansiBMagenta = "\033[95m"
-	ansiBCyan   = "\033[96m"
-	ansiBWhite  = "\033[97m"
+	ansiBCyan    = "\033[96m"
+	ansiBWhite   = "\033[97m"
 )
 
 // agentColorCode maps normalized agent IDs to ANSI color codes.

@@ -1,0 +1,32 @@
+output:
+  - summary
+  - failure
+
+post-checkout:
+  commands:
+    go:
+      run: go mod tidy
+
+pre-commit:
+  commands:
+    go:
+      run: go mod tidy
+      stage_fixed: true
+    lint:
+      run: golangci-lint run --fix ./...
+      stage_fixed: true
+      glob: "*.go"
+    vet:
+      run: go vet ./...
+      stage_fixed: true
+      glob: "*.go"
+
+pre-push:
+  parallel: true
+  commands:
+    lint:
+      run: golangci-lint run ./...
+      glob: "*.go"
+    test:
+      run: go test ./...
+      glob: "*.go"

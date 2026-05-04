@@ -34,14 +34,14 @@ func mkRecord(turn int, agentID, content string, consensus bool, consensusStmt s
 func mkRecordWithCost(turn int, agentID, content string, cost float64, tokens int) TurnRecord {
 	model := "test-model"
 	return TurnRecord{
-		Turn:    turn,
-		AgentID: agentID,
-		Model:   &model,
+		Turn:      turn,
+		AgentID:   agentID,
+		Model:     &model,
 		Timestamp: float64(time.Now().Unix()),
-		Content: content,
-		Tokens:  TokenUsage{Total: &tokens},
-		Cost:    &cost,
-		Elapsed: 1.0,
+		Content:   content,
+		Tokens:    TokenUsage{Total: &tokens},
+		Cost:      &cost,
+		Elapsed:   1.0,
 	}
 }
 
