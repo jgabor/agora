@@ -31,11 +31,15 @@ Your output must be valid JSON with this exact structure:
 Be concise but thorough. Capture the essential insights from the deliberation.
 `
 
+// TurnFunc is called after each agent turn completes.
+type TurnFunc func(record types.TurnRecord, turn int, maxTurns int)
+
 // Orchestrator orchestrates multi-agent deliberation.
 type Orchestrator struct {
 	state      *types.DeliberationState
 	transcript *transcript.TranscriptManager
 	runner     agent.Runner
+	onTurn     TurnFunc
 
 	numAgents       int
 	consensusStreak int
@@ -49,6 +53,11 @@ func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptMa
 		runner:     runner,
 		numAgents:  len(state.Config.Agents),
 	}
+}
+
+// OnTurn registers a callback invoked after each agent turn.
+func (o *Orchestrator) OnTurn(fn TurnFunc) {
+	o.onTurn = fn
 }
 
 // Run executes the full deliberation loop.
@@ -78,6 +87,10 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			break
 		}
 		o.consensusStreak = o.transcript.ConsecutiveConsensusCount()
+
+		if o.onTurn != nil {
+			o.onTurn(turnRecord, o.state.Turn, o.state.MaxTurns)
+		}
 
 		o.state.Turn++
 	}

@@ -10,7 +10,7 @@ import (
 var Default = Build
 
 func Build() error {
-	return sh.RunV("go", "build", "-o", "agora", "./cmd/agora")
+	return sh.RunV("go", "build", "-o", "build/agora", "./cmd/agora")
 }
 
 func Test() error {

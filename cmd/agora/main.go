@@ -75,6 +75,7 @@ var runCmd = &cobra.Command{
 		outMgr := output.NewOutputManager(runVerbose)
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
+		orch.OnTurn(outMgr.TurnProgress)
 
 		outMgr.DeliberationHeader(state)
 
@@ -248,6 +249,7 @@ var resumeCmd = &cobra.Command{
 		outMgr := output.NewOutputManager(resumeVerbose)
 		runner := agent.NewAgentRunner(resumeDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
+		orch.OnTurn(outMgr.TurnProgress)
 
 		outMgr.DeliberationHeader(state)
 
