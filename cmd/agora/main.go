@@ -20,7 +20,7 @@ import (
 var version = "0.1.0"
 
 func main() {
-	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  jgabor\n\nSource:\n  https://github.com/jgabor/agora\n")
+	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")
 	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
