@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 8 · 2026-05-04
+
+**Phase**: Feature
+
+**What**: Auto mode for `agora run` — `--auto <level>` generates a deliberation config from the topic via a meta-LLM call. Five levels (Off/Quick/Normal/Deep/YOLO) with hard-coded caps on agents, turns, and time. LLM designs agent roles and system prompts within those caps. Generated YAML flows through LoadConfigFromBytes validation. User previews config before deliberation starts (non-interactive contexts skip prompt). Synthesis forced on for auto mode. MaxTurns=0 means unlimited turns for YOLO. `--model` flag specifies the model for config generation. Dry-run works with auto mode.
+
+**Commits**: d9f872f, 9dbda3d, 445834d, fc1da36, ee35545, dac3baf
+
+**Inspiration**: Decision 4 (provisional) drove auto mode design — level caps hard-coded in binary, same model designs and deliberates, synthesis always on, YOLO is truly uncapped.
+
+**Discovered**: Orchestrator already treated TimeLimit=0 as "no time cap" — extending to MaxTurns=0 was natural parity. LoadConfigFromBytes was a clean extraction from LoadConfig, needed because autogen gets YAML from LLM response, not a file. Preview-confirm flow required TTY detection to avoid blocking non-interactive/pipe contexts.
+
+**Verified**: Manual smoke tests passing for all auto levels (quick/normal/deep/yolo). `--auto` and `--config` mutual exclusion confirmed. Backward compat: `agora run --config examples/example-default.yaml` unchanged. MaxTurns=0 YOLO runs until consensus or interrupt.
+
+**Next**: Auto mode for `resume` command, `--yes` flag to skip preview, tune level caps based on usage.
+
+**Context**: Branch `main`. All 6 plan tasks complete.
+
 ## Cycle 1 · 2026-05-04
 
 **Phase**: Port

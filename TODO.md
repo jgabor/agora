@@ -11,6 +11,9 @@
 - [x] CI workflow (Go build, test, lint) for main branch
 
 ## ⇢ Annoying
+- [ ] Auto mode for `resume` command (currently deferred)
+- [ ] `--yes` flag to skip preview in auto mode (currently deferred)
+- [ ] Tune auto mode level caps based on usage — Decision 4 caps are provisional
 - [ ] Decompose executeTurn (106 lines) — extract token/cost parsing helpers
 - [ ] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText
 

@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- `--auto <level>` flag on `agora run` — generates agent configs via LLM meta-call (levels: off/quick/normal/deep/yolo)
+- LLM-generated agent configs: meta-call designs agent roles and system prompts within level caps
+- Level-based hard caps on agents, turns, and time (Quick: 2/4/60s, Normal: 4/10/300s, Deep: 6/20/600s, YOLO: unlimited)
+- Preview-before-confirm flow: generated config displayed before deliberation starts; non-interactive contexts skip prompt
+- Synthesis forced on for all auto mode levels regardless of `--synthesize` flag
+- `--model` flag for specifying the LLM model used in auto mode config generation
+- MaxTurns=0 means unlimited turns in orchestrator — enables YOLO mode (consensus-only halt)
+- LoadConfigFromBytes for parsing YAML config from byte slice (required by autogen)
+- Dry-run fallback: auto mode generates and previews config even with `--dry-run`
 - Go module bootstrap with domain types, YAML config loading, and validation
 - Transcript manager for JSONL file I/O with ring/star/mesh history windowing
 - Agent runner wrapping opencode subprocess with JSON event stream parsing

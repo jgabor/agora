@@ -98,7 +98,7 @@ Change main loop condition from `o.state.Turn < o.state.MaxTurns` to `o.state.Ma
 
 ### Task 6: Plan-level freshness checkpoint
 **Depends on**: Task 4, Task 5
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN all prior tasks complete WHEN this task runs THEN CHANGELOG.md has entry for auto mode feature
 ▸ GIVEN all prior tasks complete WHEN this task runs THEN PROGRESS.md has cycle entry summarizing auto mode work
