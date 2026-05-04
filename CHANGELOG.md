@@ -22,3 +22,4 @@
 ### Added
 - VISION.md — north star for adversarial deliberation as standard infrastructure
 - Cross-version parity test with Python golden transcript (44 tests)
+- Orchestrator test coverage — termination conditions and turn execution (50 tests)

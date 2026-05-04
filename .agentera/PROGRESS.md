@@ -67,3 +67,21 @@
 **Context**: intent: cross-version correctness evidence · constraints: Python restored from git (uv sync), dry-run only · scope: one parity test + golden testdata
 
 **Context**: intent: finalize migration · constraints: no behavior change to Go port · scope: merge, delete, document
+
+## Cycle 5 · 2026-05-04
+
+**Phase**: build
+
+**What**: Added orchestrator test coverage — 7 new test cases for termination conditions and turn execution.
+
+**Commit**: a2dabaf test: add orchestrator test coverage for termination conditions and turn execution
+
+**Inspiration**: inspektera Audit 1 flagged Tests grade D with orchestrator at 0% coverage.
+
+**Discovered**: Extracting a `Runner` interface from `AgentRunner` was clean — struct already had exactly the right method signature. Mock runner enabled testing all three termination paths (time/consensus/budget) and both success/error turn execution.
+
+**Verified**: `go run ./cmd/kumbaja run --dry-run` produces identical output to pre-refactor. Full suite passes (go vet, golangci-lint, 50 tests).
+
+**Next**: Rename go.mod module path from kumbaja to agora per Decision 3.
+
+**Context**: intent: close the Test D grade by testing orchestrator termination + turn execution · constraints: no behavior changes, use existing test patterns · scope: interface extraction + new test file
