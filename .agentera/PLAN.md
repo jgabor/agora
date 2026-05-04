@@ -66,7 +66,7 @@ Change main loop condition from `o.state.Turn < o.state.MaxTurns` to `o.state.Ma
 
 ### Task 3: Auto config generator (internal/autogen)
 **Depends on**: Task 1, Task 2
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN topic "Is microservices worth it?", AutoQuick, a mock runner returning valid YAML WHEN GenerateConfig called THEN returns DeliberationConfig with ≤2 agents
 ▸ GIVEN a mock runner returning invalid YAML WHEN GenerateConfig called THEN returns error about config generation failure, not a cryptic parse error
