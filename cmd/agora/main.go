@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/autogen"
@@ -21,7 +24,7 @@ var version = "0.1.0"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")
-	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd)
+	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, listCmd)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -38,10 +41,10 @@ var rootCmd = &cobra.Command{
 var (
 	runConfig      string
 	runTopic       string
-	runTimeLimit   int    = 60
-	runWindow      int    = 2
-	runMaxTurns    int    = 10
-	runOutput      string = "transcript.jsonl"
+	runTimeLimit   int = 60
+	runWindow      int = 2
+	runMaxTurns    int = 10
+	runOutput      string
 	runVerbose     bool
 	runBudget      float64
 	runBudgetFlag  bool
@@ -60,6 +63,10 @@ var runCmd = &cobra.Command{
 		var cfg *types.DeliberationConfig
 		var levelCaps types.LevelCaps
 		autoMode := runAuto != ""
+		outputPath, err := resolveTranscriptOutput(cmd, runOutput, runTopic)
+		if err != nil {
+			return err
+		}
 
 		if autoMode {
 			level, err := types.ParseAutoLevel(runAuto)
@@ -119,7 +126,7 @@ var runCmd = &cobra.Command{
 			state.TimeLimit = levelCaps.TimeLimit
 		}
 
-		tm := transcript.NewTranscriptManager(runOutput)
+		tm := transcript.NewTranscriptManager(outputPath)
 		outMgr := output.NewOutputManager(runVerbose)
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
@@ -142,7 +149,7 @@ var runCmd = &cobra.Command{
 		}
 
 		outMgr.Success(fmt.Sprintf("Deliberation complete (%d turns)", stats.TotalTurns))
-		outMgr.Success(fmt.Sprintf("Transcript: %s", runOutput))
+		outMgr.Success(fmt.Sprintf("Transcript: %s", outputPath))
 		outMgr.Info(fmt.Sprintf("Halted by: %s", state.HaltedBy))
 
 		return nil
@@ -155,7 +162,7 @@ func init() {
 	runCmd.Flags().IntVarP(&runTimeLimit, "time", "T", 60, "Time limit in seconds")
 	runCmd.Flags().IntVarP(&runWindow, "window", "w", 2, "Number of predecessor messages each agent sees")
 	runCmd.Flags().IntVarP(&runMaxTurns, "max-turns", "m", 10, "Maximum total turns")
-	runCmd.Flags().StringVarP(&runOutput, "output", "o", "transcript.jsonl", "Path to write the JSONL transcript")
+	runCmd.Flags().StringVarP(&runOutput, "output", "o", "", "Path to write the JSONL transcript")
 	runCmd.Flags().BoolVarP(&runVerbose, "verbose", "v", false, "Print agent responses in real-time")
 	runCmd.Flags().Float64Var(&runBudget, "budget", 0, "Cost cap in dollars")
 	runCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
@@ -254,15 +261,57 @@ var validateCmd = &cobra.Command{
 	},
 }
 
+// --- list ---------------------------------------------------------
+
+type transcriptEntry struct {
+	date     time.Time
+	slug     string
+	filename string
+	turns    int
+}
+
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List managed transcripts",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		settings, err := config.LoadDefaultSettings()
+		if err != nil {
+			return fmt.Errorf("loading settings: %w", err)
+		}
+		dir := settings.DefaultOutputDir
+		if dir == "" {
+			dir, err = config.TranscriptStoreDir()
+			if err != nil {
+				return err
+			}
+		}
+
+		entries, err := listTranscriptEntries(dir)
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			fmt.Println("No transcripts found.")
+			return nil
+		}
+
+		fmt.Println("Date                 Slug       Turns  Filename")
+		for _, entry := range entries {
+			fmt.Printf("%s  %-9s  %5d  %s\n", entry.date.Format("2006-01-02 15:04:05"), entry.slug, entry.turns, entry.filename)
+		}
+		return nil
+	},
+}
+
 // --- resume -------------------------------------------------------
 
 var (
 	resumeConfig      string
 	resumeTopic       string
-	resumeTimeLimit   int    = 60
-	resumeWindow      int    = 2
-	resumeMaxTurns    int    = 10
-	resumeOutput      string = "transcript.jsonl"
+	resumeTimeLimit   int = 60
+	resumeWindow      int = 2
+	resumeMaxTurns    int = 10
+	resumeOutput      string
 	resumeVerbose     bool
 	resumeBudget      float64
 	resumeBudgetFlag  bool
@@ -313,6 +362,10 @@ var resumeCmd = &cobra.Command{
 		var cfg *types.DeliberationConfig
 		var levelCaps types.LevelCaps
 		autoMode := resumeAuto != ""
+		outputPath, err := resolveTranscriptOutput(cmd, resumeOutput, resumeTopic)
+		if err != nil {
+			return err
+		}
 
 		if autoMode {
 			level, err := types.ParseAutoLevel(resumeAuto)
@@ -344,7 +397,6 @@ var resumeCmd = &cobra.Command{
 				}
 			}
 		} else {
-			var err error
 			cfg, err = config.LoadConfig(resumeConfig)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
@@ -359,7 +411,7 @@ var resumeCmd = &cobra.Command{
 			return fmt.Errorf("no existing transcript found — use 'agora run' to start")
 		}
 
-		tm := transcript.NewTranscriptManager(resumeOutput)
+		tm := transcript.NewTranscriptManager(outputPath)
 		if _, err := tm.LoadExisting(); err != nil {
 			return fmt.Errorf("loading existing output transcript: %w", err)
 		}
@@ -414,7 +466,7 @@ var resumeCmd = &cobra.Command{
 
 		outMgr.FinalStats(tm.Records(), state)
 		outMgr.Success(fmt.Sprintf("Resumed deliberation complete (%d total turns)", stats.TotalTurns))
-		outMgr.Success(fmt.Sprintf("Transcript: %s", resumeOutput))
+		outMgr.Success(fmt.Sprintf("Transcript: %s", outputPath))
 
 		return nil
 	},
@@ -426,7 +478,7 @@ func init() {
 	resumeCmd.Flags().IntVarP(&resumeTimeLimit, "time", "T", 60, "Additional time limit in seconds")
 	resumeCmd.Flags().IntVarP(&resumeWindow, "window", "w", 2, "Window size")
 	resumeCmd.Flags().IntVarP(&resumeMaxTurns, "max-turns", "m", 10, "Additional max turns")
-	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "transcript.jsonl", "Path to write the updated JSONL transcript")
+	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "", "Path to write the updated JSONL transcript")
 	resumeCmd.Flags().BoolVarP(&resumeVerbose, "verbose", "v", false, "Print agent responses in real-time")
 	resumeCmd.Flags().Float64Var(&resumeBudget, "budget", 0, "Remaining cost budget")
 	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents")
@@ -457,6 +509,65 @@ func applySettingsDefaults(cmd *cobra.Command, model *string, autoLevel *string)
 		*autoLevel = settings.DefaultAutoLevel
 	}
 	return nil
+}
+
+func resolveTranscriptOutput(cmd *cobra.Command, currentOutput, topic string) (string, error) {
+	if cmd.Flags().Changed("output") {
+		return currentOutput, nil
+	}
+
+	settings, err := config.LoadDefaultSettings()
+	if err != nil {
+		return "", fmt.Errorf("loading settings: %w", err)
+	}
+	return config.TranscriptOutputPath(topic, settings, time.Now())
+}
+
+func listTranscriptEntries(dir string) ([]transcriptEntry, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading transcript store: %w", err)
+	}
+
+	var entries []transcriptEntry
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		entry, ok := parseTranscriptFilename(file.Name())
+		if !ok {
+			continue
+		}
+		records, err := loadTranscriptFile(filepath.Join(dir, file.Name()))
+		if err == nil {
+			entry.turns = len(records)
+		}
+		entries = append(entries, entry)
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].date.After(entries[j].date)
+	})
+	return entries, nil
+}
+
+func parseTranscriptFilename(name string) (transcriptEntry, bool) {
+	if len(name) < len("20060102-150405-a.jsonl") || !strings.HasSuffix(name, ".jsonl") || name[15] != '-' {
+		return transcriptEntry{}, false
+	}
+
+	date, err := time.Parse("20060102-150405", name[:15])
+	if err != nil {
+		return transcriptEntry{}, false
+	}
+	slug := strings.TrimSuffix(name[16:], ".jsonl")
+	if slug == "" {
+		return transcriptEntry{}, false
+	}
+	return transcriptEntry{date: date, slug: slug, filename: name}, true
 }
 
 func confirmProceed() bool {

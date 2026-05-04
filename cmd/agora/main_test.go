@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -117,6 +118,58 @@ func TestApplySettingsDefaultsKeepsExplicitConfigOverDefaultAuto(t *testing.T) {
 	}
 	if auto != "" {
 		t.Fatalf("auto: got %q, want settings ignored because --config is explicit", auto)
+	}
+}
+
+func TestResolveTranscriptOutputKeepsExplicitOutput(t *testing.T) {
+	model := "opencode-go/deepseek-v4-flash"
+	auto := ""
+	cmd := settingsCommand(&model, &auto)
+	cmd.Flags().String("output", "", "Output")
+	if err := cmd.Flags().Set("output", "custom.jsonl"); err != nil {
+		t.Fatalf("set output flag: %v", err)
+	}
+
+	got, err := resolveTranscriptOutput(cmd, "custom.jsonl", "My Topic")
+	if err != nil {
+		t.Fatalf("resolveTranscriptOutput: %v", err)
+	}
+	if got != "custom.jsonl" {
+		t.Fatalf("output: got %q, want %q", got, "custom.jsonl")
+	}
+}
+
+func TestParseTranscriptFilename(t *testing.T) {
+	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
+	if !ok {
+		t.Fatal("expected transcript filename to parse")
+	}
+	if entry.date != time.Date(2026, 5, 4, 14, 30, 22, 0, time.UTC) {
+		t.Fatalf("date: got %s", entry.date)
+	}
+	if entry.slug != "my-topic" {
+		t.Fatalf("slug: got %q, want %q", entry.slug, "my-topic")
+	}
+}
+
+func TestListTranscriptEntriesIgnoresNonJSONL(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "20260504-143022-my-topic.jsonl"), []byte("{}\n{}\n"), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("ignore"), 0o644); err != nil {
+		t.Fatalf("write notes: %v", err)
+	}
+
+	entries, err := listTranscriptEntries(dir)
+	if err != nil {
+		t.Fatalf("listTranscriptEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries: got %d, want 1", len(entries))
+	}
+	if entries[0].filename != "20260504-143022-my-topic.jsonl" || entries[0].turns != 2 {
+		t.Fatalf("entry: got %#v", entries[0])
 	}
 }
 

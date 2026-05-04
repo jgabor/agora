@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Managed transcript store output paths and `agora list` for browsing saved deliberations.
 - Settings-aware defaults now fill missing agent models, default topology, and auto level when CLI/config values omit them.
 - Global settings path/loading layer: XDG config/data dirs on Linux, Application Support on macOS, LOCALAPPDATA on Windows, plus `settings.yaml` parsing.
 - `--auto <level>` flag on `agora resume` — generates agent configs when resuming from existing transcript
