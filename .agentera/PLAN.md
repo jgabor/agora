@@ -89,7 +89,7 @@ Change main loop condition from `o.state.Turn < o.state.MaxTurns` to `o.state.Ma
 
 ### Task 5: YOLO infinite turns in orchestrator
 **Depends on**: Task 1
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN MaxTurns=0 WHEN orchestrator Run() called THEN loop continues until another termination condition fires (consensus, time, error)
 ▸ GIVEN MaxTurns=10 WHEN orchestrator Run() called THEN loop stops at 10 turns (behavior unchanged)

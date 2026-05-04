@@ -56,3 +56,28 @@
 **Confidence**: firm
 
 **Feeds into**: VISION.md
+
+## Decision 4 · 2026-05-04
+
+**Question**: Should Agora add an auto mode where the LLM procedurally generates agent configurations from the topic?
+
+**Context**: Currently requires a handcrafted YAML config file. Auto mode would let users run `agora run --auto <level> --topic "..."` and have the model design the agent panel. Inspired by Factory's autonomy levels (Off/Low/Medium/High). Need hard caps to prevent runaway cost. Must remain backward-compatible with manual configs.
+
+**Alternatives**:
+- [Template-based]: preset panels per level, topic fills in details. Win: predictable, fast, no meta-LLM cost. But agent roles would be generic, not topic-tailored.
+- [LLM-designed with flexible caps]: model designs panel AND suggests its own budget. Win: maximally adaptive. But model could lowball caps to stay within budget, reducing deliberation quality.
+- [LLM-designed with hard-coded caps (chosen)]: model designs agents within fixed caps per level. Win: creative agent design with predictable cost boundaries. Lose: requires meta-LLM call before deliberation adds latency.
+
+**Choice**: LLM-designed with hard-coded caps. `--auto <level>` flag on `agora run`, mutually exclusive with `--config`. Five levels: Off/Quick/Normal/Deep/YOLO. Same model designs and deliberates. LLM returns YAML parsed through existing LoadConfig. Preview-before-confirm. Synthesis always on.
+
+**Reasoning**: Levels as pure budget constraints — not creative direction — keeps the model honest and behavior predictable. The LLM invents agent roles and system prompts tailored to the topic, but cannot exceed the hard caps for its level. Reusing LoadConfig for generated YAML means the same validation path covers both manual and auto configs. Preview-before-confirm builds trust and catches weird outputs. YOLO is truly uncapped (consensus-only halt) — power users opt into the risk explicitly.
+
+Level definitions (hard-coded in binary):
+- Quick: 2 agents, 4 turns, 60s time cap
+- Normal: 4 agents, 10 turns, 300s time cap
+- Deep: 8 agents, 20 turns, 900s time cap
+- YOLO: no caps, runs until consensus reached
+
+**Confidence**: provisional — the Quick/Normal/Deep numbers are reasonable starting points but will likely need tuning based on usage patterns.
+
+**Feeds into**: VISION.md, TODO.md
