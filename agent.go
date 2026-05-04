@@ -9,6 +9,12 @@ import (
 	"strings"
 )
 
+// Runner is the interface for executing agent turns. AgentRunner is the
+// production implementation using opencode subprocess. Tests use mockRunner.
+type Runner interface {
+	Run(agent AgentConfig, envelope map[string]any) (string, map[string]any, error)
+}
+
 // AgentRunner executes agent turns via the opencode subprocess.
 type AgentRunner struct {
 	dryRun bool

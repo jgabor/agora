@@ -48,14 +48,14 @@ type DeliberationState struct {
 type Orchestrator struct {
 	state      *DeliberationState
 	transcript *TranscriptManager
-	runner     *AgentRunner
+	runner     Runner
 
 	numAgents       int
 	consensusStreak int
 }
 
 // NewOrchestrator creates a new Orchestrator with the given state, transcript, and runner.
-func NewOrchestrator(state *DeliberationState, transcript *TranscriptManager, runner *AgentRunner) *Orchestrator {
+func NewOrchestrator(state *DeliberationState, transcript *TranscriptManager, runner Runner) *Orchestrator {
 	return &Orchestrator{
 		state:      state,
 		transcript: transcript,
@@ -286,11 +286,11 @@ func (o *Orchestrator) setupSignalHandler() {
 
 // SynthesisEngine generates a final synthesis from a deliberation transcript.
 type SynthesisEngine struct {
-	runner *AgentRunner
+	runner Runner
 }
 
 // NewSynthesisEngine creates a new SynthesisEngine with the given runner.
-func NewSynthesisEngine(runner *AgentRunner) *SynthesisEngine {
+func NewSynthesisEngine(runner Runner) *SynthesisEngine {
 	return &SynthesisEngine{runner: runner}
 }
 
