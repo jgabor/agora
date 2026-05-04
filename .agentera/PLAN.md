@@ -1,6 +1,6 @@
 # Plan: Global settings and managed transcript store
 
-<!-- Level: full | Created: 2026-05-04 | Status: active -->
+<!-- Level: full | Created: 2026-05-04 | Status: complete -->
 
 ## What
 Cross-platform global user settings (`~/.config/agora/settings.yaml` or equivalent) and a managed transcript store (`XDG_DATA_HOME/agora/transcripts/<datetime>-<slug>.jsonl`). Settings provide defaults for model, auto level, topology, and output directory. Transcripts persist automatically to the store; `agora list` shows history; `agora resume <slug>` resumes by topic match. `--file` flag preserves explicit path resume. `--output` flag always wins over managed paths.
@@ -79,7 +79,7 @@ Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on
 
 ### Task 5: Plan-level freshness checkpoint
 **Depends on**: Task 4
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN all tasks complete WHEN checking `CHANGELOG.md` THEN `## [Unreleased]` has entries for settings, managed store, `list` command, and resume slug matching
 ▸ GIVEN all tasks complete WHEN checking `.agentera/PROGRESS.md` THEN a cycle entry summarises the whole plan

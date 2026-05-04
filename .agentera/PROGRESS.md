@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 15 · 2026-05-04
+
+**Phase**: Freshness
+
+**What**: Closed the global settings and managed transcript store plan. The plan delivered XDG/Application Support/LOCALAPPDATA settings loading, settings-aware config and CLI defaults, managed datetime-slug transcript paths, `agora list`, slug-based resume, and `--file` path resume.
+
+**Commit**: pending
+
+**Inspiration**: PLAN.md Task 5 freshness checkpoint.
+
+**Discovered**: No new project TODO items surfaced during the checkpoint. The only surprise was orchestration substrate instability, which was handled in-session and did not change product scope.
+
+**Verified**: `go test ./...`, `go build ./...`, and `go vet ./...` pass. Overall acceptance smoke passes: fresh no-settings `run --auto quick --topic "Test" --dry-run --yes` writes `20260504-212229-test.jsonl` under `$XDG_DATA_HOME/agora/transcripts`; settings-backed `run --topic "Test" --dry-run --yes` writes to the configured store; `agora list` shows the stored `test` transcript; `resume match --auto quick --topic "Match" --dry-run --yes` picks the newer slug match, confirmed by first copied record `agent_id:"new"`. `CHANGELOG.md` covers settings, managed store, `list`, and slug resume. `TODO.md` has no new project items.
+
+**Next**: Run a final overall acceptance smoke, then consider the remaining TODO annoying items.
+
+**Context**: intent: close PLAN.md Task 5 · constraints: checkpoint only, no new feature work · scope: plan status, aggregate PROGRESS evidence
+
 ## Cycle 14 · 2026-05-04
 
 **Phase**: Feature
