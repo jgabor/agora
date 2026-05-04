@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 14 · 2026-05-04
+
+**Phase**: Feature
+
+**What**: Added slug-based `agora resume` and `--file` path mode. Existing file paths still take precedence over store slug matches; `--file` can resume without a positional transcript argument; bare non-file arguments now search the managed store and pick the newest matching transcript.
+
+**Commit**: 43ae5d1 feat(resume): support transcript slug lookup
+
+**Inspiration**: PLAN.md Task 4 and the Task 3 managed store filename parser.
+
+**Discovered**: The same sorted store listing can serve both `agora list` and latest-slug resume, keeping match order deterministic.
+
+**Verified**: `go test ./cmd/agora`, `go test ./...`, `go build ./...`, and `go vet ./...` pass. CLI smoke passes: positional path resume writes 5 lines; `resume --file <path>` without a bare arg writes 5 lines; `resume my-topic` picks `20260504-150000-my-topic.jsonl`, confirmed by the first copied record `agent_id:"new"`; `resume nonexistent` exits 1 with `no matching transcript found for slug "nonexistent"`.
+
+**Next**: Task 5 — plan-level freshness checkpoint.
+
+**Context**: intent: execute PLAN.md Task 4 · constraints: preserve path precedence, no delete/prune/migration features · scope: resume source resolution, --file flag, tests, artifacts
+
 ## Cycle 13 · 2026-05-04
 
 **Phase**: Feature

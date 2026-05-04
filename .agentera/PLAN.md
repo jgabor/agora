@@ -68,7 +68,7 @@ Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on
 
 ### Task 4: `agora resume` with slug matching and `--file` flag
 **Depends on**: Task 2, Task 3
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN a file exists at path `./my.jsonl` WHEN `agora resume ./my.jsonl --config ...` THEN resumes from that file with existing behavior unchanged
 ▸ GIVEN a store containing `20260504-143022-my-topic.jsonl` WHEN `agora resume my-topic --auto quick --topic "..."` THEN finds and resumes from the matching file
