@@ -1,8 +1,8 @@
-# Kumbaja
+# Agora
 
 **Closed-loop multi-agent deliberation system.**
 
-Kumbaja orchestrates N heterogeneous LLM-based agents in a ring topology (or star/mesh), passing turns and maintaining a shared transcript. Agents argue, debate, and deliberate on a topic until a time limit, turn limit, cost budget, or consensus threshold is reached.
+Agora orchestrates N heterogeneous LLM-based agents in a ring, star, or mesh topology, passing turns and maintaining a shared transcript. Agents argue, debate, and deliberate on a topic until a time limit, turn limit, cost budget, or consensus threshold is reached.
 
 Written in Go. Compiles to a single static binary.
 
@@ -10,55 +10,70 @@ Written in Go. Compiles to a single static binary.
 
 ```bash
 # Clone and build
-git clone https://github.com/jgabor/kumbaja && cd kumbaja
-go build -o kumbaja ./cmd/kumbaja
+git clone https://github.com/jgabor/agora && cd agora
+go build -o agora ./cmd/agora
+
+# Run a deliberation (only --config and --topic are required)
+./agora run \
+  --config examples/example-default.yaml \
+  --topic "Is AI alignment a solvable problem?"
 
 # Dry-run (no API keys, no cost)
-./kumbaja run \
-  --config example-config.yaml \
+./agora run \
+  --config examples/example-default.yaml \
   --topic "Is AI alignment a solvable problem?" \
-  --time 30 --window 2 --max-turns 5 \
-  --output /tmp/deliberation.jsonl \
-  --verbose --dry-run
+  --dry-run --verbose
 
 # Stats
-./kumbaja stats /tmp/deliberation.jsonl
+./agora stats transcript.jsonl
 ```
 
 ### With your own config and real LLMs
 
 ```bash
-./kumbaja run \
-  --config my-agents.yaml \
-  --topic "Should we adopt microservices?" \
-  --time 120 --window 3 --max-turns 20 \
-  --output deliberation.jsonl \
-  --verbose
+./agora run \
+  --config examples/code-review.yaml \
+  --topic "Should we adopt microservices?"
 ```
 
 ### Install globally
 
 ```bash
-go install ./cmd/kumbaja
-kumbaja validate example-config.yaml
+go install ./cmd/agora
+agora validate examples/example-default.yaml
 ```
+
+## Example Configs
+
+The `examples/` directory contains ready-to-use configs demonstrating different topologies, agent panels, and features:
+
+| File | Topology | Agents | Features |
+|---|---|---|---|
+| `example-default.yaml` | ring | 5 | General-purpose deliberation panel — strategist, domain expert, skeptic, optimist, user advocate |
+| `code-review.yaml` | ring | 5 | Architecture review panel with consensus (threshold 3) and synthesis model |
+| `research-stress-test.yaml` | star | 5 | Academic research stress-test with cross-pollination via star topology |
+| `quick-sanity-check.yaml` | ring | 2 | Minimal 2-agent setup — fastest possible deliberation |
+| `ethical-debate.yaml` | mesh | 5 | Ethical deliberation with mesh topology, consensus, and synthesis |
+| `startup-validation.yaml` | star | 5 | Startup idea validation panel with synthesis model |
+
+All configs use `opencode-go/deepseek-v4-flash` as the default agent model.
 
 ## CLI Reference
 
-### `kumbaja run` — Start a deliberation
+### `agora run` — Start a deliberation
 
 ```
-kumbaja run --config PATH --topic TEXT --time SECONDS --window N --max-turns N --output PATH [flags]
+agora run --config PATH --topic TEXT [flags]
 
 Required:
   -c, --config PATH        YAML agent configuration file
   -t, --topic TEXT         Topic or goal for deliberation
-  -T, --time SECONDS       Time limit in seconds
-  -w, --window N           Number of predecessor messages each agent sees
-  -m, --max-turns N        Maximum total turns
-  -o, --output PATH        JSONL transcript output path
 
-Optional:
+Optional (all have sensible defaults):
+  -T, --time SECONDS       Time limit in seconds (default: 60)
+  -w, --window N           Number of predecessor messages each agent sees (default: 2)
+  -m, --max-turns N        Maximum total turns (default: 10)
+  -o, --output PATH        JSONL transcript output path (default: transcript.jsonl)
   -v, --verbose            Print agent responses in real-time
   --budget FLOAT           Cost cap in dollars
   --synthesize             Run final synthesis agent after deliberation
@@ -66,26 +81,26 @@ Optional:
   --dry-run                Run with simulated agent responses (no LLM calls)
 ```
 
-### `kumbaja resume` — Continue from an existing transcript
+### `agora resume` — Continue from an existing transcript
 
 ```
-kumbaja resume --config PATH --topic TEXT --time SECONDS --window N --max-turns N --output PATH TRANSCRIPT
+agora resume --config PATH --topic TEXT TRANSCRIPT [flags]
 
-Same flags as run. Loads prior records and continues from the last turn.
+Same optional flags as run. Loads prior records and continues from the last turn.
 ```
 
-### `kumbaja stats` — Show transcript statistics
+### `agora stats` — Show transcript statistics
 
 ```
-kumbaja stats TRANSCRIPT
+agora stats TRANSCRIPT
 ```
 
 Displays total turns, tokens, cost, per-agent breakdown, and consensus events.
 
-### `kumbaja validate` — Validate a config file
+### `agora validate` — Validate a config file
 
 ```
-kumbaja validate CONFIG
+agora validate CONFIG
 ```
 
 Checks config for errors without starting a deliberation.

@@ -1,0 +1,15 @@
+topology: ring
+
+agents:
+  - id: optimist
+    model: opencode-go/deepseek-v4-flash
+    system_prompt: |
+      You are an optimist. Find pathways, explore upside, identify
+      possibilities others miss. Be concise but constructive.
+      Respond in 2-4 sentences.
+
+  - id: skeptic
+    model: opencode-go/deepseek-v4-flash
+    system_prompt: |
+      You are a skeptic. Challenge logical soundness, demand evidence,
+      find hidden assumptions. Be concise but sharp. Respond in 2-4 sentences.
