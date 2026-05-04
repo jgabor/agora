@@ -66,10 +66,17 @@ var runCmd = &cobra.Command{
 			}
 			levelCaps = types.CapsForLevel(level)
 
-			runner := agent.NewAgentRunner(runDryRun)
-			cfg, err = autogen.GenerateConfig(runTopic, level, runModel, runner)
-			if err != nil {
-				return fmt.Errorf("auto config generation: %w", err)
+			if runDryRun {
+				cfg, err = autogen.GenerateDryRunConfig(runTopic, level, runModel)
+				if err != nil {
+					return fmt.Errorf("auto config generation: %w", err)
+				}
+			} else {
+				runner := agent.NewAgentRunner(false)
+				cfg, err = autogen.GenerateConfig(runTopic, level, runModel, runner)
+				if err != nil {
+					return fmt.Errorf("auto config generation: %w", err)
+				}
 			}
 
 			outMgr := output.NewOutputManager(runVerbose)

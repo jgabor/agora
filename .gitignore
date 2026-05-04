@@ -4,3 +4,4 @@ build/
 *.jsonl
 transcripts/
 .coverage
+build/

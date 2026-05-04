@@ -14,6 +14,50 @@ import (
 // codeFenceRe matches markdown code fences wrapping YAML content.
 var codeFenceRe = regexp.MustCompile("(?s)```(?:ya?ml)?\\s*\n(.*?)```")
 
+// GenerateDryRunConfig returns a hardcoded config for dry-run mode without
+// calling the LLM. The config is level-appropriate with placeholder agents.
+func GenerateDryRunConfig(topic string, level types.AutoLevel, model string) (*types.DeliberationConfig, error) {
+	caps := types.CapsForLevel(level)
+
+	agentCount := caps.MaxAgents
+	if agentCount <= 0 {
+		agentCount = 4 // YOLO default
+	}
+	if agentCount > 8 {
+		agentCount = 8
+	}
+
+	roles := []struct {
+		id, prompt string
+	}{
+		{"skeptic", "Challenge logical soundness, demand evidence, find hidden assumptions."},
+		{"domain_expert", "Supply factual grounding, what is empirically true, what constraints exist."},
+		{"optimist", "Find pathways, explore upside, identify possibilities others miss."},
+		{"user_advocate", "Represent humans affected by decisions, their needs and pain points."},
+		{"strategist", "Question whether the premise deserves engagement, values and opportunity cost."},
+		{"synthesist", "Identify patterns across arguments, find common ground and tensions."},
+		{"contrarian", "Argue the opposite position forcefully, test the strongest objections."},
+		{"pragmatist", "Focus on what is actionable, what can be implemented, what matters practically."},
+	}
+
+	agents := make([]types.AgentConfig, agentCount)
+	for i := range agents {
+		agents[i] = types.AgentConfig{
+			ID:           roles[i].id,
+			Model:        model,
+			SystemPrompt: roles[i].prompt,
+		}
+	}
+
+	cfg := &types.DeliberationConfig{
+		Topology:           types.TopologyRing,
+		Agents:             agents,
+		ConsensusThreshold: 0,
+	}
+
+	return cfg, nil
+}
+
 // GenerateConfig creates a DeliberationConfig by asking an LLM to design a
 // panel of agents for the given topic, constrained by the level's caps.
 func GenerateConfig(topic string, level types.AutoLevel, model string, runner agent.Runner) (*types.DeliberationConfig, error) {
