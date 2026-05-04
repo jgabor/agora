@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 11 · 2026-05-04
+
+**Phase**: Fix
+
+**What**: Wired `settings.default_model` into CLI auto-mode model selection for `run` and `resume` when `--model` is omitted. Explicit `--model` still wins, and invalid global settings still return an error.
+
+**Commit**: 2cbf4cd fix(cli): apply settings default model
+
+**Inspiration**: Task 1 evaluator failure: settings loaded in `internal/config`, but actual dry-run CLI behavior still used the hard-coded default model.
+
+**Discovered**: The smallest Task 1 fix is applying `default_model` only to the CLI model flag fallback; broader config-file merge and auto-level defaults remain Task 2.
+
+**Verified**: `go test ./...`, `go build ./...`, and `go vet ./...` pass. CLI smoke now passes: with `XDG_CONFIG_HOME=<tmp>/cfg` containing `agora/settings.yaml` with `default_model: "gpt-4"`, `go run ./cmd/agora run --auto quick --topic "settings smoke" --dry-run --yes --output <tmp>/out.jsonl` writes transcript records with `"model":"gpt-4"` instead of `opencode-go/deepseek-v4-flash`.
+
+**Next**: Task 2 — settings-aware config merge and remaining CLI default resolution.
+
+**Context**: intent: retry only failed Task 1 criterion · constraints: do not absorb Task 2, keep explicit flags authoritative · scope: CLI model fallback, focused tests, progress evidence
+
 ## Cycle 10 · 2026-05-04
 
 **Phase**: Feature

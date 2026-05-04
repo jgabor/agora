@@ -31,6 +31,9 @@
 - Rewrote README for Go-only project
 - Added GitHub Actions CI (build, test with race detector, vet lint)
 
+### Fixed
+- CLI auto mode now uses `settings.default_model` when `--model` is omitted.
+
 ### Added
 - VISION.md — north star for adversarial deliberation as standard infrastructure
 - Cross-version parity test with Python golden transcript (44 tests)

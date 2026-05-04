@@ -169,6 +169,9 @@ func init() {
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
+		if err := applyDefaultModelFromSettings(cmd, &runModel); err != nil {
+			return err
+		}
 
 		autoSet := runAuto != ""
 		configSet := runConfig != ""
@@ -276,6 +279,9 @@ var resumeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		resumeBudgetFlag = cmd.Flags().Changed("budget")
+		if err := applyDefaultModelFromSettings(cmd, &resumeModel); err != nil {
+			return err
+		}
 
 		autoSet := resumeAuto != ""
 		configSet := resumeConfig != ""
@@ -433,6 +439,21 @@ func init() {
 }
 
 // --- helpers ------------------------------------------------------
+
+func applyDefaultModelFromSettings(cmd *cobra.Command, model *string) error {
+	if cmd.Flags().Changed("model") {
+		return nil
+	}
+
+	settings, err := config.LoadDefaultSettings()
+	if err != nil {
+		return fmt.Errorf("loading settings: %w", err)
+	}
+	if settings.DefaultModel != "" {
+		*model = settings.DefaultModel
+	}
+	return nil
+}
 
 func confirmProceed() bool {
 	fi, _ := os.Stdin.Stat()
