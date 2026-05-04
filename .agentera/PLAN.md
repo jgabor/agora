@@ -57,7 +57,7 @@ Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on
 
 ### Task 3: Managed store output paths and `agora list` command
 **Depends on**: Task 1
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN topic `"My Topic"` and `--output` omitted WHEN running THEN transcript filename contains datetime prefix and slug `my-topic`
 ▸ GIVEN `--output custom.jsonl` and topic `"My Topic"` WHEN running THEN transcript path is `custom.jsonl` regardless of store

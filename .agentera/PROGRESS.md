@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 13 · 2026-05-04
+
+**Phase**: Feature
+
+**What**: Added managed transcript output paths and `agora list`. When `--output` is omitted, run/resume now write to the configured output directory or the XDG transcript store using datetime-plus-topic filenames. `agora list` scans that store, ignores non-matching files, and prints date, slug, turn count, and filename.
+
+**Commit**: 7f542ee feat(transcript): add managed store listing
+
+**Inspiration**: PLAN.md Task 3 and Decision 5's managed transcript store design.
+
+**Discovered**: The filename and list parsing helpers belong near config/CLI boundaries; resume slug matching can reuse them in Task 4 without changing Task 3 semantics.
+
+**Verified**: `go test ./internal/config ./cmd/agora`, `go test ./...`, `go build ./...`, and `go vet ./...` pass. CLI smoke passes: `run --topic "My Topic" --dry-run --yes` writes `20260504-211920-my-topic.jsonl` under `$XDG_DATA_HOME/agora/transcripts`; `--output <tmp>/custom.jsonl` writes exactly that file; `default_output_dir` writes `20260504-211920-test.jsonl` under the configured directory. `agora list` prints `No transcripts found.` for an empty store and lists `20260504-143022-my-topic.jsonl` plus `20260504-150000-other.jsonl` while ignoring `notes.txt`.
+
+**Next**: Task 4 — `agora resume` with slug matching and `--file`.
+
+**Context**: intent: execute PLAN.md Task 3 · constraints: no slug resume yet, preserve explicit output paths · scope: managed output path generation, list command, filename parsing, tests, artifacts
+
 ## Cycle 12 · 2026-05-04
 
 **Phase**: Feature
