@@ -1,24 +1,6 @@
-# Go build artifacts
-kumbaja
-kumbaja-bin
-*.exe
-*.test
-*.out
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Environment
 .env
+build/
 *.log
-
-# Transcripts
 *.jsonl
 transcripts/
-
-# Test artifacts
 .coverage
-htmlcov/
