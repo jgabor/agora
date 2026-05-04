@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 9 · 2026-05-04
+
+**Phase**: Feature
+
+**What**: Auto mode for `agora resume` and `--yes` flag. Resume gains `--auto <level>`, `--model`, and `--yes` flags, mirroring run command behavior. `--yes` skips the preview confirmation prompt on both commands. Level caps apply correctly to resumed deliberations (existing turns + cap). YOLO mode (MaxTurns=0) gives unlimited additional turns.
+
+**Commits**: 0c3cc37
+
+**Inspiration**: PLAN.md light plan from planera, reusing existing autogen, types, and output packages.
+
+**Discovered**: Resume auto mode MaxTurns override needed care: `existingTurns + cap` for non-YOLO, `0` for YOLO unlimited. Non-TTY stdin in Execute tool causes `confirmProceed()` to return false when no --yes flag, which is acceptable — the TTY detection behaves consistently with the original inline logic.
+
+**Verified**: `go build ./... && go test ./... && go vet ./...` pass. Manual dry-run tests: `resume --auto quick --yes` generates config and resumes with correct max_turns (14 = 10 existing + 4 cap); `resume --config` unchanged; `run --auto --yes` proceeds without prompt; `--config --yes` ignores flag; `--auto --config` mutual exclusion enforced.
+
+**Next**: Tune auto mode level caps based on usage (Decision 4 provisional), or decompose executeTurn complexity hotspot flagged in HEALTH.md.
+
+**Context**: intent: close TODO annoying items per PLAN.md · constraints: no new packages, preserve backward compat · scope: one file (cmd/agora/main.go)
+
 ## Cycle 8 · 2026-05-04
 
 **Phase**: Feature

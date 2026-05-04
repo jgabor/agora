@@ -14,8 +14,8 @@
 
 ## ⇢ Annoying
 
-- [ ] Auto mode for `resume` command
-- [ ] `--yes` flag to skip preview in auto mode
+- [x] Auto mode for `resume` command
+- [x] `--yes` flag to skip preview in auto mode
 - [ ] Tune auto mode level caps based on usage — Decision 4 caps are provisional
 - [ ] Decompose executeTurn (106 lines) — extract token/cost parsing helpers
 - [ ] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText

@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- `--auto <level>` flag on `agora resume` — generates agent configs when resuming from existing transcript
+- `--yes` flag to skip preview confirmation prompt on both `run` and `resume`
 - `--auto <level>` flag on `agora run` — generates agent configs via LLM meta-call (levels: off/quick/normal/deep/yolo)
 - LLM-generated agent configs: meta-call designs agent roles and system prompts within level caps
 - Level-based hard caps on agents, turns, and time (Quick: 2/4/60s, Normal: 4/10/300s, Deep: 6/20/600s, YOLO: unlimited)
