@@ -113,3 +113,41 @@ Transcript: transcript.jsonl    ← --output default
 **Next**: Rename go.mod module path from kumbaja to agora (Decision 3) was fixed in 8b729a4. Continue with inspektera audit follow-ups.
 
 **Context**: intent: set sensible defaults so CLI works out of the box · constraints: both run and resume commands, no behavior changes · scope: defaults + standard layout refactor
+
+## Cycle 7 · 2026-05-04
+
+**Phase**: Polish
+
+**What**: Added 5 themed example configs demonstrating different topologies (code-review, research-stress-test, quick-sanity-check, ethical-debate, startup-validation). Deleted superseded root example-config.yaml. Updated README with Agora branding, new defaults, and example configs reference table.
+
+**Commit**: c1c988f docs: add themed example configs and update README for Agora branding
+
+**Discovered**: Each example config showcases a different Agora topology and agent composition — ring for code review, mesh for research stress tests, chain for quick sanity checks, star for ethical debates, and ring for startup validation. README now reflects Agora identity with updated flag defaults and a configs reference table.
+
+**Verified**:
+```
+$ go run ./cmd/agora validate examples/code-review.yaml
+Configuration is valid.
+  Topology: ring
+  Agents (5):
+    - architect_reviewer (opencode-go/deepseek-v4-flash)
+    - security_auditor (opencode-go/deepseek-v4-flash)
+    - ux_critic (opencode-go/deepseek-v4-flash)
+    - performance_reviewer (opencode-go/deepseek-v4-flash)
+    - maintainability_reviewer (opencode-go/deepseek-v4-flash)
+  Consensus threshold: 3
+  Synthesis model: opencode-go/deepseek-v4-flash
+
+$ go test ./...
+ok  	github.com/jgabor/agora	(cached)
+ok  	github.com/jgabor/agora/internal/agent	(cached)
+ok  	github.com/jgabor/agora/internal/config	(cached)
+ok  	github.com/jgabor/agora/internal/orchestrator	(cached)
+ok  	github.com/jgabor/agora/internal/transcript	(cached)
+ok  	github.com/jgabor/agora/internal/types	(cached)
+[exit 0]
+```
+
+**Next**: Continue with inspektera audit follow-ups.
+
+**Context**: intent: provide ready-to-use example configs for common deliberation scenarios · constraints: no behavior changes, configs must pass validation · scope: 5 new YAML configs + README rewrite
