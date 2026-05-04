@@ -6,7 +6,7 @@
 
 **What**: Added cross-platform global settings path resolution and settings loading for Agora. The config package now exposes platform-aware config/data dirs, the default `settings.yaml` path, the managed transcript store directory, and a four-key `Settings` loader.
 
-**Commit**: pending
+**Commit**: ea5470b feat(config): add global settings loader
 
 **Inspiration**: Decision 5 and the active PLAN.md Task 1 acceptance criteria.
 
