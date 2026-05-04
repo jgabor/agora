@@ -6,7 +6,7 @@
 
 **What**: Wired `settings.default_model` into CLI auto-mode model selection for `run` and `resume` when `--model` is omitted. Explicit `--model` still wins, and invalid global settings still return an error.
 
-**Commit**: 2cbf4cd fix(cli): apply settings default model
+**Commit**: f9d4ef7 fix(cli): apply settings default model
 
 **Inspiration**: Task 1 evaluator failure: settings loaded in `internal/config`, but actual dry-run CLI behavior still used the hard-coded default model.
 
