@@ -50,4 +50,20 @@
 
 **Context**: intent: CI automation · constraints: standard Go toolchain, no external services · scope: one workflow YAML
 
+## Cycle 4 · 2026-05-04
+
+**Phase**: Verify
+
+**What**: Cross-version parity test — restored Python v0.1.0 from git history, ran identical dry-run deliberation, verified identical agent sequence and transcript structure. Golden testdata committed.
+
+**Commit**: fd28e40
+
+**Discovered**: Python and Go transcripts are semantically identical. Go omits null fields (omitempty) while Python emits null — both valid JSON, deserialization handles both. Minor JSON formatting differences (spacing) don't affect correctness.
+
+**Verified**: `go test -run TestCrossVersionParity` passes — Python-produced JSONL deserializes correctly with matching agent sequence.
+
+**Next**: Run /inspektera for health baseline, then version bump to v0.2.0.
+
+**Context**: intent: cross-version correctness evidence · constraints: Python restored from git (uv sync), dry-run only · scope: one parity test + golden testdata
+
 **Context**: intent: finalize migration · constraints: no behavior change to Go port · scope: merge, delete, document

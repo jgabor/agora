@@ -5,7 +5,7 @@
 ## ⇉ Degraded
 
 ## → Normal
-- [ ] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
+- [x] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
 - [x] CI workflow (Go build, test, lint) for main branch
 
 ## ⇢ Annoying
