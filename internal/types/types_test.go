@@ -444,6 +444,74 @@ func TestComputeStats(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// AutoLevel parsing
+// ---------------------------------------------------------------------------
+
+func TestParseAutoLevel(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    AutoLevel
+		wantErr bool
+	}{
+		{"quick", AutoQuick, false},
+		{"normal", AutoNormal, false},
+		{"deep", AutoDeep, false},
+		{"yolo", AutoYOLO, false},
+		{"off", AutoOff, false},
+		{"QUICK", AutoQuick, false},
+		{"Quick", AutoQuick, false},
+		{"turbo", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseAutoLevel(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error for %q, got nil", tt.input)
+				}
+				if err != nil && !strings.Contains(err.Error(), "off") {
+					t.Errorf("error should list valid levels, got %q", err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for %q: %v", tt.input, err)
+				}
+				if got != tt.want {
+					t.Errorf("got %q, want %q", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LevelCaps per auto level
+// ---------------------------------------------------------------------------
+
+func TestCapsForLevel(t *testing.T) {
+	tests := []struct {
+		level AutoLevel
+		want  LevelCaps
+	}{
+		{AutoQuick, LevelCaps{MaxAgents: 2, MaxTurns: 4, TimeLimit: 60}},
+		{AutoNormal, LevelCaps{MaxAgents: 4, MaxTurns: 10, TimeLimit: 300}},
+		{AutoDeep, LevelCaps{MaxAgents: 8, MaxTurns: 20, TimeLimit: 900}},
+		{AutoYOLO, LevelCaps{MaxAgents: 0, MaxTurns: 0, TimeLimit: 0}},
+		{AutoOff, LevelCaps{MaxAgents: 0, MaxTurns: 0, TimeLimit: 0}},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.level), func(t *testing.T) {
+			got := CapsForLevel(tt.level)
+			if got != tt.want {
+				t.Errorf("CapsForLevel(%q) = %+v, want %+v", tt.level, got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // IntVal helper
 // ---------------------------------------------------------------------------
 

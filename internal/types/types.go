@@ -17,6 +17,60 @@ const (
 
 var validTopologies = []Topology{TopologyRing, TopologyStar, TopologyMesh}
 
+// AutoLevel represents the auto-configuration level for deliberation.
+type AutoLevel string
+
+const (
+	AutoOff    AutoLevel = "off"
+	AutoQuick  AutoLevel = "quick"
+	AutoNormal AutoLevel = "normal"
+	AutoDeep   AutoLevel = "deep"
+	AutoYOLO   AutoLevel = "yolo"
+)
+
+var validAutoLevels = []AutoLevel{AutoOff, AutoQuick, AutoNormal, AutoDeep, AutoYOLO}
+
+// ParseAutoLevel parses a string into an AutoLevel.
+func ParseAutoLevel(s string) (AutoLevel, error) {
+	normalized := strings.ToLower(s)
+	switch AutoLevel(normalized) {
+	case AutoOff, AutoQuick, AutoNormal, AutoDeep, AutoYOLO:
+		return AutoLevel(normalized), nil
+	default:
+		valid := make([]string, len(validAutoLevels))
+		for i, l := range validAutoLevels {
+			valid[i] = string(l)
+		}
+		return "", fmt.Errorf("unknown auto level '%s'. Expected one of: %s", s, strings.Join(valid, ", "))
+	}
+}
+
+// LevelCaps holds hard-coded caps for an auto-configuration level.
+type LevelCaps struct {
+	MaxAgents int
+	MaxTurns  int
+	TimeLimit int
+}
+
+// CapsForLevel returns the hard-coded LevelCaps for the given AutoLevel.
+// A value of 0 means unlimited.
+func CapsForLevel(level AutoLevel) LevelCaps {
+	switch level {
+	case AutoQuick:
+		return LevelCaps{MaxAgents: 2, MaxTurns: 4, TimeLimit: 60}
+	case AutoNormal:
+		return LevelCaps{MaxAgents: 4, MaxTurns: 10, TimeLimit: 300}
+	case AutoDeep:
+		return LevelCaps{MaxAgents: 8, MaxTurns: 20, TimeLimit: 900}
+	case AutoYOLO:
+		return LevelCaps{MaxAgents: 0, MaxTurns: 0, TimeLimit: 0}
+	case AutoOff:
+		return LevelCaps{}
+	default:
+		return LevelCaps{}
+	}
+}
+
 // ParseTopology parses a string into a Topology.
 func ParseTopology(s string) (Topology, error) {
 	normalized := strings.ToLower(strings.ReplaceAll(s, "-", "_"))

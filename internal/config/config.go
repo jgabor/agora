@@ -23,7 +23,11 @@ func LoadConfig(path string) (*types.DeliberationConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
+	return LoadConfigFromBytes(data)
+}
 
+// LoadConfigFromBytes parses and validates a deliberation configuration from raw YAML bytes.
+func LoadConfigFromBytes(data []byte) (*types.DeliberationConfig, error) {
 	var raw rawConfig
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config YAML: %w", err)

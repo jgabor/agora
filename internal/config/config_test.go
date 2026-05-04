@@ -251,6 +251,47 @@ func TestLoadConfigExampleFile(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// LoadConfigFromBytes
+// ---------------------------------------------------------------------------
+
+func TestLoadConfigFromBytesValid(t *testing.T) {
+	yaml := `
+agents:
+  - id: agent1
+    model: openai/gpt-4
+    system_prompt: Be helpful
+  - id: agent2
+    model: anthropic/claude-3
+    system_prompt: Be concise
+`
+	cfg, err := LoadConfigFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfigFromBytes: %v", err)
+	}
+	if len(cfg.Agents) != 2 {
+		t.Fatalf("agents: got %d, want 2", len(cfg.Agents))
+	}
+	if cfg.Agents[0].ID != "agent1" {
+		t.Errorf("agent[0].id: got %q, want %q", cfg.Agents[0].ID, "agent1")
+	}
+	if cfg.Agents[1].ID != "agent2" {
+		t.Errorf("agent[1].id: got %q, want %q", cfg.Agents[1].ID, "agent2")
+	}
+}
+
+func TestLoadConfigFromBytesInvalid(t *testing.T) {
+	yaml := `topology: ring
+`
+	_, err := LoadConfigFromBytes([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for missing agents")
+	}
+	if !strings.Contains(err.Error(), "at least one agent") {
+		t.Errorf("error mismatch: %q", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ParseTopology integration with LoadConfig
 // ---------------------------------------------------------------------------
 
