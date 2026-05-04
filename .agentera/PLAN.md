@@ -76,7 +76,7 @@ Change main loop condition from `o.state.Turn < o.state.MaxTurns` to `o.state.Ma
 
 ### Task 4: CLI --auto flag and preview-confirm flow
 **Depends on**: Task 3
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN `agora run --auto normal --topic "test"` WHEN executed THEN config is generated, preview shown, user prompted for confirmation
 ▸ GIVEN `agora run --auto normal --config foo.yaml` WHEN executed THEN error: --auto and --config are mutually exclusive
