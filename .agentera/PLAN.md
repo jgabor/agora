@@ -57,7 +57,7 @@ Change main loop condition from `o.state.Turn < o.state.MaxTurns` to `o.state.Ma
 
 ### Task 2: LoadConfigFromBytes in config package
 **Depends on**: none
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN valid YAML bytes for a 2-agent config WHEN LoadConfigFromBytes called THEN returns DeliberationConfig with 2 agents, no error
 ▸ GIVEN invalid YAML bytes (missing agents) WHEN LoadConfigFromBytes called THEN returns error about missing agents
