@@ -85,3 +85,31 @@
 **Next**: Rename go.mod module path from kumbaja to agora per Decision 3.
 
 **Context**: intent: close the Test D grade by testing orchestrator termination + turn execution · constraints: no behavior changes, use existing test patterns · scope: interface extraction + new test file
+
+## Cycle 6 · 2026-05-04
+
+**Phase**: Polish
+
+**What**: Set sensible CLI flag defaults on `run` and `resume` commands — `--time` 60s, `--window` 2, `--max-turns` 10, `--output` transcript.jsonl. Also restructured to Go standard layout (`cmd/agora`, `internal/`).
+
+**Commits**: 47cc013 feat(cli): set sensible defaults for run and resume flags · 8b729a4 refactor: restructure to Go standard layout (cmd/agora, internal/)
+
+**Discovered**: Cobra flag defaults are straightforward — just set `Default` on the pflag. The standard layout refactor moved all internal packages under `internal/` and the main binary under `cmd/agora/`, matching the module path `github.com/jgabor/agora`.
+
+**Verified**:
+```
+$ go run ./cmd/agora run --config examples/example-default.yaml --topic "test" --dry-run
+Agents: strategist, domain_expert, skeptic, optimist, user_advocate
+Settings: topology=ring | time=60s | max_turns=10 | window=2
+...
+Turns completed │ 10            ← max_turns (10) default triggers
+Duration        │ 0.0s          ← dry-run, no real LLM calls
+Transcript: transcript.jsonl    ← --output default
+✓ Deliberation complete (11 turns)
+✓ Halted by: max_turns (10)
+[exit 0]
+```
+
+**Next**: Rename go.mod module path from kumbaja to agora (Decision 3) was fixed in 8b729a4. Continue with inspektera audit follow-ups.
+
+**Context**: intent: set sensible defaults so CLI works out of the box · constraints: both run and resume commands, no behavior changes · scope: defaults + standard layout refactor

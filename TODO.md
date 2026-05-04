@@ -3,7 +3,7 @@
 ## ⇶ Critical
 
 ## ⇉ Degraded
-- [ ] go.mod module path says kumbaja, should be agora (Decision 3 renamed project)
+- [x] go.mod module path says kumbaja, should be agora (Decision 3 renamed project) — fixed in 8b729a4
 - [x] Orchestrator core loop at 0% coverage (partial: termination + turn execution tested in Cycle 5; Run/Synthesize still uncovered)
 
 ## → Normal
