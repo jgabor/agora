@@ -173,6 +173,67 @@ func TestListTranscriptEntriesIgnoresNonJSONL(t *testing.T) {
 	}
 }
 
+func TestResolveResumeSourceFileFlag(t *testing.T) {
+	got, err := resolveResumeSource("./my.jsonl", nil)
+	if err != nil {
+		t.Fatalf("resolveResumeSource: %v", err)
+	}
+	if got != "./my.jsonl" {
+		t.Fatalf("source: got %q, want %q", got, "./my.jsonl")
+	}
+}
+
+func TestResolveResumeSourceExistingPathWinsOverSlug(t *testing.T) {
+	store := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+store+"\"")
+	if err := os.WriteFile(filepath.Join(store, "20260504-143022-my-topic.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write store transcript: %v", err)
+	}
+
+	cwdFile := filepath.Join(t.TempDir(), "my-topic")
+	if err := os.WriteFile(cwdFile, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write cwd transcript: %v", err)
+	}
+
+	got, err := resolveResumeSource("", []string{cwdFile})
+	if err != nil {
+		t.Fatalf("resolveResumeSource: %v", err)
+	}
+	if got != cwdFile {
+		t.Fatalf("source: got %q, want existing path %q", got, cwdFile)
+	}
+}
+
+func TestResolveResumeSourceFindsLatestSlugMatch(t *testing.T) {
+	store := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+store+"\"")
+	if err := os.WriteFile(filepath.Join(store, "20260504-143022-my-topic.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write old transcript: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(store, "20260504-150000-my-topic-again.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write new transcript: %v", err)
+	}
+
+	got, err := resolveResumeSource("", []string{"my-topic"})
+	if err != nil {
+		t.Fatalf("resolveResumeSource: %v", err)
+	}
+	want := filepath.Join(store, "20260504-150000-my-topic-again.jsonl")
+	if got != want {
+		t.Fatalf("source: got %q, want %q", got, want)
+	}
+}
+
+func TestResolveResumeSourceNoSlugMatch(t *testing.T) {
+	store := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+store+"\"")
+
+	_, err := resolveResumeSource("", []string{"nonexistent"})
+	if err == nil {
+		t.Fatal("expected no matching transcript error")
+	}
+}
+
 func writeSettings(t *testing.T, content string) {
 	t.Helper()
 

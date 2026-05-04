@@ -320,12 +320,24 @@ var (
 	resumeAuto        string
 	resumeModel       string = "opencode-go/deepseek-v4-flash"
 	resumeYes         bool
+	resumeFile        string
 )
 
 var resumeCmd = &cobra.Command{
-	Use:   "resume TRANSCRIPT",
+	Use:   "resume [TRANSCRIPT|SLUG]",
 	Short: "Continue deliberation from an existing transcript",
-	Args:  cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if resumeFile != "" {
+			if len(args) > 1 {
+				return fmt.Errorf("accepts at most 1 arg when --file is set")
+			}
+			return nil
+		}
+		if len(args) != 1 {
+			return fmt.Errorf("requires a transcript path or slug")
+		}
+		return nil
+	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		resumeBudgetFlag = cmd.Flags().Changed("budget")
 		if err := applySettingsDefaults(cmd, &resumeModel, &resumeAuto); err != nil {
@@ -366,6 +378,10 @@ var resumeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		sourcePath, err := resolveResumeSource(resumeFile, args)
+		if err != nil {
+			return err
+		}
 
 		if autoMode {
 			level, err := types.ParseAutoLevel(resumeAuto)
@@ -403,7 +419,7 @@ var resumeCmd = &cobra.Command{
 			}
 		}
 
-		sourceRecords, err := loadTranscriptFile(args[0])
+		sourceRecords, err := loadTranscriptFile(sourcePath)
 		if err != nil {
 			return fmt.Errorf("loading source transcript: %w", err)
 		}
@@ -486,6 +502,7 @@ func init() {
 	resumeCmd.Flags().StringVar(&resumeAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
 	resumeCmd.Flags().StringVarP(&resumeModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
 	resumeCmd.Flags().BoolVar(&resumeYes, "yes", false, "Skip preview confirmation prompt")
+	resumeCmd.Flags().StringVar(&resumeFile, "file", "", "Transcript file path to resume")
 
 	_ = resumeCmd.MarkFlagRequired("topic")
 }
@@ -568,6 +585,42 @@ func parseTranscriptFilename(name string) (transcriptEntry, bool) {
 		return transcriptEntry{}, false
 	}
 	return transcriptEntry{date: date, slug: slug, filename: name}, true
+}
+
+func resolveResumeSource(fileFlag string, args []string) (string, error) {
+	if fileFlag != "" {
+		return fileFlag, nil
+	}
+
+	arg := args[0]
+	if _, err := os.Stat(arg); err == nil {
+		return arg, nil
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("checking transcript path: %w", err)
+	}
+
+	settings, err := config.LoadDefaultSettings()
+	if err != nil {
+		return "", fmt.Errorf("loading settings: %w", err)
+	}
+	dir := settings.DefaultOutputDir
+	if dir == "" {
+		dir, err = config.TranscriptStoreDir()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	entries, err := listTranscriptEntries(dir)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.slug, arg) || strings.Contains(entry.filename, arg) {
+			return filepath.Join(dir, entry.filename), nil
+		}
+	}
+	return "", fmt.Errorf("no matching transcript found for slug %q", arg)
 }
 
 func confirmProceed() bool {
