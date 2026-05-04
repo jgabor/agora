@@ -49,6 +49,7 @@ var (
 	runDryRun      bool
 	runAuto        string
 	runModel       string = "opencode-go/deepseek-v4-flash"
+	runYes         bool
 )
 
 var runCmd = &cobra.Command{
@@ -82,14 +83,8 @@ var runCmd = &cobra.Command{
 			outMgr := output.NewOutputManager(runVerbose)
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
-			fi, _ := os.Stdin.Stat()
-			isTerminal := (fi.Mode() & os.ModeCharDevice) != 0
-			if isTerminal {
-				fmt.Print("Proceed with deliberation? [y/N] ")
-				reader := bufio.NewReader(os.Stdin)
-				line, _ := reader.ReadString('\n')
-				line = strings.TrimSpace(line)
-				if line != "y" && line != "Y" {
+			if !runYes {
+				if !confirmProceed() {
 					fmt.Println("Aborted.")
 					return nil
 				}
@@ -167,6 +162,7 @@ func init() {
 	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Run with simulated agent responses")
 	runCmd.Flags().StringVar(&runAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
 	runCmd.Flags().StringVarP(&runModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
+	runCmd.Flags().BoolVar(&runYes, "yes", false, "Skip preview confirmation prompt")
 
 	_ = runCmd.MarkFlagRequired("topic")
 
@@ -268,6 +264,9 @@ var (
 	resumeBudgetFlag  bool
 	resumeFullContext bool
 	resumeDryRun      bool
+	resumeAuto        string
+	resumeModel       string = "opencode-go/deepseek-v4-flash"
+	resumeYes         bool
 )
 
 var resumeCmd = &cobra.Command{
@@ -276,12 +275,73 @@ var resumeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		resumeBudgetFlag = cmd.Flags().Changed("budget")
+
+		autoSet := resumeAuto != ""
+		configSet := resumeConfig != ""
+
+		if autoSet && configSet {
+			return fmt.Errorf("cannot use --auto and --config together")
+		}
+
+		if autoSet {
+			level, err := types.ParseAutoLevel(resumeAuto)
+			if err != nil {
+				return err
+			}
+			if level == types.AutoOff {
+				return fmt.Errorf("--auto off is not a valid mode; omit --auto to run with a config file")
+			}
+			if resumeTopic == "" {
+				return fmt.Errorf("--topic is required with --auto")
+			}
+		} else {
+			if err := cmd.MarkFlagRequired("config"); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.LoadConfig(resumeConfig)
-		if err != nil {
-			return fmt.Errorf("loading config: %w", err)
+		var cfg *types.DeliberationConfig
+		var levelCaps types.LevelCaps
+		autoMode := resumeAuto != ""
+
+		if autoMode {
+			level, err := types.ParseAutoLevel(resumeAuto)
+			if err != nil {
+				return err
+			}
+			levelCaps = types.CapsForLevel(level)
+
+			if resumeDryRun {
+				cfg, err = autogen.GenerateDryRunConfig(resumeTopic, level, resumeModel)
+				if err != nil {
+					return fmt.Errorf("auto config generation: %w", err)
+				}
+			} else {
+				runner := agent.NewAgentRunner(false)
+				cfg, err = autogen.GenerateConfig(resumeTopic, level, resumeModel, runner)
+				if err != nil {
+					return fmt.Errorf("auto config generation: %w", err)
+				}
+			}
+
+			outMgr := output.NewOutputManager(resumeVerbose)
+			outMgr.ConfigPreview(cfg, level, levelCaps)
+
+			if !resumeYes {
+				if !confirmProceed() {
+					fmt.Println("Aborted.")
+					return nil
+				}
+			}
+		} else {
+			var err error
+			cfg, err = config.LoadConfig(resumeConfig)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 		}
 
 		sourceRecords, err := loadTranscriptFile(args[0])
@@ -326,6 +386,16 @@ var resumeCmd = &cobra.Command{
 			Turn:        existingTurns,
 		}
 
+		// Override MaxTurns and TimeLimit with level caps for auto mode
+		if autoMode {
+			state.TimeLimit = levelCaps.TimeLimit
+			if levelCaps.MaxTurns == 0 {
+				state.MaxTurns = 0
+			} else {
+				state.MaxTurns = existingTurns + levelCaps.MaxTurns
+			}
+		}
+
 		outMgr := output.NewOutputManager(resumeVerbose)
 		runner := agent.NewAgentRunner(resumeDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
@@ -354,12 +424,27 @@ func init() {
 	resumeCmd.Flags().Float64Var(&resumeBudget, "budget", 0, "Remaining cost budget")
 	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents")
 	resumeCmd.Flags().BoolVar(&resumeDryRun, "dry-run", false, "Run with simulated agent responses")
+	resumeCmd.Flags().StringVar(&resumeAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
+	resumeCmd.Flags().StringVarP(&resumeModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
+	resumeCmd.Flags().BoolVar(&resumeYes, "yes", false, "Skip preview confirmation prompt")
 
-	_ = resumeCmd.MarkFlagRequired("config")
 	_ = resumeCmd.MarkFlagRequired("topic")
 }
 
 // --- helpers ------------------------------------------------------
+
+func confirmProceed() bool {
+	fi, _ := os.Stdin.Stat()
+	isTerminal := (fi.Mode() & os.ModeCharDevice) != 0
+	if !isTerminal {
+		return true
+	}
+	fmt.Print("Proceed with deliberation? [y/N] ")
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	return line == "y" || line == "Y"
+}
 
 func loadTranscriptFile(path string) ([]types.TurnRecord, error) {
 	f, err := os.Open(path)
