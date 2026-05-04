@@ -11,6 +11,8 @@
 ## ⇢ Annoying
 
 ## Resolved
+- [x] Merge go-port to main — Python removed, Go is canonical
+- [x] Write VISION.md — north star, indie researcher persona, human-in-the-loop direction
 - [x] Go module bootstrap with types and YAML config loading
 - [x] Transcript manager with ring/star/mesh history windowing
 - [x] Agent runner with opencode subprocess and consensus extraction
