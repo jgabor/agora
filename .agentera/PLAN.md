@@ -46,7 +46,7 @@ Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on
 
 ### Task 2: Settings-aware config merge and CLI default resolution
 **Depends on**: Task 1
-**Status**: □ pending
+**Status**: ■ complete
 **Acceptance**:
 ▸ GIVEN settings with `default_model: "gpt-4"` and a deliberation config omitting agent `model` WHEN loading THEN agent model is filled from settings before validation succeeds
 ▸ GIVEN settings with `default_model: "gpt-4"` and a deliberation config with agent `model: "claude"` WHEN loading THEN agent model remains `"claude"`

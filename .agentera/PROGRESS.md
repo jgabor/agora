@@ -1,5 +1,23 @@
 # Progress
 
+## Cycle 12 · 2026-05-04
+
+**Phase**: Feature
+
+**What**: Completed settings-aware config merge and CLI default resolution. `LoadConfig` now fills missing agent models and omitted topology from global settings before validation. `run` and `resume` now use `settings.default_auto_level` when neither `--auto` nor `--config` is explicit, while explicit flags and config values still win.
+
+**Commit**: 33dbc8f feat(config): apply settings defaults
+
+**Inspiration**: PLAN.md Task 2 and Decision 5's three-layer precedence: CLI flags, deliberation config, then global settings.
+
+**Discovered**: `LoadConfigFromBytes` should stay settings-free because generated auto configs already carry explicit models and must validate their own output.
+
+**Verified**: `go test ./internal/config ./cmd/agora`, `go test ./...`, `go build ./...`, and `go vet ./...` pass. CLI smoke passes: with `default_model: "gpt-4"`, `default_auto_level: "normal"`, and `default_topology: "mesh"`, `go run ./cmd/agora run --topic "settings task2 smoke" --dry-run --yes --output <tmp>/out.jsonl` succeeds without `--auto`, writes transcript records with `"model":"gpt-4"`, and produces 11 JSONL records. Config smoke passes: `go run ./cmd/agora validate <tmp>/config.yaml` reports `Topology: mesh`, agent `a (gpt-4)` for the missing model, and agent `b (claude)` for the explicit model.
+
+**Next**: Task 3 — managed store output paths and `agora list`.
+
+**Context**: intent: execute PLAN.md Task 2 after subagent stall · constraints: no managed store, list, or slug resume work · scope: config merge, run/resume settings defaults, focused tests, artifacts
+
 ## Cycle 11 · 2026-05-04
 
 **Phase**: Fix
