@@ -81,3 +81,46 @@ Level definitions (hard-coded in binary):
 **Confidence**: provisional — the Quick/Normal/Deep numbers are reasonable starting points but will likely need tuning based on usage patterns.
 
 **Feeds into**: VISION.md, TODO.md
+
+## Decision 5 · 2026-05-04
+
+**Question**: How should Agora support global user settings and a managed transcript store?
+
+**Context**: Currently every `agora run` requires `--config` or `--auto`, and every `--output` defaults to `transcript.jsonl` in the working directory. Users want a global settings file to set preferred defaults, and a managed store for transcripts so they don't have to track `.jsonl` files across directories. The design must remain backward-compatible with existing CLI behavior and preserve the explicit-over-implicit principle.
+
+**Alternatives**:
+- [Single fallback config only]: `~/.config/agora/config.yaml` used when no `--config` given. Win: simple, one file. Lose: no place for non-config preferences (model, output dir), and deliberation configs are different from user preferences.
+- [Managed store only]: transcripts saved to XDG dirs, no global settings. Win: solves the file sprawl problem. Lose: users still must set `--model` and `--auto` every time if they deviate from hard-coded defaults.
+- [Broader settings file + managed store (chosen)]: `~/.config/agora/settings.yaml` holds default model, auto level, topology, and output directory. Transcripts stored in `XDG_DATA_HOME/agora/transcripts/<datetime>-<slug>.jsonl`. `agora list` shows the store. `agora resume <slug>` resumes by topic slug; `--file` flag preserves path-based resume. Win: both convenience problems solved with one architectural layer. Lose: more complexity in config loading path and XDG directory management.
+
+**Choice**: Broader settings file plus managed transcript store.
+
+Settings file (`settings.yaml`):
+- `default_model`: string, e.g. `opencode-go/deepseek-v4-flash`
+- `default_auto_level`: string, one of `quick`, `normal`, `deep`, `yolo`
+- `default_topology`: string, one of `ring`, `star`, `mesh`
+- `default_output_dir`: string, path where transcripts are stored (default: XDG_DATA_HOME/agora/transcripts)
+
+Transcript store:
+- Default output path when `--output` is omitted: `<datetime>-<slug>.jsonl` in the configured output directory
+- `agora list` prints stored transcripts with date, slug, and turn count
+- `agora resume <slug>` matches the latest transcript whose filename contains the slug
+- `agora resume --file <path>` explicitly resumes from a file path, preserving existing behavior
+
+Config precedence (three layers, highest wins):
+1. CLI flags (`--model`, `--config`, `--auto`, `--output`)
+2. Deliberation config file (agent models, topology)
+3. Global settings file (default model, topology, auto level, output dir)
+
+A settings value only applies when no higher layer provides that value. For example, `settings.default_model` fills in when an agent config omits `model`, but a `--model` flag overrides both.
+
+Cross-platform directories via XDG equivalents:
+- Linux: `XDG_CONFIG_HOME/agora/` and `XDG_DATA_HOME/agora/`
+- macOS: `~/Library/Application Support/agora/` for both
+- Windows: `%LOCALAPPDATA%/agora/`
+
+**Reasoning**: The settings/transcript split maps cleanly to existing Unix conventions: config is stateless preferences, data is mutable transcripts. Four settings keys is minimal — enough to cover the common friction points without bloating the file. The three-layer precedence model keeps explicit CLI behavior intact while letting power users set sane defaults. The `--file` flag on resume ensures scripts and existing workflows don't break.
+
+**Confidence**: firm
+
+**Feeds into**: PLAN.md, TODO.md, config.go, transcript.go, cmd/agora/main.go
