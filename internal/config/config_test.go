@@ -228,14 +228,17 @@ agents:
 // ---------------------------------------------------------------------------
 
 func TestLoadConfigExampleFile(t *testing.T) {
-	// Try to load the real example-config.yaml if it exists.
-	path := filepath.Join("..", "example-config.yaml")
+	// Try the new standard location first (examples/ directory from project root).
+	path := filepath.Join("..", "..", "examples", "example-default.yaml")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// Also check from project root.
-		path = "example-config.yaml"
+		// Fall back to the old root-level file.
+		path = filepath.Join("..", "example-config.yaml")
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			path = "example-config.yaml"
+		}
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Skip("example-config.yaml not found")
+		t.Skip("example config file not found")
 	}
 
 	cfg, err := LoadConfig(path)

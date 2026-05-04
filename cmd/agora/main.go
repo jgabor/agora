@@ -35,10 +35,10 @@ var rootCmd = &cobra.Command{
 var (
 	runConfig      string
 	runTopic       string
-	runTimeLimit   int
-	runWindow      int
-	runMaxTurns    int
-	runOutput      string
+	runTimeLimit   int    = 60
+	runWindow      int    = 2
+	runMaxTurns    int    = 10
+	runOutput      string = "transcript.jsonl"
 	runVerbose     bool
 	runBudget      float64
 	runBudgetFlag  bool
@@ -102,10 +102,10 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.Flags().StringVarP(&runConfig, "config", "c", "", "Path to YAML agent configuration file")
 	runCmd.Flags().StringVarP(&runTopic, "topic", "t", "", "Topic or goal for deliberation")
-	runCmd.Flags().IntVarP(&runTimeLimit, "time", "T", 0, "Time limit in seconds")
-	runCmd.Flags().IntVarP(&runWindow, "window", "w", 0, "Number of predecessor messages each agent sees")
-	runCmd.Flags().IntVarP(&runMaxTurns, "max-turns", "m", 0, "Maximum total turns")
-	runCmd.Flags().StringVarP(&runOutput, "output", "o", "", "Path to write the JSONL transcript")
+	runCmd.Flags().IntVarP(&runTimeLimit, "time", "T", 60, "Time limit in seconds")
+	runCmd.Flags().IntVarP(&runWindow, "window", "w", 2, "Number of predecessor messages each agent sees")
+	runCmd.Flags().IntVarP(&runMaxTurns, "max-turns", "m", 10, "Maximum total turns")
+	runCmd.Flags().StringVarP(&runOutput, "output", "o", "transcript.jsonl", "Path to write the JSONL transcript")
 	runCmd.Flags().BoolVarP(&runVerbose, "verbose", "v", false, "Print agent responses in real-time")
 	runCmd.Flags().Float64Var(&runBudget, "budget", 0, "Cost cap in dollars")
 	runCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
@@ -114,10 +114,6 @@ func init() {
 
 	_ = runCmd.MarkFlagRequired("config")
 	_ = runCmd.MarkFlagRequired("topic")
-	_ = runCmd.MarkFlagRequired("time")
-	_ = runCmd.MarkFlagRequired("window")
-	_ = runCmd.MarkFlagRequired("max-turns")
-	_ = runCmd.MarkFlagRequired("output")
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
@@ -182,10 +178,10 @@ var validateCmd = &cobra.Command{
 var (
 	resumeConfig      string
 	resumeTopic       string
-	resumeTimeLimit   int
-	resumeWindow      int
-	resumeMaxTurns    int
-	resumeOutput      string
+	resumeTimeLimit   int    = 60
+	resumeWindow      int    = 2
+	resumeMaxTurns    int    = 10
+	resumeOutput      string = "transcript.jsonl"
 	resumeVerbose     bool
 	resumeBudget      float64
 	resumeBudgetFlag  bool
@@ -268,10 +264,10 @@ var resumeCmd = &cobra.Command{
 func init() {
 	resumeCmd.Flags().StringVarP(&resumeConfig, "config", "c", "", "Path to YAML agent configuration file")
 	resumeCmd.Flags().StringVarP(&resumeTopic, "topic", "t", "", "Topic or goal for deliberation")
-	resumeCmd.Flags().IntVarP(&resumeTimeLimit, "time", "T", 0, "Additional time limit in seconds")
-	resumeCmd.Flags().IntVarP(&resumeWindow, "window", "w", 0, "Window size")
-	resumeCmd.Flags().IntVarP(&resumeMaxTurns, "max-turns", "m", 0, "Additional max turns")
-	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "", "Path to write the updated JSONL transcript")
+	resumeCmd.Flags().IntVarP(&resumeTimeLimit, "time", "T", 60, "Additional time limit in seconds")
+	resumeCmd.Flags().IntVarP(&resumeWindow, "window", "w", 2, "Window size")
+	resumeCmd.Flags().IntVarP(&resumeMaxTurns, "max-turns", "m", 10, "Additional max turns")
+	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "transcript.jsonl", "Path to write the updated JSONL transcript")
 	resumeCmd.Flags().BoolVarP(&resumeVerbose, "verbose", "v", false, "Print agent responses in real-time")
 	resumeCmd.Flags().Float64Var(&resumeBudget, "budget", 0, "Remaining cost budget")
 	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents")
@@ -279,10 +275,6 @@ func init() {
 
 	_ = resumeCmd.MarkFlagRequired("config")
 	_ = resumeCmd.MarkFlagRequired("topic")
-	_ = resumeCmd.MarkFlagRequired("time")
-	_ = resumeCmd.MarkFlagRequired("window")
-	_ = resumeCmd.MarkFlagRequired("max-turns")
-	_ = resumeCmd.MarkFlagRequired("output")
 }
 
 // --- helpers ------------------------------------------------------
