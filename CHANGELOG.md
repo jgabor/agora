@@ -17,6 +17,7 @@
 - Merged go-port branch into main — Go is the canonical implementation
 - Removed all Python source files and build configuration
 - Rewrote README for Go-only project
+- Added GitHub Actions CI (build, test with race detector, vet lint)
 
 ### Added
 - VISION.md — north star for adversarial deliberation as standard infrastructure

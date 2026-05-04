@@ -6,7 +6,7 @@
 
 ## → Normal
 - [ ] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
-- [ ] CI workflow (Go build, test, lint) for go-port branch
+- [x] CI workflow (Go build, test, lint) for main branch
 
 ## ⇢ Annoying
 

@@ -34,4 +34,20 @@
 
 **Next**: Cross-version parity test (TODO), then CI workflow.
 
+## Cycle 3 · 2026-05-04
+
+**Phase**: Infrastructure
+
+**What**: Added GitHub Actions CI workflow — build, test (with race detector), and lint jobs on push/PR to main.
+
+**Commit**: 9ab10cf
+
+**Discovered**: Cross-version parity test is blocked by Python removal — need to restore from git history or accept Go-only validation.
+
+**Verified**: N/A: chore-build-config
+
+**Next**: Audit codebase health with /inspektera, then version bump for v0.2.0.
+
+**Context**: intent: CI automation · constraints: standard Go toolchain, no external services · scope: one workflow YAML
+
 **Context**: intent: finalize migration · constraints: no behavior change to Go port · scope: merge, delete, document
