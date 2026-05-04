@@ -71,7 +71,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		o.emitSeed()
 	}
 
-	for o.state.Running && o.state.Turn < o.state.MaxTurns {
+	for o.state.Running && (o.state.MaxTurns <= 0 || o.state.Turn < o.state.MaxTurns) {
 		o.checkTerminationConditions()
 		if !o.state.Running {
 			break
@@ -95,7 +95,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		o.state.Turn++
 	}
 
-	if o.state.Running && o.state.Turn >= o.state.MaxTurns {
+	if o.state.Running && o.state.MaxTurns > 0 && o.state.Turn >= o.state.MaxTurns {
 		o.state.HaltedBy = fmt.Sprintf("max_turns (%d)", o.state.MaxTurns)
 	}
 

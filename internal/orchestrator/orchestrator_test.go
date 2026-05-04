@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -237,6 +238,162 @@ func TestExecuteTurnRunnerError(t *testing.T) {
 	}
 	if record.Content != "[ERROR] opencode crashed" {
 		t.Errorf("expected error content, got %q", record.Content)
+	}
+}
+
+// seqMockRunner returns a sequence of canned responses, one per call.
+// After the sequence is exhausted it repeats the last entry.
+type seqMockRunner struct {
+	responses []mockResponse
+	callCount int
+}
+
+type mockResponse struct {
+	content  string
+	metadata map[string]any
+	err      error
+}
+
+func (s *seqMockRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+	idx := s.callCount
+	if idx >= len(s.responses) {
+		idx = len(s.responses) - 1
+	}
+	s.callCount++
+	r := s.responses[idx]
+	if r.err != nil {
+		return "", nil, r.err
+	}
+	return r.content, r.metadata, nil
+}
+
+func TestRunMaxTurnsZeroConsensusHalt(t *testing.T) {
+	dir := t.TempDir()
+	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
+
+	// 2 agents, consensus threshold 3.
+	// First 4 turns: no consensus. Then 5 turns with consensus markers.
+	// The loop should NOT stop at a turn count (MaxTurns=0) but should halt
+	// once consensus streak hits threshold.
+	agents := newTestAgents(2)
+	cfg := &types.DeliberationConfig{
+		Agents:             agents,
+		ConsensusThreshold: 5,
+	}
+	state := &types.DeliberationState{
+		Config:    cfg,
+		Topic:     "test topic",
+		Window:    2,
+		MaxTurns:  0, // unlimited
+		TimeLimit: 0, // unlimited
+		Running:   true,
+	}
+
+	noConsensus := mockResponse{content: "I disagree.", metadata: map[string]any{}}
+	withConsensus := mockResponse{content: "[CONSENSUS: we agree] Agreed.", metadata: map[string]any{}}
+
+	runner := &seqMockRunner{
+		responses: []mockResponse{
+			noConsensus, noConsensus, noConsensus, noConsensus, // turns 0-3
+			withConsensus, withConsensus, withConsensus, withConsensus, withConsensus, // turns 4-8
+		},
+	}
+
+	o := NewOrchestrator(state, tm, runner)
+	stats := o.Run()
+
+	if state.HaltedBy == "" {
+		t.Fatal("expected a halt reason, got none")
+	}
+	if !strings.Contains(state.HaltedBy, "consensus") {
+		t.Errorf("expected halt reason containing 'consensus', got %q", state.HaltedBy)
+	}
+	// Should have run more than 4 turns (the non-consensus phase).
+	if stats.TotalTurns <= 4 {
+		t.Errorf("expected more than 4 turns with MaxTurns=0, got %d", stats.TotalTurns)
+	}
+	// Should NOT have stopped due to max_turns.
+	if strings.Contains(state.HaltedBy, "max_turns") {
+		t.Errorf("should not halt with max_turns when MaxTurns=0, got %q", state.HaltedBy)
+	}
+}
+
+func TestRunMaxTurnsTenBackwardCompat(t *testing.T) {
+	dir := t.TempDir()
+	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
+
+	agents := newTestAgents(2)
+	cfg := &types.DeliberationConfig{Agents: agents}
+	state := &types.DeliberationState{
+		Config:    cfg,
+		Topic:     "test topic",
+		Window:    2,
+		MaxTurns:  10,
+		TimeLimit: 0,
+		Running:   true,
+	}
+
+	// All turns return no consensus, so only the turn cap stops it.
+	runner := &seqMockRunner{
+		responses: []mockResponse{
+			{content: "No consensus here.", metadata: map[string]any{}},
+		},
+	}
+
+	o := NewOrchestrator(state, tm, runner)
+	stats := o.Run()
+
+	if state.HaltedBy != "max_turns (10)" {
+		t.Errorf("expected halt reason 'max_turns (10)', got %q", state.HaltedBy)
+	}
+	// 10 agent turns + 1 seed record = 11 total records.
+	if stats.TotalTurns != 11 {
+		t.Errorf("expected 11 total records (10 agent + 1 seed), got %d", stats.TotalTurns)
+	}
+	// Turn counter should be exactly 10.
+	if state.Turn != 10 {
+		t.Errorf("expected Turn=10, got %d", state.Turn)
+	}
+}
+
+func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
+	dir := t.TempDir()
+	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
+
+	agents := newTestAgents(2)
+	cfg := &types.DeliberationConfig{Agents: agents} // no consensus threshold
+	state := &types.DeliberationState{
+		Config:    cfg,
+		Topic:     "test topic",
+		Window:    2,
+		MaxTurns:  0, // unlimited
+		TimeLimit: 0, // unlimited
+		Running:   true,
+	}
+
+	// Run 15 turns without consensus, then error to stop the loop.
+	// If MaxTurns=0 were NOT working, the loop would stop at turn 0
+	// because 0 < 0 is false. This test proves we go past turn 0.
+	responses := make([]mockResponse, 15)
+	for i := range 14 {
+		responses[i] = mockResponse{content: "Still going.", metadata: map[string]any{}}
+	}
+	responses[14] = mockResponse{err: fmt.Errorf("injected error at turn 14")}
+
+	runner := &seqMockRunner{responses: responses}
+
+	o := NewOrchestrator(state, tm, runner)
+	_ = o.Run()
+
+	if state.Turn < 14 {
+		t.Errorf("expected at least 14 turns with MaxTurns=0, got %d", state.Turn)
+	}
+	if !strings.Contains(state.HaltedBy, "error") {
+		t.Errorf("expected halt reason containing 'error', got %q", state.HaltedBy)
+	}
+	// Must NOT have halted due to max_turns.
+	if strings.Contains(state.HaltedBy, "max_turns") {
+		t.Errorf("should not halt with max_turns when MaxTurns=0, got %q", state.HaltedBy)
 	}
 }
 
