@@ -29,7 +29,8 @@ Reads like a lab report. Tables, metrics, evidence. No fluff, no enthusiasm, no 
 Feels like instant peer review. Not warm, not cold — precise. The user finishes a deliberation feeling like their thinking has been genuinely tested, gaps surfaced, conclusions either strengthened or revised.
 
 ### Naming
+▸ Named Agora — the ancient Athenian space where citizens gathered to debate and deliberate.
 ▸ Names should be pronounceable, searchable, and not a pun.
 
 ## The Tension
-Agent autonomy versus human judgment. "Run a kumbaja" like a test implies automation — fire and forget. But human-in-the-loop deliberation requires pausing, waiting, depending on human availability. The project's challenge is to make human-in-the-loop feel as effortless as automation, without sacrificing the judgment that makes it valuable.
+Agent autonomy versus human judgment. "Run agora" like a test implies automation — fire and forget. But human-in-the-loop deliberation requires pausing, waiting, depending on human availability. The project's challenge is to make human-in-the-loop feel as effortless as automation, without sacrificing the judgment that makes it valuable.
