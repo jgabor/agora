@@ -3,21 +3,25 @@
 ## ⇶ Critical
 
 ## ⇉ Degraded
+
 - [x] go.mod module path says kumbaja, should be agora (Decision 3 renamed project) — fixed in 8b729a4
 - [x] Orchestrator core loop at 0% coverage (partial: termination + turn execution tested in Cycle 5; Run/Synthesize still uncovered)
 
 ## → Normal
+
 - [x] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
 - [x] CI workflow (Go build, test, lint) for main branch
 
 ## ⇢ Annoying
-- [ ] Auto mode for `resume` command (currently deferred)
-- [ ] `--yes` flag to skip preview in auto mode (currently deferred)
+
+- [ ] Auto mode for `resume` command
+- [ ] `--yes` flag to skip preview in auto mode
 - [ ] Tune auto mode level caps based on usage — Decision 4 caps are provisional
 - [ ] Decompose executeTurn (106 lines) — extract token/cost parsing helpers
 - [ ] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText
 
 ## Resolved
+
 - [x] Merge go-port to main — Python removed, Go is canonical
 - [x] Write VISION.md — north star, indie researcher persona, human-in-the-loop direction
 - [x] Go module bootstrap with types and YAML config loading

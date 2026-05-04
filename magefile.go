@@ -109,16 +109,19 @@ func Clean() error {
 }
 
 // compress runs UPX on the built binary. By default uses --no-lzma (fast
-// decompression). Set AGORA_LZMA=1 to opt into --lzma for smaller binary
-// at the cost of slower startup.
+// decompression). Set AGORA_COMPRESS=0 to disable, or AGORA_COMPRESS=2
+// to opt into --lzma for smaller binary at the cost of slower startup.
 func compress(path string) error {
+	if os.Getenv("AGORA_COMPRESS") == "0" {
+		return nil
+	}
 	upx, err := exec.LookPath("upx")
 	if err != nil {
 		fmt.Println("upx not found; skipping compression")
 		return nil
 	}
 	args := []string{"--best", "--overlay=strip", "--no-lzma", path}
-	if os.Getenv("AGORA_LZMA") == "1" {
+	if os.Getenv("AGORA_COMPRESS") == "2" {
 		args = []string{"--best", "--overlay=strip", "--lzma", path}
 	}
 	fmt.Printf("compressing %s with upx\n", path)
