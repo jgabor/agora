@@ -23,19 +23,32 @@ func LoadConfig(path string) (*types.DeliberationConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
-	return LoadConfigFromBytes(data)
+
+	settings, err := LoadDefaultSettings()
+	if err != nil {
+		return nil, err
+	}
+	return loadConfigFromBytes(data, settings)
 }
 
 // LoadConfigFromBytes parses and validates a deliberation configuration from raw YAML bytes.
 func LoadConfigFromBytes(data []byte) (*types.DeliberationConfig, error) {
+	return loadConfigFromBytes(data, Settings{})
+}
+
+func loadConfigFromBytes(data []byte, settings Settings) (*types.DeliberationConfig, error) {
 	var raw rawConfig
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config YAML: %w", err)
 	}
 
 	topology := types.TopologyRing
-	if raw.Topology != "" {
-		t, err := types.ParseTopology(raw.Topology)
+	topologySource := raw.Topology
+	if topologySource == "" {
+		topologySource = settings.DefaultTopology
+	}
+	if topologySource != "" {
+		t, err := types.ParseTopology(topologySource)
 		if err != nil {
 			return nil, err
 		}
@@ -46,8 +59,15 @@ func LoadConfigFromBytes(data []byte) (*types.DeliberationConfig, error) {
 		return nil, fmt.Errorf("configuration must contain at least one agent")
 	}
 
+	agents := raw.Agents
+	for i := range agents {
+		if agents[i].Model == "" && settings.DefaultModel != "" {
+			agents[i].Model = settings.DefaultModel
+		}
+	}
+
 	cfg := &types.DeliberationConfig{
-		Agents:             raw.Agents,
+		Agents:             agents,
 		Topology:           topology,
 		ConsensusThreshold: raw.ConsensusThreshold,
 		SynthesisModel:     raw.SynthesisModel,

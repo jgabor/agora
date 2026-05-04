@@ -9,6 +9,20 @@ import (
 	"github.com/jgabor/agora/internal/types"
 )
 
+func TestMain(m *testing.M) {
+	cfgHome, err := os.MkdirTemp("", "agora-config-test-*")
+	if err != nil {
+		panic(err)
+	}
+
+	if err := os.Setenv("XDG_CONFIG_HOME", cfgHome); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(cfgHome)
+	os.Exit(code)
+}
+
 // writeTempYAML creates a temporary YAML file with the given content and
 // returns its path. The caller is responsible for deleting it.
 func writeTempYAML(t *testing.T, content string) string {
@@ -54,6 +68,83 @@ agents:
 	// Default topology should be ring.
 	if cfg.Topology != types.TopologyRing {
 		t.Errorf("topology: got %q, want %q", cfg.Topology, types.TopologyRing)
+	}
+}
+
+func TestLoadConfigFillsMissingAgentModelFromSettings(t *testing.T) {
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	settingsDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		t.Fatalf("mkdir settings dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(`default_model: "gpt-4"`), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	path := writeTempYAML(t, `
+agents:
+  - id: agent1
+    system_prompt: Be helpful
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Agents[0].Model != "gpt-4" {
+		t.Fatalf("agent model: got %q, want %q", cfg.Agents[0].Model, "gpt-4")
+	}
+}
+
+func TestLoadConfigKeepsExplicitAgentModelOverSettings(t *testing.T) {
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	settingsDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		t.Fatalf("mkdir settings dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(`default_model: "gpt-4"`), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	path := writeTempYAML(t, `
+agents:
+  - id: agent1
+    model: claude
+    system_prompt: Be helpful
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Agents[0].Model != "claude" {
+		t.Fatalf("agent model: got %q, want %q", cfg.Agents[0].Model, "claude")
+	}
+}
+
+func TestLoadConfigUsesDefaultTopologyFromSettings(t *testing.T) {
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	settingsDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		t.Fatalf("mkdir settings dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(`default_topology: "mesh"`), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	path := writeTempYAML(t, `
+agents:
+  - id: agent1
+    model: gpt-4
+    system_prompt: Be helpful
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Topology != types.TopologyMesh {
+		t.Fatalf("topology: got %q, want %q", cfg.Topology, types.TopologyMesh)
 	}
 }
 

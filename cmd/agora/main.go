@@ -169,7 +169,7 @@ func init() {
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
-		if err := applyDefaultModelFromSettings(cmd, &runModel); err != nil {
+		if err := applySettingsDefaults(cmd, &runModel, &runAuto); err != nil {
 			return err
 		}
 
@@ -279,7 +279,7 @@ var resumeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		resumeBudgetFlag = cmd.Flags().Changed("budget")
-		if err := applyDefaultModelFromSettings(cmd, &resumeModel); err != nil {
+		if err := applySettingsDefaults(cmd, &resumeModel, &resumeAuto); err != nil {
 			return err
 		}
 
@@ -441,16 +441,20 @@ func init() {
 // --- helpers ------------------------------------------------------
 
 func applyDefaultModelFromSettings(cmd *cobra.Command, model *string) error {
-	if cmd.Flags().Changed("model") {
-		return nil
-	}
+	return applySettingsDefaults(cmd, model, nil)
+}
 
+func applySettingsDefaults(cmd *cobra.Command, model *string, autoLevel *string) error {
 	settings, err := config.LoadDefaultSettings()
 	if err != nil {
 		return fmt.Errorf("loading settings: %w", err)
 	}
-	if settings.DefaultModel != "" {
+
+	if !cmd.Flags().Changed("model") && settings.DefaultModel != "" {
 		*model = settings.DefaultModel
+	}
+	if autoLevel != nil && !cmd.Flags().Changed("auto") && !cmd.Flags().Changed("config") && settings.DefaultAutoLevel != "" {
+		*autoLevel = settings.DefaultAutoLevel
 	}
 	return nil
 }
