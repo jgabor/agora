@@ -114,10 +114,7 @@ func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
 				}
 			}
 		case "error":
-			errMsg, _ := event["error"].(string)
-			if errMsg == "" {
-				errMsg = fmt.Sprintf("%v", event)
-			}
+			errMsg := openCodeErrorMessage(event)
 			return nil, nil, fmt.Errorf("opencode run error: %s", errMsg)
 		case "step_finish":
 			part, _ := event["part"].(map[string]any)
@@ -136,6 +133,82 @@ func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
 	}
 
 	return textParts, metadata, nil
+}
+
+func openCodeErrorMessage(event map[string]any) string {
+	if errMsg := formatOpenCodeErrorValue(event["error"]); errMsg != "" {
+		return errMsg
+	}
+	return formatOpenCodeErrorValue(event)
+}
+
+func formatOpenCodeErrorValue(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return normalizeOpenCodeErrorMessage(v)
+	case map[string]any:
+		name, _ := v["name"].(string)
+		detail := formatOpenCodeErrorValue(v["data"])
+		if detail == "" {
+			detail = formatOpenCodeErrorValue(v["message"])
+		}
+		if detail != "" {
+			if name != "" {
+				return name + ": " + detail
+			}
+			return detail
+		}
+		if name != "" {
+			return name
+		}
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
+	}
+	return "unknown opencode error"
+}
+
+func normalizeOpenCodeErrorMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if providerMsg := providerValidationMessage(message); providerMsg != "" {
+		return providerMsg
+	}
+	return message
+}
+
+func providerValidationMessage(message string) string {
+	const valuePrefix = "Value: "
+	start := strings.Index(message, valuePrefix)
+	if start == -1 {
+		return ""
+	}
+
+	value := message[start+len(valuePrefix):]
+	if end := strings.Index(value, ".\nError message:"); end != -1 {
+		value = value[:end]
+	}
+	value = strings.TrimSpace(value)
+
+	var providerErr struct {
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal([]byte(value), &providerErr); err != nil || providerErr.Message == "" {
+		return ""
+	}
+
+	parts := make([]string, 0, 3)
+	if providerErr.Code != "" {
+		parts = append(parts, providerErr.Code)
+	}
+	parts = append(parts, providerErr.Message)
+	if providerErr.RequestID != "" {
+		parts = append(parts, "request_id: "+providerErr.RequestID)
+	}
+	return strings.Join(parts, " | ")
 }
 
 func convertTokens(tokens any) map[string]any {

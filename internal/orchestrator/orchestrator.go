@@ -80,7 +80,11 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		agentIdx := o.state.Turn % o.numAgents
 		ag := o.state.Config.Agents[agentIdx]
 
-		turnRecord := o.executeTurn(ag)
+		turnRecord, ok := o.executeTurn(ag)
+		if !ok {
+			o.state.Turn++
+			continue
+		}
 		if err := o.transcript.Append(turnRecord); err != nil {
 			o.state.Running = false
 			o.state.HaltedBy = fmt.Sprintf("error: %v", err)
@@ -151,7 +155,7 @@ func (o *Orchestrator) checkTerminationConditions() {
 	}
 }
 
-func (o *Orchestrator) executeTurn(ag types.AgentConfig) types.TurnRecord {
+func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool) {
 	turnStart := float64(time.Now().UnixNano()) / 1e9
 
 	history := o.transcript.HistoryForAgent(
@@ -185,16 +189,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) types.TurnRecord {
 
 	content, metadata, err := o.runner.Run(ag, envelope)
 	if err != nil {
-		o.state.Running = false
-		o.state.HaltedBy = fmt.Sprintf("error: %v", err)
-		return types.TurnRecord{
-			Turn:      o.state.Turn,
-			AgentID:   ag.ID,
-			Model:     &ag.Model,
-			Timestamp: float64(time.Now().UnixNano()) / 1e9,
-			Content:   fmt.Sprintf("[ERROR] %v", err),
-			Elapsed:   float64(time.Now().UnixNano())/1e9 - turnStart,
-		}
+		return types.TurnRecord{}, false
 	}
 
 	cleanedContent, hasConsensus, consensusStmt := agent.ExtractConsensus(content)
@@ -242,7 +237,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) types.TurnRecord {
 		Consensus:          hasConsensus,
 		ConsensusStatement: consensusStmt,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
-	}
+	}, true
 }
 
 func (o *Orchestrator) setupSignalHandler() {

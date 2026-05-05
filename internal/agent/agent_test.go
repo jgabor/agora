@@ -426,6 +426,29 @@ func TestParseOpenCodeOutputErrorEventNoMessage(t *testing.T) {
 	}
 }
 
+func TestParseOpenCodeOutputStructuredProviderError(t *testing.T) {
+	output := `{"type":"error","error":{"data":{"message":"Type validation failed: Value: {\"code\":\"InvalidParameter\",\"message\":\"<400> InternalError.Algo.DataInspectionFailed: Output data may contain inappropriate content.\",\"request_id\":\"59d9759f-b2a2-4350-ab9a-8478a3d39d40\"}.\nError message: [{\"code\":\"invalid_union\"}]"},"name":"UnknownError"},"sessionID":"ses_206d17a06ffedPGNrxSgSplhLO"}`
+
+	_, _, err := parseOpenCodeOutput(output)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	message := err.Error()
+	for _, want := range []string{
+		"UnknownError",
+		"InvalidParameter",
+		"Output data may contain inappropriate content",
+		"request_id: 59d9759f-b2a2-4350-ab9a-8478a3d39d40",
+	} {
+		if !strings.Contains(message, want) {
+			t.Errorf("error message %q missing %q", message, want)
+		}
+	}
+	if strings.Contains(message, "map[") || strings.Contains(message, "invalid_union") {
+		t.Errorf("error message should not expose raw validation payload: %q", message)
+	}
+}
+
 func TestParseOpenCodeOutputNonJSONLines(t *testing.T) {
 	output := `not json at all
 {"type":"text","part":{"text":"real"}}

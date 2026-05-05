@@ -191,7 +191,10 @@ func TestExecuteTurn(t *testing.T) {
 	}
 
 	o := NewOrchestrator(state, tm, mock)
-	record := o.executeTurn(cfg.Agents[0])
+	record, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected turn record")
+	}
 
 	if record.AgentID != "agent-0" {
 		t.Errorf("expected agent-0, got %s", record.AgentID)
@@ -229,16 +232,56 @@ func TestExecuteTurnRunnerError(t *testing.T) {
 	}
 
 	o := NewOrchestrator(state, tm, mock)
-	record := o.executeTurn(cfg.Agents[0])
+	record, ok := o.executeTurn(cfg.Agents[0])
 
-	if o.state.Running {
-		t.Error("expected Running=false after runner error")
+	if ok {
+		t.Fatalf("expected runner error to skip record, got %#v", record)
 	}
-	if o.state.HaltedBy != "error: opencode crashed" {
-		t.Errorf("expected halt reason, got %q", o.state.HaltedBy)
+	if !o.state.Running {
+		t.Error("expected Running=true after skipped runner error")
 	}
-	if record.Content != "[ERROR] opencode crashed" {
-		t.Errorf("expected error content, got %q", record.Content)
+	if o.state.HaltedBy != "" {
+		t.Errorf("expected no halt reason, got %q", o.state.HaltedBy)
+	}
+}
+
+func TestRunSkipsRunnerErrorAndContinues(t *testing.T) {
+	dir := t.TempDir()
+	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := &types.DeliberationState{
+		Config:    cfg,
+		Topic:     "test topic",
+		Window:    2,
+		MaxTurns:  3,
+		TimeLimit: 0,
+		Running:   true,
+	}
+	runner := &seqMockRunner{responses: []mockResponse{
+		{err: fmt.Errorf("malformed llm response")},
+		{content: "second turn succeeds", metadata: map[string]any{}},
+		{content: "third turn succeeds", metadata: map[string]any{}},
+	}}
+
+	o := NewOrchestrator(state, tm, runner)
+	stats := o.Run()
+
+	if state.HaltedBy != "max_turns (3)" {
+		t.Errorf("expected max_turns halt after continuing, got %q", state.HaltedBy)
+	}
+	if state.Turn != 3 {
+		t.Errorf("expected Turn=3 after skipped error, got %d", state.Turn)
+	}
+	if runner.callCount != 3 {
+		t.Errorf("expected 3 runner calls, got %d", runner.callCount)
+	}
+	if stats.TotalTurns != 3 {
+		t.Errorf("expected seed plus 2 successful records, got %d", stats.TotalTurns)
+	}
+	for _, record := range tm.Records() {
+		if strings.Contains(record.Content, "[ERROR]") || strings.Contains(record.Content, "malformed llm response") {
+			t.Errorf("skipped runner error leaked into transcript record: %#v", record)
+		}
 	}
 }
 
@@ -372,14 +415,15 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 		Running:   true,
 	}
 
-	// Run 15 turns without consensus, then error to stop the loop.
+	// Run 15 turns without consensus, then consensus to stop the loop.
 	// If MaxTurns=0 were NOT working, the loop would stop at turn 0
 	// because 0 < 0 is false. This test proves we go past turn 0.
+	cfg.ConsensusThreshold = 1
 	responses := make([]mockResponse, 15)
 	for i := range 14 {
 		responses[i] = mockResponse{content: "Still going.", metadata: map[string]any{}}
 	}
-	responses[14] = mockResponse{err: fmt.Errorf("injected error at turn 14")}
+	responses[14] = mockResponse{content: "[CONSENSUS: done] Done.", metadata: map[string]any{}}
 
 	runner := &seqMockRunner{responses: responses}
 
@@ -389,8 +433,8 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 	if state.Turn < 14 {
 		t.Errorf("expected at least 14 turns with MaxTurns=0, got %d", state.Turn)
 	}
-	if !strings.Contains(state.HaltedBy, "error") {
-		t.Errorf("expected halt reason containing 'error', got %q", state.HaltedBy)
+	if !strings.Contains(state.HaltedBy, "consensus") {
+		t.Errorf("expected halt reason containing 'consensus', got %q", state.HaltedBy)
 	}
 	// Must NOT have halted due to max_turns.
 	if strings.Contains(state.HaltedBy, "max_turns") {
