@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jgabor/agora/internal/types"
 )
@@ -492,19 +493,22 @@ func wrapText(text string, maxWidth int) []string {
 func visualLen(s string) int {
 	n := 0
 	inEscape := false
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		if inEscape {
 			if s[i] == 'm' {
 				inEscape = false
 			}
+			i++
 			continue
 		}
 		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
 			inEscape = true
-			i++
+			i += 2
 			continue
 		}
+		_, size := utf8.DecodeRuneInString(s[i:])
 		n++
+		i += size
 	}
 	return n
 }
