@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -14,6 +15,8 @@ import (
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/types"
 )
+
+var codeFenceRe = regexp.MustCompile("(?s)```(?:ya?ml|json)?\\s*\n(.*?)```")
 
 const researchQuerySystemPrompt = `Derive focused web research queries for an Agora deliberation.
 
@@ -127,7 +130,8 @@ func parseWebEvidence(content string, queries []string, maxSources int, retrieve
 			Query string `json:"query"`
 		} `json:"sources"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &payload); err != nil {
+	cleaned := stripCodeFences(strings.TrimSpace(content))
+	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
 		return nil, fmt.Errorf("parse failure reading web evidence: %w", err)
 	}
 
@@ -161,6 +165,14 @@ func parseWebEvidence(content string, queries []string, maxSources int, retrieve
 		summary = "Web research completed with source references."
 	}
 	return &types.EvidenceBundle{Summary: summary, SourceReferences: refs}, nil
+}
+
+func stripCodeFences(s string) string {
+	locs := codeFenceRe.FindStringSubmatch(s)
+	if len(locs) >= 2 {
+		return strings.TrimSpace(locs[1])
+	}
+	return strings.TrimSpace(s)
 }
 
 func (c PolicyEvidenceCollector) deriveResearchQueries(request types.EvidenceRequest) ([]string, error) {
@@ -200,7 +212,8 @@ func parseResearchQueries(content string, maxQueries int) ([]string, error) {
 	var payload struct {
 		Queries []string `json:"queries"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &payload); err != nil {
+	cleaned := stripCodeFences(strings.TrimSpace(content))
+	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
 		return nil, fmt.Errorf("parsing queries: %w", err)
 	}
 

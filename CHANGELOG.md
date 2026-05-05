@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-05
+
 ### Added
 - Opt-in pre-deliberation evidence: `--research`, `--no-research`, repeatable `--context`, config `research`/`context`, settings caps, topic-derived OpenCode web evidence, text-only local context safety, source-reference transcript summaries, dry-run reporting, and resume evidence reuse.
 - OutputManager terminal renderer coverage for panels, tables, text wrapping, config preview, stats output, and status methods.
