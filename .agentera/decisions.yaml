@@ -185,4 +185,37 @@ decisions:
     The `--file` flag on resume ensures scripts and existing workflows don''t break.'
   confidence: firm
   feeds_into: PLAN.md, TODO.md, config.go, transcript.go, cmd/agora/main.go
+- number: 6
+  date: '2026-05-05'
+  question: How should Agora provide agents with accurate, up-to-date information during deliberation?
+  context: Agents currently deliberate only from the topic and transcript history. Users need agents to incorporate current
+    information from web search/fetch and additional context from files or directories, while keeping runs bounded, auditable,
+    and consistent with the CLI/config precedence model.
+  alternatives:
+  - name: User-provided context only
+    status: rejected
+    description: 'Users pass files, directories, URLs, or pre-collected search results before the run. Win: deterministic and
+      easy to audit. Lose: does not satisfy the need for Agora to look up current information itself.'
+  - name: Agent-level tool access
+    status: rejected
+    description: 'Each deliberation agent can search or fetch during its own turn. Win: maximum autonomy. Lose: unfair evidence
+      distribution, harder cost control, and less reproducible deliberation dynamics.'
+  - name: Orchestrator-managed research phase (chosen)
+    status: chosen
+    description: 'Before deliberation, the orchestrator infers research queries from the topic, uses OpenCode native websearch
+      and webfetch tools through the same model, resolves local text files/directories, and builds a shared evidence bundle.
+      Win: fresh context with bounded cost and equal evidence. Lose: research quality depends on a model-mediated pre-run step.'
+  choice: 'Add an orchestrator-managed research phase backed by a common source/reference abstraction. The research phase infers
+    queries from the topic, uses OpenCode native `websearch` and `webfetch` tools for web retrieval, resolves text-only local
+    files and directories, and produces one shared evidence bundle. Each agent receives the identical evidence bundle once,
+    on that agent''s first turn. The transcript records a human-readable research summary and source references only, not full
+    retrieved content. Research is policy-controlled through config and CLI, uses the same model as the deliberation, and halts
+    the run if enabled research fails or produces zero source references.'
+  reasoning: 'A pre-run orchestrator research phase makes fresh evidence a bounded precondition for deliberation instead of
+    turning every agent into an unbounded browser. A common source/reference model lets files, directories, and web results share
+    the same delivery and transcript path, while leaving room for future user-provided and agent-requested authorities. Delivering
+    identical evidence once per agent preserves fairness and controls token growth. References-only transcripts accept lossy
+    replay in exchange for compact audit trails.'
+  confidence: firm
+  feeds_into: PLAN.md, TODO.md, internal/research, internal/orchestrator, internal/types, internal/config
 archive: []
