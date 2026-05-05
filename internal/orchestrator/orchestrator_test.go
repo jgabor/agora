@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -399,4 +400,203 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 
 func floatPtr(f float64) *float64 {
 	return &f
+}
+
+func TestExtractJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    map[string]any
+		wantErr bool
+	}{
+		{
+			name:  "json code block",
+			input: "```json\n{\"key_arguments\": [\"arg1\"]}\n```",
+			want:  map[string]any{"key_arguments": []any{"arg1"}},
+		},
+		{
+			name:  "plain code block",
+			input: "```\n{\"key_arguments\": [\"arg1\"]}\n```",
+			want:  map[string]any{"key_arguments": []any{"arg1"}},
+		},
+		{
+			name:  "raw json",
+			input: `{"key_arguments": ["arg1"]}`,
+			want:  map[string]any{"key_arguments": []any{"arg1"}},
+		},
+		{
+			name:    "no json found",
+			input:   "just text without json",
+			wantErr: true,
+		},
+		{
+			name:    "empty input",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "malformed json",
+			input:   `{"key_arguments": broken}`,
+			wantErr: true,
+		},
+		{
+			name:  "multiple blocks picks first",
+			input: "```json\n{\"first\": true}\n```\n```json\n{\"second\": true}\n```",
+			want:  map[string]any{"first": true},
+		},
+		{
+			name:  "json in code block with text",
+			input: "Here is the result:\n```json\n{\"confidence\": \"high\"}\n```\nDone.",
+			want:  map[string]any{"confidence": "high"},
+		},
+	}
+
+	se := &SynthesisEngine{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := se.extractJSON(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestFormatTranscript(t *testing.T) {
+	records := []types.TurnRecord{
+		{Turn: -1, AgentID: "orchestrator", Content: "Begin topic: test"},
+		{Turn: 0, AgentID: "agent-0", Content: "I think X is correct."},
+		{Turn: 1, AgentID: "agent-1", Content: "I disagree because Y."},
+	}
+
+	se := &SynthesisEngine{}
+	result := se.formatTranscript(records)
+	expected := "[Turn -1] orchestrator: Begin topic: test\n[Turn 0] agent-0: I think X is correct.\n[Turn 1] agent-1: I disagree because Y."
+	if result != expected {
+		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, result)
+	}
+}
+
+func TestSynthesisEngineSynthesize(t *testing.T) {
+	records := []types.TurnRecord{
+		{Turn: -1, AgentID: "orchestrator", Content: "seed"},
+		{Turn: 0, AgentID: "agent-0", Content: "proposal"},
+		{Turn: 1, AgentID: "agent-1", Content: "critique"},
+	}
+
+	cfg := &types.DeliberationConfig{
+		Agents: newTestAgents(2),
+	}
+
+	t.Run("successful synthesis", func(t *testing.T) {
+		mock := &mockRunner{
+			content: "```json\n{\"key_arguments\":[\"arg1\",\"arg2\"],\"points_of_agreement\":[\"point1\"],\"unresolved_tensions\":[\"tension1\"],\"recommended_decision\":\"go with option A\",\"confidence\":\"high\"}\n```",
+		}
+		engine := NewSynthesisEngine(mock)
+		result := engine.Synthesize(records, "test topic", cfg)
+
+		if result == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if result["confidence"] != "high" {
+			t.Errorf("expected confidence=high, got %v", result["confidence"])
+		}
+		if result["recommended_decision"] != "go with option A" {
+			t.Errorf("expected recommended_decision, got %v", result["recommended_decision"])
+		}
+	})
+
+	t.Run("runner error", func(t *testing.T) {
+		mock := &mockRunner{err: fmt.Errorf("LLM unavailable")}
+		engine := NewSynthesisEngine(mock)
+		result := engine.Synthesize(records, "test topic", cfg)
+
+		if result == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if result["confidence"] != "low" {
+			t.Errorf("expected confidence=low on error, got %v", result["confidence"])
+		}
+		if !strings.Contains(result["recommended_decision"].(string), "Synthesis failed") {
+			t.Errorf("expected error message in recommendation, got %v", result["recommended_decision"])
+		}
+	})
+
+	t.Run("invalid json response", func(t *testing.T) {
+		mock := &mockRunner{
+			content: "This is not valid JSON and has no code block.",
+		}
+		engine := NewSynthesisEngine(mock)
+		result := engine.Synthesize(records, "test topic", cfg)
+
+		if result == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if result["confidence"] != "low" {
+			t.Errorf("expected confidence=low on invalid JSON, got %v", result["confidence"])
+		}
+	})
+
+	t.Run("uses synthesis model when configured", func(t *testing.T) {
+		model := "gpt-4"
+		cfgWithSynth := &types.DeliberationConfig{
+			Agents:         newTestAgents(2),
+			SynthesisModel: &model,
+		}
+		mock := &mockRunner{
+			content: "```json\n{\"confidence\":\"high\",\"recommended_decision\":\"use gpt-4\",\"key_arguments\":[],\"points_of_agreement\":[],\"unresolved_tensions\":[]}\n```",
+		}
+		engine := NewSynthesisEngine(mock)
+		result := engine.Synthesize(records, "test topic", cfgWithSynth)
+
+		if result == nil {
+			t.Fatal("expected non-nil result")
+		}
+	})
+}
+
+func TestOrchestratorSynthesize(t *testing.T) {
+	t.Run("returns nil with one record or fewer", func(t *testing.T) {
+		tm := transcript.NewTranscriptManager("/tmp/test_synth.jsonl")
+		_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "orchestrator", Content: "seed"})
+
+		state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
+		o := NewOrchestrator(state, tm, &mockRunner{})
+		result := o.Synthesize()
+		if result != nil {
+			t.Error("expected nil with 1 record")
+		}
+	})
+
+	t.Run("returns synthesis with multiple records", func(t *testing.T) {
+		tm := transcript.NewTranscriptManager("/tmp/test_synth.jsonl")
+		_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "orchestrator", Content: "seed"})
+		_ = tm.Append(types.TurnRecord{Turn: 0, AgentID: "agent-0", Content: "proposal"})
+		_ = tm.Append(types.TurnRecord{Turn: 1, AgentID: "agent-1", Content: "critique"})
+
+		state := newTestState(&types.DeliberationConfig{
+			Agents: newTestAgents(2),
+		})
+		mock := &mockRunner{
+			content: "```json\n{\"key_arguments\":[\"arg1\"],\"points_of_agreement\":[],\"unresolved_tensions\":[],\"recommended_decision\":\"proceed\",\"confidence\":\"medium\"}\n```",
+		}
+		o := NewOrchestrator(state, tm, mock)
+		result := o.Synthesize()
+
+		if result == nil {
+			t.Fatal("expected non-nil result with 3 records")
+		}
+		if result["confidence"] != "medium" {
+			t.Errorf("expected confidence=medium, got %v", result["confidence"])
+		}
+	})
 }
