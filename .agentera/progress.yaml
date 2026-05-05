@@ -1,4 +1,19 @@
 cycles:
+- number: 17
+  timestamp: "2026-05-05 17:20"
+  type: test
+  phase: build
+  what: Added OutputManager renderer tests for panels, tables, wrapping, config preview, stats output, and status methods.
+  commit: d956003 test(output): add terminal renderer coverage
+  inspiration: HEALTH.md Test D grade flagged OutputManager at 0% coverage
+  discovered: visualLen counted bytes instead of runes, overestimating Unicode box/check glyph widths despite ignoring ANSI escapes.
+  verified: go test ./internal/output/ - 7 tests pass; go test ./...; go build ./...; go vet ./...; go run ./cmd/agora --help; go test ./internal/output/ -cover = 67.3%
+  next: Remaining cleanup: tune auto mode caps from usage evidence and decompose executeTurn token/cost parsing.
+  context:
+    intent: close OutputManager coverage gap from TODO and HEALTH findings
+    constraints: test-only scope except defects exposed by the renderer tests; preserve terminal output behavior
+    unknowns: Whether broader terminal snapshot coverage should assert exact ANSI output for every public method
+    scope: internal/output/output.go and internal/output/output_test.go
 - number: 16
   timestamp: "2026-05-05 16:00"
   type: test

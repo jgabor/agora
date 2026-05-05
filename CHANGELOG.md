@@ -3,7 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- OutputManager terminal renderer coverage for panels, tables, text wrapping, config preview, stats output, and status methods.
 - SynthesisEngine and Orchestrator.Synthesize test coverage (extractJSON, formatTranscript, full engine flow) — 7 new test cases
+
+### Fixed
+- Terminal visual-width calculation now counts Unicode glyphs as runes while ignoring ANSI escape sequences.
 
 ### Added
 - Slug-based `agora resume` with latest-match selection and a `--file` path override.

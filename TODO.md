@@ -18,7 +18,7 @@
 - [x] `--yes` flag to skip preview in auto mode
 - [ ] Tune auto mode level caps based on usage — Decision 4 caps are provisional
 - [ ] Decompose executeTurn (106 lines) — extract token/cost parsing helpers
-- [ ] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText
+- [x] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText (covered in d956003; package coverage 67.3%)
 
 ## Resolved
 
