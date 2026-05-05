@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- SynthesisEngine and Orchestrator.Synthesize test coverage (extractJSON, formatTranscript, full engine flow) — 7 new test cases
+
+### Added
 - Slug-based `agora resume` with latest-match selection and a `--file` path override.
 - Managed transcript store output paths and `agora list` for browsing saved deliberations.
 - Settings-aware defaults now fill missing agent models, default topology, and auto level when CLI/config values omit them.
