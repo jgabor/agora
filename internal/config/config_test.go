@@ -224,6 +224,81 @@ agents:
 	}
 }
 
+func TestLoadConfigResearchAndContext(t *testing.T) {
+	yaml := `
+research: true
+context:
+  - README.md
+  - docs/
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.ResearchEnabled {
+		t.Fatal("ResearchEnabled: got false, want true")
+	}
+	want := []string{"README.md", "docs/"}
+	if len(cfg.ContextPaths) != len(want) || cfg.ContextPaths[0] != want[0] || cfg.ContextPaths[1] != want[1] {
+		t.Fatalf("ContextPaths: got %#v, want %#v", cfg.ContextPaths, want)
+	}
+}
+
+func TestResolveEvidenceRequestPrecedence(t *testing.T) {
+	falseValue := false
+	cfg := &types.DeliberationConfig{
+		ResearchEnabled: true,
+		ContextPaths:    []string{"config.md"},
+	}
+	settings := Settings{ResearchMaxSources: 7, ContextMaxBytes: 512, ContextMaxDepth: 2}
+
+	request := ResolveEvidenceRequest(cfg, settings, ResearchOverrides{
+		Research:     &falseValue,
+		ContextSet:   true,
+		ContextPaths: []string{"cli.md", "cli-dir"},
+	})
+
+	if request.ResearchEnabled {
+		t.Fatal("ResearchEnabled: got true, want CLI override false")
+	}
+	want := []string{"cli.md", "cli-dir"}
+	if len(request.ContextPaths) != len(want) || request.ContextPaths[0] != want[0] || request.ContextPaths[1] != want[1] {
+		t.Fatalf("ContextPaths: got %#v, want %#v", request.ContextPaths, want)
+	}
+	if request.MaxSources != 7 {
+		t.Fatalf("MaxSources: got %d, want settings cap 7", request.MaxSources)
+	}
+	if request.MaxBytes != 512 {
+		t.Fatalf("MaxBytes: got %d, want settings cap 512", request.MaxBytes)
+	}
+	if request.MaxDepth != 2 {
+		t.Fatalf("MaxDepth: got %d, want settings cap 2", request.MaxDepth)
+	}
+}
+
+func TestResolveEvidenceRequestUsesConfigResearchWithoutCLI(t *testing.T) {
+	cfg := &types.DeliberationConfig{ResearchEnabled: true, ContextPaths: []string{"config.md"}}
+	request := ResolveEvidenceRequest(cfg, Settings{}, ResearchOverrides{})
+	if !request.ResearchEnabled {
+		t.Fatal("ResearchEnabled: got false, want config-enabled research")
+	}
+	if len(request.ContextPaths) != 1 || request.ContextPaths[0] != "config.md" {
+		t.Fatalf("ContextPaths: got %#v, want config context", request.ContextPaths)
+	}
+}
+
+func TestResolveEvidenceRequestSettingsDoNotEnableResearch(t *testing.T) {
+	cfg := &types.DeliberationConfig{}
+	request := ResolveEvidenceRequest(cfg, Settings{ResearchMaxSources: 5}, ResearchOverrides{})
+	if request.ResearchEnabled {
+		t.Fatal("ResearchEnabled: got true, want false because settings must not enable web access")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Validation errors
 // ---------------------------------------------------------------------------

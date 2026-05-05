@@ -24,6 +24,19 @@ go build -o agora ./cmd/agora
   --topic "Is AI alignment a solvable problem?" \
   --dry-run --verbose
 
+# Add current web research before deliberation
+./agora run \
+  --config examples/research-stress-test.yaml \
+  --topic "What changed in EU AI policy this month?" \
+  --research
+
+# Add local text context before deliberation
+./agora run \
+  --config examples/code-review.yaml \
+  --topic "How should we improve these docs?" \
+  --context README.md \
+  --context examples/
+
 # Stats
 ./agora stats transcript.jsonl
 ```
@@ -78,6 +91,9 @@ Optional (all have sensible defaults):
   --budget FLOAT           Cost cap in dollars
   --synthesize             Run final synthesis agent after deliberation
   --full-context           Show last K messages from ALL agents (not just predecessor)
+  --research               Enable topic-inferred web research before deliberation
+  --no-research            Disable config-enabled web research for this run
+  --context PATH           Local text context path to include before deliberation (repeatable)
   --dry-run                Run with simulated agent responses (no LLM calls)
 ```
 
@@ -86,7 +102,7 @@ Optional (all have sensible defaults):
 ```
 agora resume --config PATH --topic TEXT TRANSCRIPT [flags]
 
-Same optional flags as run. Loads prior records and continues from the last turn.
+Same optional flags as run, except evidence flags are rejected on resume. Loads prior records and continues from the last turn. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context.
 ```
 
 ### `agora stats` — Show transcript statistics
@@ -112,7 +128,27 @@ Checks config for errors without starting a deliberation.
 | `topology` | string | `ring` | `ring`, `star`, or `mesh` |
 | `consensus_threshold` | int | `0` | Consecutive consensus signals to trigger early stop (0 = disabled) |
 | `synthesis_model` | string | — | Override model for final synthesis (defaults to first agent's model) |
+| `research` | bool | `false` | Enable topic-inferred web research before deliberation for runs using this config |
+| `context` | list | `[]` | Local text files or directories to include before deliberation |
 | `agents` | list | required | Agent configs with `id`, `model`, and optional `system_prompt` |
+
+CLI flags override project config. For evidence, `--research` enables web research, `--no-research` disables config-enabled research, and any `--context` flags replace config `context` paths for that run.
+
+Global `settings.yaml` may set evidence caps but does not silently enable web access:
+
+| Key | Default | Description |
+|---|---|---|
+| `research_max_sources` | `20` | Maximum web sources, generated web queries, and local context file references |
+| `context_max_bytes` | `1048576` | Maximum total bytes of local context |
+| `context_max_depth` | `5` | Maximum directory traversal depth for local context |
+
+### Research and Local Context
+
+Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context accepts readable text files and directories; directory traversal skips hidden VCS directories, binary files, and secret-looking files such as `.env` and private key names.
+
+Agora halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if local context exceeds file, byte, or depth caps. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths and caps without model cost.
+
+Current limitations: local context is text-only; PDF, DOCX, binary parsing, browser rendering, source/domain allowlists, persistent source caching, and replay-perfect research refresh are not implemented.
 
 ## Topologies
 
@@ -142,7 +178,7 @@ When `--synthesize` is enabled, a final agent call produces a structured JSON su
 
 ## Transcript Format
 
-JSONL, one turn per line:
+JSONL, one turn per line. Research/context runs add an orchestrator evidence summary before agent turns. Transcript evidence stores source references and a readable summary, not full source content; the same evidence bundle is delivered to each agent exactly once on that agent's first turn.
 
 ```json
 {"turn": 0, "agent_id": "skeptic", "model": "openai/gpt-4o", "timestamp": 1715000000.0, "content": "...", "tokens": {"total": 150, "input": 100, "output": 50}, "cost": 0.001, "consensus": false, "consensus_statement": "", "elapsed": 2.5}

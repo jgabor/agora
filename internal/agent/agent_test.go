@@ -300,6 +300,49 @@ func TestAgentRunnerDryRunNoTopic(t *testing.T) {
 	}
 }
 
+func TestAgentRunnerDryRunResearchAgentsReturnStructuredJSON(t *testing.T) {
+	runner := NewAgentRunner(true)
+
+	queryContent, _, err := runner.Run(types.AgentConfig{ID: "research-query-planner", Model: "model"}, map[string]any{
+		"topic":       "What would the best programming language be to implement this tool?",
+		"max_queries": 2,
+	})
+	if err != nil {
+		t.Fatalf("research query dry run: %v", err)
+	}
+	var queryPayload struct {
+		Queries []string `json:"queries"`
+	}
+	if err := json.Unmarshal([]byte(queryContent), &queryPayload); err != nil {
+		t.Fatalf("query JSON: %v; content=%q", err, queryContent)
+	}
+	if len(queryPayload.Queries) != 2 {
+		t.Fatalf("queries: got %#v, want 2 deterministic queries", queryPayload.Queries)
+	}
+
+	webContent, _, err := runner.Run(types.AgentConfig{ID: "web-research-collector", Model: "model"}, map[string]any{
+		"queries":     queryPayload.Queries,
+		"max_sources": 1,
+	})
+	if err != nil {
+		t.Fatalf("web research dry run: %v", err)
+	}
+	var webPayload struct {
+		Summary string `json:"summary"`
+		Sources []struct {
+			Title string `json:"title"`
+			URL   string `json:"url"`
+			Query string `json:"query"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal([]byte(webContent), &webPayload); err != nil {
+		t.Fatalf("web JSON: %v; content=%q", err, webContent)
+	}
+	if len(webPayload.Sources) != 1 || webPayload.Sources[0].URL == "" || webPayload.Sources[0].Query != queryPayload.Queries[0] {
+		t.Fatalf("sources: got %#v, want one deterministic source for first query", webPayload.Sources)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Agent runner — error propagation: missing binary
 // ---------------------------------------------------------------------------

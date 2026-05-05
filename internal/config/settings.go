@@ -9,10 +9,13 @@ import (
 
 // Settings holds global Agora user preferences from settings.yaml.
 type Settings struct {
-	DefaultModel     string `yaml:"default_model"`
-	DefaultAutoLevel string `yaml:"default_auto_level"`
-	DefaultTopology  string `yaml:"default_topology"`
-	DefaultOutputDir string `yaml:"default_output_dir"`
+	DefaultModel       string `yaml:"default_model"`
+	DefaultAutoLevel   string `yaml:"default_auto_level"`
+	DefaultTopology    string `yaml:"default_topology"`
+	DefaultOutputDir   string `yaml:"default_output_dir"`
+	ResearchMaxSources int    `yaml:"research_max_sources"`
+	ContextMaxBytes    int64  `yaml:"context_max_bytes"`
+	ContextMaxDepth    int    `yaml:"context_max_depth"`
 }
 
 // LoadDefaultSettings loads settings.yaml from the default global config path.

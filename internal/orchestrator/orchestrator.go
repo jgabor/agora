@@ -39,20 +39,34 @@ type Orchestrator struct {
 	state      *types.DeliberationState
 	transcript *transcript.TranscriptManager
 	runner     agent.Runner
+	evidence   EvidenceCollector
 	onTurn     TurnFunc
 
 	numAgents       int
 	consensusStreak int
+	sharedEvidence  *types.EvidenceBundle
+	evidenceSent    map[string]bool
+}
+
+// EvidenceCollector gathers shared evidence before the first deliberation turn.
+type EvidenceCollector interface {
+	Collect(request types.EvidenceRequest) (*types.EvidenceBundle, error)
 }
 
 // NewOrchestrator creates a new Orchestrator.
 func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptManager, runner agent.Runner) *Orchestrator {
 	return &Orchestrator{
-		state:      state,
-		transcript: tm,
-		runner:     runner,
-		numAgents:  len(state.Config.Agents),
+		state:        state,
+		transcript:   tm,
+		runner:       runner,
+		numAgents:    len(state.Config.Agents),
+		evidenceSent: make(map[string]bool),
 	}
+}
+
+// SetEvidenceCollector registers a pre-deliberation evidence collector.
+func (o *Orchestrator) SetEvidenceCollector(collector EvidenceCollector) {
+	o.evidence = collector
 }
 
 // OnTurn registers a callback invoked after each agent turn.
@@ -68,6 +82,10 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 	o.setupSignalHandler()
 
 	if len(o.transcript.Records()) == 0 {
+		if !o.collectEvidence() {
+			_ = o.transcript.WriteAll()
+			return types.ComputeStats(o.transcript.Records())
+		}
 		o.emitSeed()
 	}
 
@@ -110,6 +128,43 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 	}
 
 	return types.ComputeStats(o.transcript.Records())
+}
+
+func (o *Orchestrator) collectEvidence() bool {
+	request := o.state.Evidence
+	if !request.ResearchEnabled && len(request.ContextPaths) == 0 {
+		return true
+	}
+	request.Topic = o.state.Topic
+	if request.ResearchModel == "" && len(o.state.Config.Agents) > 0 {
+		request.ResearchModel = o.state.Config.Agents[0].Model
+	}
+	if o.evidence == nil {
+		o.state.Running = false
+		o.state.HaltedBy = "research_error: evidence collector unavailable"
+		return false
+	}
+
+	bundle, err := o.evidence.Collect(request)
+	if err != nil {
+		o.state.Running = false
+		o.state.HaltedBy = fmt.Sprintf("research_error: %v", err)
+		return false
+	}
+	if bundle == nil || len(bundle.SourceReferences) == 0 {
+		o.state.Running = false
+		o.state.HaltedBy = "research_error: no source references produced"
+		return false
+	}
+	o.sharedEvidence = bundle
+	_ = o.transcript.Append(types.TurnRecord{
+		Turn:      -2,
+		AgentID:   "orchestrator",
+		Timestamp: float64(time.Now().UnixNano()) / 1e9,
+		Content:   bundle.Summary,
+		Evidence:  bundle,
+	})
+	return true
 }
 
 // Synthesize runs the final synthesis agent after deliberation completes.
@@ -169,6 +224,10 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	envelope := map[string]any{
 		"topic":   o.state.Topic,
 		"history": history,
+	}
+	if o.sharedEvidence != nil && !o.evidenceSent[ag.ID] {
+		envelope["evidence"] = o.sharedEvidence
+		o.evidenceSent[ag.ID] = true
 	}
 
 	if o.state.FullContext {

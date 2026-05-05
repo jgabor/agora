@@ -1,4 +1,124 @@
 cycles:
+- number: 25
+  timestamp: "2026-05-05 23:25"
+  type: fix
+  phase: audit
+  what: Closed the Task 7 documentation/artifact coherence retry by preserving the completed plan state, consolidating duplicate CHANGELOG.md Unreleased subsections into one Added, one Fixed, and one Changed section without changing entry meaning, and correcting this progress entry's evidence/order metadata.
+  commit: none
+  inspiration: Task 7 retry inspection reported that plan closure was fixed but CHANGELOG.md still had duplicate Unreleased headings and this progress entry claimed a changelog state that was not true.
+  discovered: No .agentera/docs.yaml artifact mapping exists, so default artifact paths apply. CHANGELOG.md Unreleased had duplicate Fixed and Added subsections; the existing progress ordering convention is newest cycle first, so cycle 25 must not be timestamped earlier than cycle 24.
+  verified: uv run "$HOME/.agents/agentera/scripts/agentera" plan reports status=completed and completed=7; lightweight Unreleased heading count check reports Added=1, Fixed=1, and Changed=1; direct progress readback confirms this entry no longer claims a false changelog state and cycle 25 is ordered newest-first after cycle 24.
+  next: Return retry results without committing or pushing.
+  context:
+    intent: fix Task 7 inspection failure only
+    constraints: no source file changes, no commit, no push, preserve existing worktree changes
+    unknowns: none for the documentation/artifact coherence fix
+    scope: CHANGELOG.md, .agentera/progress.yaml
+- number: 24
+  timestamp: "2026-05-05 23:20"
+  type: documentation
+  phase: build
+  what: Completed Task 7 documentation and freshness checkpoint for the research/context feature by updating README user-facing behavior, examples, config/settings precedence, safety constraints, transcript/resume/dry-run/failure semantics, changelog entry, TODO follow-ups, and plan status.
+  commit: none
+  inspiration: Agentera plan Task 7 acceptance criteria and the completed Task 1-6 implementation contract.
+  discovered: No .agentera/docs.yaml exists, so default documentation paths apply. CLI help already exposes --research, --no-research, and repeatable --context on run; resume help rejects evidence-changing flags and states transcript evidence is reused.
+  verified: README examples now include web research and local context commands; README CLI/config sections describe --research, --no-research, repeatable --context, config research/context, settings caps, CLI-over-config precedence, text-only local context safety, transcript source-reference-only behavior, halt-on-failure, dry-run behavior, resume evidence reuse, and limitations; CHANGELOG.md records the research/context capability under Unreleased; TODO.md captures follow-up work for provenance allowlists, research refresh/replay controls, and non-text context evaluation; go run ./cmd/agora run --help verified --research, --no-research, and repeatable --context are discoverable; go run ./cmd/agora resume --help verified evidence-changing flags are rejected on resume; go test ./..., go build ./..., and go vet ./... all passed; uv run "$HOME/.agents/agentera/scripts/agentera" plan reports Task 7 completed and completed=7.
+  next: Return Task 7 results without committing or pushing.
+  context:
+    intent: satisfy Task 7 only after Tasks 1-6 passed inspection
+    constraints: no source changes, no commit, no push, preserve existing dirty implementation changes from earlier tasks
+    unknowns: none for documentation acceptance
+    scope: README.md, CHANGELOG.md, TODO.md, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 23
+  timestamp: "2026-05-05 22:58"
+  type: implementation
+  phase: build
+  what: Implemented Task 6 resume, dry-run, and failure behavior by making dry-run research planner/collector agents return deterministic structured JSON, preserving resume behavior that reuses existing transcript evidence without rerunning collection, and rejecting research/context evidence changes on resume.
+  commit: none
+  inspiration: Agentera plan Task 6 acceptance criteria and the Task 5-discovered dry-run parse failure for research-enabled runs.
+  discovered: Resume already avoided evidence refresh because Orchestrator.Run only collects evidence when the transcript has no records; the missing behavior was an explicit resume CLI rejection for changed evidence requests and structured dry-run research output.
+  verified: go test ./internal/agent verifies dry-run research-query and web-research agents emit parseable deterministic JSON with capped queries/sources; go test ./internal/orchestrator verifies resumed transcripts with prior evidence do not call evidence collection and existing research/context failures still halt before agent turns; go test ./cmd/agora verifies resume research/no-research/context flags are detected as changed evidence requests; full go test ./..., go build ./..., go vet ./..., and dry-run smoke commands for research-only, local-file-only, and research+local-file were run after this artifact update.
+  next: Task 7 should update CLI help/README/CHANGELOG/TODO freshness for the completed research/context feature.
+  context:
+    intent: satisfy Task 6 only without documenting the feature or changing Task 1-5 evidence semantics
+    constraints: no push, no commit, deterministic dry-run research must avoid live web/model calls, resume must not refresh or alter prior evidence
+    unknowns: none for Task 6 acceptance
+    scope: internal/agent, internal/orchestrator, cmd/agora, .agentera artifacts
+- number: 22
+  timestamp: "2026-05-05 22:51"
+  type: implementation
+  phase: build
+  what: Implemented Task 5 evidence delivery and transcript audit by attaching the shared evidence bundle to each agent's first turn envelope only, omitting evidence from later turns and agent transcript records, preserving the orchestrator research/context summary before agent turns, and adding deterministic research-only, context-only, and combined evidence boundary tests.
+  commit: none
+  inspiration: Agentera plan Task 5 acceptance criteria and the requested smoke matrix using topic "What would the best programming language be to implement this tool?", model opencode/nemotron-3-super-free, auto normal, and ring topology.
+  discovered: Dry-run mode cannot exercise successful online research because the dry-run runner returns plain text instead of the structured research-query JSON required by the evidence collector; live online research remains a manual smoke because it depends on OpenCode web/model availability and should not be required by normal tests.
+  verified: go test ./internal/orchestrator verifies each agent receives the same evidence bundle once on its first turn, later turns omit raw evidence, transcript source references exclude full source body/snippet fields, no-research/no-context behavior keeps the original seed-plus-agent transcript shape, and deterministic research-only/context-only/combined evidence boundary cases; go test ./... verifies all packages; go build ./... builds all packages; go vet ./... passes; go run ./cmd/agora run --dry-run --yes --auto normal --model "opencode/nemotron-3-super-free" --topic "What would the best programming language be to implement this tool?" --context "/home/jgabor/git/ALLOW_TRACKING/README.md" --output "/tmp/opencode/agora-task5-context-only.jsonl" completed with ring topology, context evidence summary before agent turns, source refs only, and max_turns halt; matching dry-run research-only and combined commands with --research wrote isolated empty transcripts and halted before turns at research query JSON parsing, confirming dry-run is not a valid successful online research smoke.
+  next: Task 6 should implement resume, dry-run, and failure behavior including deterministic dry-run research reporting instead of relying on the generic dry-run agent text.
+  context:
+    intent: satisfy Task 5 delivery-once and transcript audit behavior only without implementing resume refresh semantics, dry-run research planning, docs, or live network-dependent test requirements
+    constraints: no push, no commit, preserve unrelated worktree changes, raw evidence attaches to agent input once per agent, transcripts keep readable summary and source references only
+    unknowns: whether Task 6 should add structured dry-run evidence output for research-enabled runs so CLI research smoke can succeed without live web/model calls
+    scope: internal/orchestrator, .agentera artifacts
+- number: 21
+  timestamp: "2026-05-05 21:15"
+  type: implementation
+  phase: build
+  what: Implemented Task 4 OpenCode-backed web evidence collection by replacing the research placeholder with a bounded web collector runner call, parsing structured web evidence JSON into auditable source references, failing fast on unavailable runner/tool errors, malformed responses, and zero web references, and writing evidence references to the transcript without full source content.
+  commit: none
+  inspiration: Agentera plan Task 4 acceptance criteria for OpenCode web search/fetch evidence collection and auditable source references only.
+  discovered: Minimal transcript evidence metadata was necessary to substantiate Task 4's transcript audit acceptance; delivery-once semantics, resume/dry-run behavior, and documentation remain deferred to later planned tasks.
+  verified: go test ./internal/orchestrator verifies successful web source references from OpenCode-runner responses, unavailable web-tool runner errors before deliberation, malformed web evidence parse failures before deliberation, zero-reference web evidence rejection, and transcript source reference metadata containing URL/query/retrieved_at; go test ./internal/config ./cmd/agora verifies Task 1 config/CLI behavior remains intact; go test ./... verifies the full suite; go build ./... and go vet ./... pass.
+  next: Task 5 should implement evidence delivery-once semantics and complete transcript summary placement/audit behavior.
+  context:
+    intent: satisfy Task 4 web evidence collection only without implementing delivery-once semantics, resume, dry-run, or docs
+    constraints: no push, no commit, preserve unrelated worktree changes, use existing OpenCode runner boundary, halt before deliberation on enabled-research evidence failures
+    unknowns: none for Task 4; later tasks still need resume/dry-run and docs behavior
+    scope: internal/orchestrator, internal/types, .agentera artifacts
+- number: 20
+  timestamp: "2026-05-05 20:05"
+  type: implementation
+  phase: build
+  what: Implemented Task 3 topic-inferred web query contract with model-backed query derivation, topic/model propagation into the evidence request, bounded query parsing by configured research source cap, and fail-fast behavior when query generation fails or returns no usable queries.
+  commit: none
+  inspiration: Agentera plan Task 3 acceptance criteria for bounded topic-derived web research query planning only.
+  discovered: OpenCode-backed web evidence collection remains intentionally deferred to Task 4, so successful query derivation still stops at the existing web collection placeholder instead of producing web source references.
+  verified: go test ./internal/orchestrator ./internal/config ./cmd/agora verifies topic and selected deliberation model propagation to evidence collection, bounded query derivation within ResearchMaxSources/MaxSources caps, query-generation failure and empty-query rejection before deliberation, and preservation of Task 1/2 config and context behavior; go test ./... verifies the full suite; go build ./... and go vet ./... pass.
+  next: Task 4 should connect the derived bounded queries to OpenCode-backed web search/fetch and produce auditable web source references.
+  context:
+    intent: satisfy Task 3 query derivation contract without implementing web evidence collection, evidence delivery-once semantics, transcript audit, resume, dry-run, or docs
+    constraints: no push, no commit, preserve unrelated worktree changes, query count must stay within configured research caps, research query generation uses the selected deliberation model identity
+    unknowns: none for Task 3; Task 4 still needs to define malformed web research response parsing and source reference metadata
+    scope: internal/orchestrator, internal/types, cmd/agora, .agentera artifacts
+- number: 19
+  timestamp: "2026-05-05 19:05"
+  type: implementation
+  phase: build
+  what: Implemented Task 2 text-only local context safety with bounded file, byte, and depth caps; directory traversal for text files; skips for binary, VCS, and secret-looking files; and pre-deliberation halt when context resolves to no usable sources.
+  commit: none
+  inspiration: Agentera plan Task 2 acceptance criteria for safe local context resolution only.
+  discovered: Task 1 left web source collection intentionally deferred, so the collector continues to reject research-enabled runs while now resolving local context paths safely.
+  verified: go test ./internal/orchestrator ./internal/config ./cmd/agora verifies readable text file references, directory text discovery, binary/VCS/secret-looking skip behavior, file/byte/depth bounded-context errors, empty-context halt before agent turns, and preservation of Task 1 CLI/config precedence; go test ./... verifies the full suite; go build ./... and go vet ./... pass.
+  next: Task 3 should implement the topic-inferred web query contract without changing the local context safety behavior.
+  context:
+    intent: satisfy Task 2 local text context safety only without implementing web queries, evidence delivery-once semantics, transcripts, resume, dry-run, or docs
+    constraints: no push, no commit, preserve unrelated worktree changes, context is text-only, unsafe local files must not enter evidence references
+    unknowns: none for Task 2; future tasks still need to decide how resolved evidence is delivered and audited
+    scope: internal/orchestrator, internal/config, internal/types, .agentera artifacts
+- number: 18
+  timestamp: "2026-05-05 18:10"
+  type: implementation
+  phase: build
+  what: Implemented Task 1 research/context UX policy contract with CLI flags, config parsing, settings caps, precedence resolution, and a pre-deliberation evidence hook.
+  commit: none
+  inspiration: Agentera plan Task 1 acceptance criteria for opt-in research and repeatable local context policy.
+  discovered: Web evidence collection is not implemented in this task by plan constraint, so the default collector records local context requests and halts research-enabled runs before deliberation until the later OpenCode-backed collection task exists.
+  verified: go test ./internal/config ./internal/orchestrator ./cmd/agora verifies config-enabled research, repeated CLI context, settings caps that do not enable research, CLI-over-config precedence, and research attempted before the first turn; go test ./... verifies the full suite; go build ./... and go vet ./... pass; go run ./cmd/agora run --help verifies --research, --no-research, and repeatable --context are exposed.
+  next: Task 2 should implement text-only local context traversal and safety; Task 4 should replace the policy collector's research placeholder with OpenCode-backed web evidence collection.
+  context:
+    intent: satisfy Task 1 policy contract only without implementing later evidence traversal or web fetching scope
+    constraints: no push, no commit, preserve unrelated worktree changes, CLI flags override project config, global settings cannot silently enable web access
+    unknowns: none for Task 1 policy; live web source production remains intentionally deferred to planned later tasks
+    scope: cmd/agora, internal/config, internal/orchestrator, internal/types, .agentera artifacts
 - number: 17
   timestamp: "2026-05-05 17:20"
   type: test

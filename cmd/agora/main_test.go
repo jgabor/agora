@@ -139,6 +139,76 @@ func TestResolveTranscriptOutputKeepsExplicitOutput(t *testing.T) {
 	}
 }
 
+func TestResearchOverridesCapturesRepeatedContext(t *testing.T) {
+	cmd := &cobra.Command{}
+	runContext = nil
+	cmd.Flags().Bool("research", false, "Research")
+	cmd.Flags().Bool("no-research", false, "No research")
+	cmd.Flags().StringArrayVar(&runContext, "context", nil, "Context")
+	if err := cmd.Flags().Set("context", "README.md"); err != nil {
+		t.Fatalf("set first context: %v", err)
+	}
+	if err := cmd.Flags().Set("context", "examples"); err != nil {
+		t.Fatalf("set second context: %v", err)
+	}
+
+	overrides := researchOverrides(cmd)
+	if !overrides.ContextSet {
+		t.Fatal("ContextSet: got false, want true")
+	}
+	want := []string{"README.md", "examples"}
+	if len(overrides.ContextPaths) != len(want) || overrides.ContextPaths[0] != want[0] || overrides.ContextPaths[1] != want[1] {
+		t.Fatalf("ContextPaths: got %#v, want %#v", overrides.ContextPaths, want)
+	}
+}
+
+func TestResearchOverridesNoResearchDisablesConfigResearch(t *testing.T) {
+	cmd := &cobra.Command{}
+	runContext = nil
+	cmd.Flags().Bool("research", false, "Research")
+	cmd.Flags().Bool("no-research", false, "No research")
+	cmd.Flags().StringArrayVar(&runContext, "context", nil, "Context")
+	if err := cmd.Flags().Set("no-research", "true"); err != nil {
+		t.Fatalf("set no-research: %v", err)
+	}
+
+	overrides := researchOverrides(cmd)
+	if overrides.Research == nil {
+		t.Fatal("Research override: got nil, want false pointer")
+	}
+	if *overrides.Research {
+		t.Fatal("Research override: got true, want false")
+	}
+}
+
+func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		flag string
+		val  string
+	}{
+		{name: "research", flag: "research", val: "true"},
+		{name: "no research", flag: "no-research", val: "true"},
+		{name: "context", flag: "context", val: "README.md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var contextPaths []string
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool("research", false, "Research")
+			cmd.Flags().Bool("no-research", false, "No research")
+			cmd.Flags().StringArrayVar(&contextPaths, "context", nil, "Context")
+			if err := cmd.Flags().Set(tt.flag, tt.val); err != nil {
+				t.Fatalf("set %s: %v", tt.flag, err)
+			}
+			if !resumeEvidenceRequestChanged(cmd) {
+				t.Fatalf("resumeEvidenceRequestChanged: got false, want true for --%s", tt.flag)
+			}
+		})
+	}
+}
+
 func TestParseTranscriptFilename(t *testing.T) {
 	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
 	if !ok {

@@ -54,6 +54,9 @@ var (
 	runAuto        string
 	runModel       string = "opencode-go/deepseek-v4-flash"
 	runYes         bool
+	runResearch    bool
+	runNoResearch  bool
+	runContext     []string
 )
 
 var runCmd = &cobra.Command{
@@ -110,6 +113,12 @@ var runCmd = &cobra.Command{
 			budget = &runBudget
 		}
 
+		settings, err := config.LoadDefaultSettings()
+		if err != nil {
+			return err
+		}
+		evidenceRequest := config.ResolveEvidenceRequest(cfg, settings, researchOverrides(cmd))
+
 		state := &types.DeliberationState{
 			Config:      cfg,
 			Topic:       runTopic,
@@ -118,6 +127,7 @@ var runCmd = &cobra.Command{
 			TimeLimit:   runTimeLimit,
 			Budget:      budget,
 			FullContext: runFullContext,
+			Evidence:    evidenceRequest,
 		}
 
 		// Override MaxTurns and TimeLimit with level caps for auto mode
@@ -130,6 +140,7 @@ var runCmd = &cobra.Command{
 		outMgr := output.NewOutputManager(runVerbose)
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
+		orch.SetEvidenceCollector(orchestrator.NewPolicyEvidenceCollector(runner))
 		orch.OnTurn(outMgr.TurnProgress)
 
 		outMgr.DeliberationHeader(state)
@@ -171,11 +182,17 @@ func init() {
 	runCmd.Flags().StringVar(&runAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
 	runCmd.Flags().StringVarP(&runModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
 	runCmd.Flags().BoolVar(&runYes, "yes", false, "Skip preview confirmation prompt")
+	runCmd.Flags().BoolVar(&runResearch, "research", false, "Enable topic-inferred web research before deliberation")
+	runCmd.Flags().BoolVar(&runNoResearch, "no-research", false, "Disable config-enabled web research for this run")
+	runCmd.Flags().StringArrayVar(&runContext, "context", nil, "Local text context path to include before deliberation (repeatable)")
 
 	_ = runCmd.MarkFlagRequired("topic")
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
+		if cmd.Flags().Changed("research") && cmd.Flags().Changed("no-research") {
+			return fmt.Errorf("cannot use --research and --no-research together")
+		}
 		if err := applySettingsDefaults(cmd, &runModel, &runAuto); err != nil {
 			return err
 		}
@@ -207,6 +224,28 @@ func init() {
 
 		return nil
 	}
+}
+
+func researchOverrides(cmd *cobra.Command) config.ResearchOverrides {
+	var research *bool
+	if cmd.Flags().Changed("research") {
+		enabled := true
+		research = &enabled
+	}
+	if cmd.Flags().Changed("no-research") {
+		enabled := false
+		research = &enabled
+	}
+
+	return config.ResearchOverrides{
+		Research:     research,
+		ContextSet:   cmd.Flags().Changed("context"),
+		ContextPaths: append([]string(nil), runContext...),
+	}
+}
+
+func resumeEvidenceRequestChanged(cmd *cobra.Command) bool {
+	return cmd.Flags().Changed("research") || cmd.Flags().Changed("no-research") || cmd.Flags().Changed("context")
 }
 
 // --- stats --------------------------------------------------------
@@ -321,6 +360,9 @@ var (
 	resumeModel       string = "opencode-go/deepseek-v4-flash"
 	resumeYes         bool
 	resumeFile        string
+	resumeResearch    bool
+	resumeNoResearch  bool
+	resumeContext     []string
 )
 
 var resumeCmd = &cobra.Command{
@@ -340,6 +382,9 @@ var resumeCmd = &cobra.Command{
 	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		resumeBudgetFlag = cmd.Flags().Changed("budget")
+		if resumeEvidenceRequestChanged(cmd) {
+			return fmt.Errorf("resume cannot change research or context evidence; existing transcript evidence is reused")
+		}
 		if err := applySettingsDefaults(cmd, &resumeModel, &resumeAuto); err != nil {
 			return err
 		}
@@ -503,6 +548,9 @@ func init() {
 	resumeCmd.Flags().StringVarP(&resumeModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
 	resumeCmd.Flags().BoolVar(&resumeYes, "yes", false, "Skip preview confirmation prompt")
 	resumeCmd.Flags().StringVar(&resumeFile, "file", "", "Transcript file path to resume")
+	resumeCmd.Flags().BoolVar(&resumeResearch, "research", false, "Rejected on resume: evidence is reused from the transcript")
+	resumeCmd.Flags().BoolVar(&resumeNoResearch, "no-research", false, "Rejected on resume: evidence is reused from the transcript")
+	resumeCmd.Flags().StringArrayVar(&resumeContext, "context", nil, "Rejected on resume: evidence is reused from the transcript")
 
 	_ = resumeCmd.MarkFlagRequired("topic")
 }

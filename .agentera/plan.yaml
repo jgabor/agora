@@ -1,140 +1,145 @@
 header:
   level: full
-  created: '2026-05-04'
-  status: active
-  reviewed: ''
-  critic_issues: ''
-  revised: ''
-  title: Global settings and managed transcript store
-what: Cross-platform global user settings (`~/.config/agora/settings.yaml` or equivalent) and a managed transcript store (`XDG_DATA_HOME/agora/transcripts/<datetime>-<slug>.jsonl`).
-  Settings provide defaults for model, auto level, topology, and output directory. Transcripts persist automatically to the
-  store; `agora list` shows history; `agora resume <slug>` resumes by topic match. `--file` flag preserves explicit path resume.
-  `--output` flag always wins over managed paths.
-why: Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on every invocation. A settings layer and
-  managed store turn Agora from a per-directory tool into a personal deliberation history — consistent with VISION.md's "run
-  a kumbaja on it" becoming routine.
-constraints: '- Existing `agora resume TRANSCRIPT --config ...` must continue working unchanged
-
-  - `--output` flag always wins; no `--output` saves to the managed store
-
-  - Settings only fill gaps, never override explicit deliberation config values or CLI flags
-
-  - Cross-platform: Linux (XDG), macOS (Application Support), Windows (LOCALAPPDATA)
-
-  - No new external dependencies for XDG — Go stdlib `os`, `path/filepath`, `runtime` only
-
-  - Four settings keys max: default_model, default_auto_level, default_topology, default_output_dir
-
-  - Breaking change acknowledged: scripts relying on implicit `./transcript.jsonl` must add `--output transcript.jsonl`'
+  created: '2026-05-05'
+  status: completed
+  reviewed: '2026-05-05'
+  critic_issues: 9 found, 9 addressed, 0 dismissed
+  title: Orchestrator research and context sources
+what: Add opt-in research and context support so deliberations can start with current web evidence and local text context. `--research`
+  enables topic-inferred web research. Repeatable `--context` adds local files or directories. Project deliberation config may
+  also enable research and declare context for repeatable runs. Agora builds one shared evidence bundle, records source references,
+  and gives each agent the same evidence exactly once on that agent's first turn.
+why: Agents currently deliberate from the topic and transcript history only. Research/context support makes Agora useful for
+  current information, documentation-grounded decisions, and codebase-grounded deliberations without turning every agent into
+  an unbounded browser.
+constraints: Web research uses OpenCode's native web tools through the normal agent runtime boundary. Local context is text-only.
+  Research-enabled runs halt before deliberation if required evidence cannot be produced. Transcripts store references and a
+  readable research summary, not full source content. CLI flags override config and settings. Global settings may set safe defaults
+  or caps but must not silently enable web access.
 scope:
   included:
-  - XDG dirs, settings YAML loading, settings-aware CLI defaults, config merge, datetime-slug output paths, `list` command,
-    slug-based resume, `--file` flag, default_auto_level wiring
+  - '`--research` for web research'
+  - 'repeatable `--context` for local files and directories'
+  - project config research/context policy
+  - text-only local context with caps and secret-safe traversal rules
+  - 'topic-inferred bounded web research through OpenCode `websearch` and `webfetch`'
+  - shared evidence bundle delivered once per agent
+  - transcript research summary and source references only
+  - halt-on-failure behavior for enabled research
+  - dry-run and resume semantics
+  - README/examples/changelog updates
   excluded:
-  - Settings migration, encrypted settings, cloud sync, transcript compression, `agora delete`
+  - agent-requested retrieval during turns
+  - per-agent evidence filtering
+  - full source content in transcripts
+  - persistent source cache
+  - PDF/DOCX/binary document parsing
+  - browser rendering
   deferred:
-  - Settings validation schema, topic slug customisation, `agora prune` for old transcripts
-design: '- `internal/config/xdg.go`: `ConfigDir()`, `DataDir()` resolving XDG / macOS / Windows paths. Linux uses `XDG_CONFIG_HOME`
-  and `XDG_DATA_HOME` with `~/.config` / `~/.local/share` fallbacks. macOS uses `~/Library/Application Support/agora/`. Windows
-  uses `%LOCALAPPDATA%/agora/`.
-
-  - `internal/config/settings.go`: `Settings` struct with four string fields, `LoadSettings(path)` returning zero value when
-  file missing, error on invalid YAML.
-
-  - Config merge: `LoadConfig` path fills missing agent `model` fields from `settings.default_model` before validation. Topology
-  omitted in deliberation config defaults to `settings.default_topology` then `"ring"`.
-
-  - CLI defaults: `--model`, `--auto`, and `--topology` flags use empty string defaults. After settings load, empty flag values
-  resolve to settings defaults. Explicit flags always win.
-
-  - Output path generation: when `--output` omitted, filename is `<datetime>-<slug>.jsonl`. Datetime in Go reference format
-  `20060102-150405`. Slug is topic lowercased, spaces replaced with hyphens, non-alphanumeric-hyphen chars stripped, truncated
-  to 50 characters. Directory is `settings.default_output_dir` if set, else XDG data dir `agora/transcripts/`.
-
-  - `agora list`: reads output dir, parses filenames matching `\d{8}-\d{6}-.+\.jsonl`, prints date / slug / filename table.
-  Non-matching files ignored.
-
-  - `agora resume`: bare arg checked with `os.Stat`. If file exists, treated as path (existing behavior). If not, treated
-  as slug: latest filename containing the slug is selected. `--file` flag forces path mode and makes bare arg optional.'
+  - separate research model
+  - source/domain allowlists
+  - transcript snippets
+  - replay-perfect research
+  - explicit research refresh on resume
+design: Treat research as a pre-deliberation evidence-gathering phase. Local context and web research both produce bounded evidence
+  plus source references. The orchestrator owns timing, failure semantics, and fair delivery. Deliberation agents receive evidence
+  through their turn input only on their first turn. The transcript receives a human-readable research summary with references
+  only.
 tasks:
 - number: 1
-  name: Cross-platform XDG paths and settings loading
+  name: Research UX and policy contract
   depends_on: []
-  status: complete
+  status: completed
   acceptance:
-  - GIVEN `XDG_CONFIG_HOME=/tmp/cfg` on Linux WHEN loading settings THEN settings are read from `/tmp/cfg/agora/settings.yaml`
-  - GIVEN `XDG_DATA_HOME=/tmp/data` on Linux WHEN generating a store path THEN path is under `/tmp/data/agora/transcripts/`
-  - GIVEN no XDG env vars on macOS WHEN loading settings THEN settings are read from `~/Library/Application Support/agora/settings.yaml`
-  - 'GIVEN a valid `settings.yaml` with `default_model: "gpt-4"` WHEN loading THEN `default_model` is available to the CLI'
-  - GIVEN missing settings file WHEN loading THEN zero-value settings are returned with no error
-  - GIVEN invalid YAML in settings file WHEN loading THEN a non-nil error is returned
+  - GIVEN `agora run --research --topic "X"` WHEN web research is allowed by the runtime THEN Agora attempts web research before
+    deliberation
+  - GIVEN repeated `--context` flags WHEN running THEN all declared local paths are considered part of the requested context
+  - GIVEN project config enables research WHEN running without `--research` THEN web research still runs
+  - GIVEN global settings contain research preferences WHEN no project config or CLI enables research THEN web research does
+    not run
+  - GIVEN CLI flags and config disagree on research/context values WHEN running THEN CLI flags take precedence
 - number: 2
-  name: Settings-aware config merge and CLI default resolution
+  name: Text-only local context safety
   depends_on:
   - Task 1
-  status: complete
+  status: completed
   acceptance:
-  - 'GIVEN settings with `default_model: "gpt-4"` and a deliberation config omitting agent `model` WHEN loading THEN agent
-    model is filled from settings before validation succeeds'
-  - 'GIVEN settings with `default_model: "gpt-4"` and a deliberation config with agent `model: "claude"` WHEN loading THEN
-    agent model remains `"claude"`'
-  - 'GIVEN settings with `default_auto_level: "normal"` WHEN running `agora run --topic "X"` without `--auto` THEN auto mode
-    uses `"normal"` level'
-  - 'GIVEN `--model o1` flag and settings `default_model: "gpt-4"` WHEN running THEN model flag wins and settings default
-    is ignored'
-  - 'GIVEN `--auto quick` flag and settings `default_auto_level: "normal"` WHEN running THEN auto level `"quick"` wins'
-  - 'GIVEN `--config example.yaml` without `--model` and settings `default_model: "gpt-4"` WHEN running THEN settings model
-    fills any empty agent model but explicit config values remain unchanged'
+  - GIVEN `--context` points at a readable text file WHEN running THEN the evidence bundle contains a reference to that file
+  - GIVEN `--context` points at a directory WHEN running THEN text files under that directory are considered within configured
+    caps
+  - GIVEN a directory contains binary files, hidden VCS data, or secret-looking files WHEN resolving context THEN those files
+    are not sent to agents
+  - GIVEN directory traversal would exceed file, byte, or depth caps WHEN resolving context THEN Agora reports a clear bounded-context
+    error
+  - GIVEN context resolves to zero usable text sources WHEN running THEN deliberation does not start
 - number: 3
-  name: Managed store output paths and `agora list` command
+  name: Topic-inferred web query contract
   depends_on:
   - Task 1
-  status: complete
+  status: completed
   acceptance:
-  - GIVEN topic `"My Topic"` and `--output` omitted WHEN running THEN transcript filename contains datetime prefix and slug
-    `my-topic`
-  - GIVEN `--output custom.jsonl` and topic `"My Topic"` WHEN running THEN transcript path is `custom.jsonl` regardless of
-    store
-  - 'GIVEN settings `default_output_dir: "/tmp/agora"` and topic `"Test"` WHEN running THEN transcript is saved to `/tmp/agora/<datetime>-test.jsonl`'
-  - GIVEN an empty transcript store WHEN running `agora list` THEN output indicates no transcripts found
-  - GIVEN a store with files `20260504-143022-my-topic.jsonl` and `20260504-150000-other.jsonl` WHEN running `agora list`
-    THEN both entries appear with parsed dates and slugs
-  - GIVEN a store with non-`.jsonl` files WHEN running `agora list` THEN non-JSONL files are ignored
+  - GIVEN web research is enabled WHEN the topic is provided THEN Agora derives a bounded set of research queries from that
+    topic
+  - GIVEN query generation fails or produces no queries WHEN research is enabled THEN deliberation does not start
+  - GIVEN research caps are configured WHEN queries are derived THEN query count stays within those caps
+  - GIVEN a deliberation model is selected WHEN research queries are derived THEN the same model identity is used for the research
+    step
 - number: 4
-  name: '`agora resume` with slug matching and `--file` flag'
+  name: OpenCode-backed web evidence collection
+  depends_on:
+  - Task 3
+  status: completed
+  acceptance:
+  - GIVEN web research is enabled WHEN OpenCode web tools are available THEN source references are produced from web search/fetch
+    results
+  - GIVEN OpenCode web tools are unavailable WHEN research is enabled THEN Agora fails before the first deliberation turn
+  - GIVEN the research response is malformed WHEN Agora reads it THEN Agora reports a parse failure and does not start deliberation
+  - GIVEN web research produces zero source references WHEN research is enabled THEN deliberation does not start
+  - GIVEN web research succeeds WHEN the transcript is written THEN source references include enough metadata to audit where
+    evidence came from
+- number: 5
+  name: Evidence delivery and transcript audit
   depends_on:
   - Task 2
-  - Task 3
-  status: complete
-  acceptance:
-  - GIVEN a file exists at path `./my.jsonl` WHEN `agora resume ./my.jsonl --config ...` THEN resumes from that file with
-    existing behavior unchanged
-  - GIVEN a store containing `20260504-143022-my-topic.jsonl` WHEN `agora resume my-topic --auto quick --topic "..."` THEN
-    finds and resumes from the matching file
-  - GIVEN no matching slug in store WHEN `agora resume nonexistent` THEN error indicates no matching transcript found
-  - GIVEN `--file ./my.jsonl` flag WHEN `agora resume --file ./my.jsonl` THEN resumes from `./my.jsonl` without requiring
-    a bare arg
-  - GIVEN a store with multiple files whose names contain `my-topic` WHEN `agora resume my-topic` THEN resumes from the latest
-    (newest datetime) match
-  - GIVEN both a file `./my-topic` in cwd and a store match for `my-topic` WHEN `agora resume my-topic` THEN the cwd file
-    takes precedence (existing behavior for file paths)
-- number: 5
-  name: Plan-level freshness checkpoint
-  depends_on:
   - Task 4
-  status: complete
+  status: completed
   acceptance:
-  - GIVEN all tasks complete WHEN checking `CHANGELOG.md` THEN `## [Unreleased]` has entries for settings, managed store,
-    `list` command, and resume slug matching
-  - GIVEN all tasks complete WHEN checking `.agentera/PROGRESS.md` THEN a cycle entry summarises the whole plan
-  - GIVEN all tasks complete WHEN checking `TODO.md` THEN any new annoying items discovered during work are logged
-overall_acceptance: '▸ GIVEN a fresh machine with no settings file WHEN `agora run --auto quick --topic "Test" --dry-run`
-  THEN transcript is saved to the default XDG data directory
-
-  ▸ GIVEN a settings file with preferred defaults WHEN `agora run --topic "Test" --dry-run` THEN defaults apply and explicit
-  flags override them
-
-  ▸ GIVEN transcripts in the managed store WHEN `agora list` THEN all transcripts are visible with dates and slugs
-
-  ▸ GIVEN a slug matching multiple transcripts WHEN `agora resume <slug>` THEN the latest matching transcript is used'
-surprises: ''
+  - GIVEN multiple agents and a successful evidence bundle WHEN each agent takes its first turn THEN each receives the same
+    evidence bundle once
+  - GIVEN an agent takes a later turn WHEN evidence was already delivered to that agent THEN raw evidence is not attached again
+  - GIVEN research/context evidence exists WHEN the transcript is written THEN an orchestrator research summary appears before
+    agent turns
+  - GIVEN source references are written to the transcript WHEN inspecting the transcript THEN full source content is not present
+  - GIVEN no research or context is enabled WHEN running THEN deliberation behavior remains unchanged
+- number: 6
+  name: Resume, dry-run, and failure behavior
+  depends_on:
+  - Task 5
+  status: completed
+  acceptance:
+  - GIVEN a transcript with prior research references WHEN resuming THEN Agora does not rerun research
+  - GIVEN `agora resume` is passed new research or context flags WHEN resuming THEN Agora rejects the changed evidence request
+  - GIVEN `--dry-run --research` WHEN running THEN Agora reports deterministic planned research behavior without live web tool
+    calls
+  - GIVEN `--dry-run --context` with local paths WHEN running THEN local context validation is exercised without model cost
+  - GIVEN enabled research fails WHEN running THEN no agent turn is appended
+- number: 7
+  name: Documentation and freshness checkpoint
+  depends_on:
+  - Task 6
+  status: completed
+  acceptance:
+  - GIVEN the feature is implemented WHEN reading CLI help THEN `--research` and `--context` behavior is discoverable
+  - GIVEN the feature is implemented WHEN reading README examples THEN web research and local context examples are present
+  - GIVEN the feature is implemented WHEN reading CHANGELOG THEN the research/context capability is recorded under Unreleased
+  - GIVEN implementation surfaces new follow-up work WHEN checking TODO THEN relevant follow-ups are captured
+overall_acceptance:
+- GIVEN `agora run --research --topic "recent policy change"` WHEN web tools return usable references THEN agents deliberate
+  with shared current evidence
+- GIVEN `agora run --context README.md --context examples/ --topic "improve docs"` WHEN local context resolves THEN agents
+  deliberate with shared local evidence
+- GIVEN enabled research or context produces no usable references WHEN running THEN Agora halts before any agent response
+- GIVEN a transcript from a research-enabled run WHEN inspecting it THEN it contains a research summary and references but not
+  full source content
+- GIVEN a resumed transcript WHEN continuing deliberation THEN prior evidence is not refreshed or changed
+surprises: []

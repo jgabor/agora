@@ -228,6 +228,13 @@ func convertTokens(tokens any) map[string]any {
 }
 
 func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+	if agent.ID == "research-query-planner" {
+		return dryRunResearchQueries(envelope)
+	}
+	if agent.ID == "web-research-collector" {
+		return dryRunWebResearch(envelope)
+	}
+
 	topic := "unknown topic"
 	if t, ok := envelope["topic"]; ok {
 		if s, ok := t.(string); ok {
@@ -249,6 +256,72 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 			},
 			"cost": &cost,
 		}, nil
+}
+
+func dryRunResearchQueries(envelope map[string]any) (string, map[string]any, error) {
+	topic := "dry-run topic"
+	if value, ok := envelope["topic"].(string); ok && strings.TrimSpace(value) != "" {
+		topic = strings.TrimSpace(value)
+	}
+	maxQueries := intEnvelopeValue(envelope, "max_queries", 1)
+	queries := []string{fmt.Sprintf("%s research evidence", topic)}
+	if maxQueries > 1 {
+		queries = append(queries, fmt.Sprintf("%s current sources", topic))
+	}
+	if len(queries) > maxQueries {
+		queries = queries[:maxQueries]
+	}
+	payload, err := json.Marshal(map[string][]string{"queries": queries})
+	if err != nil {
+		return "", nil, err
+	}
+	return string(payload), dryRunMetadata(), nil
+}
+
+func dryRunWebResearch(envelope map[string]any) (string, map[string]any, error) {
+	queries, _ := envelope["queries"].([]string)
+	maxSources := intEnvelopeValue(envelope, "max_sources", 1)
+	if maxSources < len(queries) {
+		queries = queries[:maxSources]
+	}
+	sources := make([]map[string]string, 0, len(queries))
+	for i, query := range queries {
+		sources = append(sources, map[string]string{
+			"title": fmt.Sprintf("Dry-run research source %d", i+1),
+			"url":   fmt.Sprintf("https://example.com/agora-dry-run-research-%d", i+1),
+			"query": query,
+		})
+	}
+	payload, err := json.Marshal(map[string]any{
+		"summary": "Dry-run web research planned deterministic source references without live web tool calls.",
+		"sources": sources,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return string(payload), dryRunMetadata(), nil
+}
+
+func intEnvelopeValue(envelope map[string]any, key string, fallback int) int {
+	if value, ok := envelope[key].(int); ok && value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func dryRunMetadata() map[string]any {
+	total := 100
+	input := 50
+	output := 50
+	cost := 0.001
+	return map[string]any{
+		"tokens": map[string]any{
+			"total":  total,
+			"input":  input,
+			"output": output,
+		},
+		"cost": &cost,
+	}
 }
 
 var consensusPattern = regexp.MustCompile(`(?si)\[CONSENSUS\s*:\s*(.*?)\]`)

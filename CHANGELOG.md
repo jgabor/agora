@@ -3,13 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Opt-in pre-deliberation evidence: `--research`, `--no-research`, repeatable `--context`, config `research`/`context`, settings caps, topic-derived OpenCode web evidence, text-only local context safety, source-reference transcript summaries, dry-run reporting, and resume evidence reuse.
 - OutputManager terminal renderer coverage for panels, tables, text wrapping, config preview, stats output, and status methods.
 - SynthesisEngine and Orchestrator.Synthesize test coverage (extractJSON, formatTranscript, full engine flow) — 7 new test cases
-
-### Fixed
-- Terminal visual-width calculation now counts Unicode glyphs as runes while ignoring ANSI escape sequences.
-
-### Added
 - Slug-based `agora resume` with latest-match selection and a `--file` path override.
 - Managed transcript store output paths and `agora list` for browsing saved deliberations.
 - Settings-aware defaults now fill missing agent models, default topology, and auto level when CLI/config values omit them.
@@ -34,17 +30,16 @@
 - Terminal output with ANSI-styled panels, colored agent names, and formatted tables
 - CLI commands (run, stats, validate, resume) via cobra with all Python parity flags
 - Test suite with 43 tests covering config, transcript, agent, and semantic-parity verification
+- VISION.md — north star for adversarial deliberation as standard infrastructure
+- Cross-version parity test with Python golden transcript (44 tests)
+- Orchestrator test coverage — termination conditions and turn execution (50 tests)
+
+### Fixed
+- Terminal visual-width calculation now counts Unicode glyphs as runes while ignoring ANSI escape sequences.
+- CLI auto mode now uses `settings.default_model` when `--model` is omitted.
 
 ### Changed
 - Merged go-port branch into main — Go is the canonical implementation
 - Removed all Python source files and build configuration
 - Rewrote README for Go-only project
 - Added GitHub Actions CI (build, test with race detector, vet lint)
-
-### Fixed
-- CLI auto mode now uses `settings.default_model` when `--model` is omitted.
-
-### Added
-- VISION.md — north star for adversarial deliberation as standard infrastructure
-- Cross-version parity test with Python golden transcript (44 tests)
-- Orchestrator test coverage — termination conditions and turn execution (50 tests)

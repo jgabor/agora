@@ -110,6 +110,8 @@ type DeliberationConfig struct {
 	Topology           Topology      `yaml:"topology" json:"topology"`
 	ConsensusThreshold int           `yaml:"consensus_threshold" json:"consensus_threshold"`
 	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
+	ResearchEnabled    bool          `yaml:"research" json:"research"`
+	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
 }
 
 // Validate checks the full configuration for correctness.
@@ -153,16 +155,17 @@ type TokenUsage struct {
 
 // TurnRecord represents a single turn in the deliberation transcript.
 type TurnRecord struct {
-	Turn               int        `yaml:"turn" json:"turn"`
-	AgentID            string     `yaml:"agent_id" json:"agent_id"`
-	Model              *string    `yaml:"model,omitempty" json:"model,omitempty"`
-	Timestamp          float64    `yaml:"timestamp" json:"timestamp"`
-	Content            string     `yaml:"content" json:"content"`
-	Tokens             TokenUsage `yaml:"tokens" json:"tokens"`
-	Cost               *float64   `yaml:"cost,omitempty" json:"cost,omitempty"`
-	Consensus          bool       `yaml:"consensus" json:"consensus"`
-	ConsensusStatement string     `yaml:"consensus_statement" json:"consensus_statement"`
-	Elapsed            float64    `yaml:"elapsed" json:"elapsed"`
+	Turn               int             `yaml:"turn" json:"turn"`
+	AgentID            string          `yaml:"agent_id" json:"agent_id"`
+	Model              *string         `yaml:"model,omitempty" json:"model,omitempty"`
+	Timestamp          float64         `yaml:"timestamp" json:"timestamp"`
+	Content            string          `yaml:"content" json:"content"`
+	Evidence           *EvidenceBundle `yaml:"evidence,omitempty" json:"evidence,omitempty"`
+	Tokens             TokenUsage      `yaml:"tokens" json:"tokens"`
+	Cost               *float64        `yaml:"cost,omitempty" json:"cost,omitempty"`
+	Consensus          bool            `yaml:"consensus" json:"consensus"`
+	ConsensusStatement string          `yaml:"consensus_statement" json:"consensus_statement"`
+	Elapsed            float64         `yaml:"elapsed" json:"elapsed"`
 }
 
 // DeliberationStats holds statistics computed from deliberation records.
@@ -199,11 +202,38 @@ type DeliberationState struct {
 	TimeLimit   int
 	Budget      *float64
 	FullContext bool
+	Evidence    EvidenceRequest
 
 	Turn      int
 	StartTime float64
 	Running   bool
 	HaltedBy  string
+}
+
+// EvidenceRequest captures the resolved pre-deliberation evidence policy.
+type EvidenceRequest struct {
+	ResearchEnabled bool
+	Topic           string
+	ResearchModel   string
+	ContextPaths    []string
+	MaxSources      int
+	MaxBytes        int64
+	MaxDepth        int
+}
+
+// SourceReference identifies an evidence source without storing full source content.
+type SourceReference struct {
+	Title       string `yaml:"title" json:"title"`
+	URL         string `yaml:"url,omitempty" json:"url,omitempty"`
+	Path        string `yaml:"path,omitempty" json:"path,omitempty"`
+	Query       string `yaml:"query,omitempty" json:"query,omitempty"`
+	RetrievedAt string `yaml:"retrieved_at,omitempty" json:"retrieved_at,omitempty"`
+}
+
+// EvidenceBundle is the shared evidence result produced before deliberation.
+type EvidenceBundle struct {
+	Summary          string            `yaml:"summary" json:"summary"`
+	SourceReferences []SourceReference `yaml:"source_references" json:"source_references"`
 }
 
 // ComputeStats computes DeliberationStats from a slice of TurnRecords.
