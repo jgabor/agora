@@ -245,6 +245,80 @@ func TestExecuteTurnRunnerError(t *testing.T) {
 	}
 }
 
+func TestTurnTokens(t *testing.T) {
+	total := 42
+	input := 20
+	output := 18
+	reasoning := 4
+
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		want     types.TokenUsage
+	}{
+		{
+			name: "all token fields",
+			metadata: map[string]any{
+				"tokens": map[string]any{
+					"total":     total,
+					"input":     input,
+					"output":    output,
+					"reasoning": reasoning,
+				},
+			},
+			want: types.TokenUsage{Total: &total, Input: &input, Output: &output, Reasoning: &reasoning},
+		},
+		{
+			name:     "missing tokens",
+			metadata: map[string]any{},
+			want:     types.TokenUsage{},
+		},
+		{
+			name: "non-int token ignored",
+			metadata: map[string]any{
+				"tokens": map[string]any{"total": 42.0},
+			},
+			want: types.TokenUsage{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := turnTokens(tt.metadata); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("turnTokens() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTurnCost(t *testing.T) {
+	cost := 0.005
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		want     *float64
+	}{
+		{name: "float pointer", metadata: map[string]any{"cost": &cost}, want: &cost},
+		{name: "missing cost", metadata: map[string]any{}, want: nil},
+		{name: "float value ignored", metadata: map[string]any{"cost": cost}, want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := turnCost(tt.metadata)
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("turnCost() = %v, want nil", *got)
+				}
+				return
+			}
+			if got == nil || *got != *tt.want {
+				t.Errorf("turnCost() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunSkipsRunnerErrorAndContinues(t *testing.T) {
 	dir := t.TempDir()
 	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")

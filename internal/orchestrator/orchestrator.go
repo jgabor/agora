@@ -194,37 +194,8 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 
 	cleanedContent, hasConsensus, consensusStmt := agent.ExtractConsensus(content)
 
-	tokenMap, _ := metadata["tokens"].(map[string]any)
-	tokens := types.TokenUsage{}
-	if tokenMap != nil {
-		if v, ok := tokenMap["total"]; ok {
-			if iv, ok := v.(int); ok {
-				tokens.Total = &iv
-			}
-		}
-		if v, ok := tokenMap["input"]; ok {
-			if iv, ok := v.(int); ok {
-				tokens.Input = &iv
-			}
-		}
-		if v, ok := tokenMap["output"]; ok {
-			if iv, ok := v.(int); ok {
-				tokens.Output = &iv
-			}
-		}
-		if v, ok := tokenMap["reasoning"]; ok {
-			if iv, ok := v.(int); ok {
-				tokens.Reasoning = &iv
-			}
-		}
-	}
-
-	var cost *float64
-	if costVal, ok := metadata["cost"]; ok && costVal != nil {
-		if c, ok := costVal.(*float64); ok {
-			cost = c
-		}
-	}
+	tokens := turnTokens(metadata)
+	cost := turnCost(metadata)
 
 	return types.TurnRecord{
 		Turn:               o.state.Turn,
@@ -238,6 +209,33 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		ConsensusStatement: consensusStmt,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
+}
+
+func turnTokens(metadata map[string]any) types.TokenUsage {
+	tokenMap, _ := metadata["tokens"].(map[string]any)
+	if tokenMap == nil {
+		return types.TokenUsage{}
+	}
+
+	return types.TokenUsage{
+		Total:     intMetadata(tokenMap, "total"),
+		Input:     intMetadata(tokenMap, "input"),
+		Output:    intMetadata(tokenMap, "output"),
+		Reasoning: intMetadata(tokenMap, "reasoning"),
+	}
+}
+
+func intMetadata(metadata map[string]any, key string) *int {
+	iv, ok := metadata[key].(int)
+	if !ok {
+		return nil
+	}
+	return &iv
+}
+
+func turnCost(metadata map[string]any) *float64 {
+	cost, _ := metadata["cost"].(*float64)
+	return cost
 }
 
 func (o *Orchestrator) setupSignalHandler() {
