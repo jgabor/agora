@@ -249,4 +249,32 @@ decisions:
     different kind of scattered styling.
   confidence: firm
   feeds_into: PLAN.md, TODO.md, internal/output, go.mod
+- number: 8
+  date: '2026-05-06'
+  question: How should Agora add personality-rich agent identity to the CLI?
+  context: The user wants the CLI to feel more visually striking and dynamic, with fancy long-running indicators, metric progress
+    bars, and debate participants that have recognizable profile-like identity. Decision 7 already commits to a Charm v2 agent
+    theater renderer while preserving visible `agent_id`, semantic plain output, and testable fallbacks.
+  alternatives:
+  - name: Config-owned identity
+    status: rejected
+    description: 'Add display names, colors, avatars, and persona fields now. Win: user control. Lose: schema churn before the
+      visual system is proven.'
+  - name: Inferred cast identity prototype
+    status: chosen
+    description: 'Infer display identity, color, and deterministic pixel portraits from agent IDs, then validate through an
+      HTML visual rig plus terminal fixture before production integration. Win: strong identity without config migration.'
+  - name: Decorative runtime effects first
+    status: rejected
+    description: 'Start with spinners, progress bars, and animated turn output. Win: immediate motion. Lose: effects lack a
+      coherent cast identity foundation.'
+  choice: Prototype inferred cast identity first. Generate stable pixel portraits from agent IDs with no external assets or new
+    config fields, validate the visual language in both an interactive HTML rig and CLI fixture, then integrate the cast preview
+    before runtime effects.
+  reasoning: Cast preview is the right first slice because it defines the participant identity system reused by live turns, stats,
+    and synthesis. Generated portraits keep Agora self-contained and avoid premature config expansion. Prototype evidence should
+    prove the portraits are distinctive, readable at 40/80/120 columns, and safely replaceable by plain badges before production
+    code depends on them.
+  confidence: provisional
+  feeds_into: PLAN.md, TODO.md, internal/output, visual prototype
 archive: []
