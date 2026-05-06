@@ -86,11 +86,20 @@ func ParseTopology(s string) (Topology, error) {
 	}
 }
 
+// AgentIdentity holds optional non-avatar display metadata for an agent.
+// The canonical visible identity remains AgentConfig.ID.
+type AgentIdentity struct {
+	DisplayName string `yaml:"display_name,omitempty" json:"display_name,omitempty"`
+	Role        string `yaml:"role,omitempty" json:"role,omitempty"`
+	Affiliation string `yaml:"affiliation,omitempty" json:"affiliation,omitempty"`
+}
+
 // AgentConfig holds configuration for a single deliberation agent.
 type AgentConfig struct {
-	ID           string `yaml:"id" json:"id"`
-	Model        string `yaml:"model" json:"model"`
-	SystemPrompt string `yaml:"system_prompt" json:"system_prompt"`
+	ID           string         `yaml:"id" json:"id"`
+	Model        string         `yaml:"model" json:"model"`
+	SystemPrompt string         `yaml:"system_prompt" json:"system_prompt"`
+	Identity     *AgentIdentity `yaml:"identity,omitempty" json:"identity,omitempty"`
 }
 
 // Validate checks that the agent has a non-empty id and model.

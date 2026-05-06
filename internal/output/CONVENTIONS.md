@@ -14,8 +14,24 @@ This document is the implementation contract for the Charm v2 agent theater outp
 - Agent label: render the exact configured or transcript `agent_id` text everywhere. Do not title-case, abbreviate, or substitute role names. If extra display names are ever added, keep `agent_id` visible.
 - Agent ordering: use deliberation config order for previews, headers, turn legends, and per-agent stats. Orchestrator/system rows appear before the cast only when they are actual transcript records. Synthesizer output appears after the deliberation cast as a separate synthesis role.
 - Agent badge: structured surfaces identify agents with a stable ordinal plus label, for example `[A1 strategist]` or `[A3 skeptic]`. The ordinal comes from config order and is reused on all output surfaces for that run.
+- Optional identity metadata: configs may provide non-avatar `identity.display_name`, `identity.role`, and `identity.affiliation` text. Render supported metadata only as labeled enrichment after the canonical badge, for example `AGENT [A1 strategist] NAME Mina ROLE Planner`; never hide, replace, abbreviate, or title-case the exact `agent_id` inside the badge. Old configs and transcripts require no identity fields.
 - Agent visual treatment: each agent gets one stable accent derived from normalized `agent_id` and config order. The same accent applies to that agent's badge, turn marker, and per-agent stats row. Color is decorative; the ordinal and label carry identity.
 - Unknown or resumed agents not present in the current config keep their transcript label and receive a fallback badge after configured agents, for example `[A? legacy_agent]`. Do not drop them from stats or consensus events.
+
+## Avatar Exclusions
+
+- Production theater output must not depend on avatars, generated faces, portrait glyphs, image assets, network-loaded identity assets, or avatar-specific config fields.
+- Do not introduce fallback paths that replace missing avatars with initials, faces, emoji portraits, or decorative portrait boxes. Missing identity metadata falls back to the canonical badge plus exact `agent_id`.
+- Future avatar or portrait experiments must stay outside this renderer contract until they have a separate plan and must not weaken the non-avatar identity guarantees above.
+
+## Activity And Progress
+
+- Long-running phases render as activity status, not identity. Use a text phase label such as `PHASE Research`, `PHASE Generation: strategist`, or `PHASE Synthesis` so plain output is meaningful without spinner frames.
+- Rich terminals may animate activity, but cleanup must leave the next line readable before turn content, stats, synthesis, success, or error output prints.
+- Plain, CI, dumb-terminal, redirected, and no-color output must use bracketed status labels without carriage returns, ANSI escapes, spinner frames, or glyph-only meaning.
+- Bounded metrics show current value, bound, percentage, and an ASCII progress bar, for example `TURN 2/5 (40%) [####------]` or `COST $0.250000/$1.00 (25%) [###-------]`.
+- Unbounded metrics stay plain labeled values, for example `TOKENS 42`; do not imply progress with a slash-bound, percentage, or bar when no meaningful bound exists.
+- Final stats use the same bounded/unbounded metric rules as live turn progress so users do not learn two conventions for the same data.
 
 ## Semantic Labels
 
@@ -31,6 +47,8 @@ Color must never be the only carrier of meaning. Every semantic state uses a tex
 | Elapsed time | `⏱` | `ELAPSED` | `ELAPSED 3.4s` |
 | Model | none | `MODEL` | `MODEL opencode/foo` |
 | Agent identity | badge | `AGENT` | `AGENT [A2 skeptic]` |
+| Activity phase | spinner | `PHASE` | `[INFO] PHASE Generation: skeptic` |
+| Bounded progress | bar | value, bound, percent | `TURN 2/5 (40%) [####------]` |
 
 Plain/no-color output keeps the bracketed labels. Rich terminals may add color and Unicode symbols, but the label remains present for success, error, consensus, and warning. Compact metric rows may use `MODEL`, `ELAPSED`, and `COST` labels instead of symbols.
 

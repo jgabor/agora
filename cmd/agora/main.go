@@ -77,6 +77,7 @@ var runCmd = &cobra.Command{
 				return err
 			}
 			levelCaps = types.CapsForLevel(level)
+			outMgr := output.NewOutputManager(runVerbose)
 
 			if runDryRun {
 				cfg, err = autogen.GenerateDryRunConfig(runTopic, level, runModel)
@@ -85,13 +86,14 @@ var runCmd = &cobra.Command{
 				}
 			} else {
 				runner := agent.NewAgentRunner(false)
+				stop := outMgr.Activity("Config generation")
 				cfg, err = autogen.GenerateConfig(runTopic, level, runModel, runner)
+				stop()
 				if err != nil {
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			}
 
-			outMgr := output.NewOutputManager(runVerbose)
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
 			if !runYes {
@@ -142,6 +144,7 @@ var runCmd = &cobra.Command{
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.SetEvidenceCollector(orchestrator.NewPolicyEvidenceCollector(runner))
 		orch.OnTurn(outMgr.TurnProgress)
+		orch.OnActivity(outMgr.Activity)
 
 		outMgr.DeliberationHeader(state)
 
@@ -434,6 +437,7 @@ var resumeCmd = &cobra.Command{
 				return err
 			}
 			levelCaps = types.CapsForLevel(level)
+			outMgr := output.NewOutputManager(resumeVerbose)
 
 			if resumeDryRun {
 				cfg, err = autogen.GenerateDryRunConfig(resumeTopic, level, resumeModel)
@@ -442,13 +446,14 @@ var resumeCmd = &cobra.Command{
 				}
 			} else {
 				runner := agent.NewAgentRunner(false)
+				stop := outMgr.Activity("Config generation")
 				cfg, err = autogen.GenerateConfig(resumeTopic, level, resumeModel, runner)
+				stop()
 				if err != nil {
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			}
 
-			outMgr := output.NewOutputManager(resumeVerbose)
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
 			if !resumeYes {
@@ -520,6 +525,7 @@ var resumeCmd = &cobra.Command{
 		runner := agent.NewAgentRunner(resumeDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.OnTurn(outMgr.TurnProgress)
+		orch.OnActivity(outMgr.Activity)
 
 		outMgr.DeliberationHeader(state)
 

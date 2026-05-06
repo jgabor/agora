@@ -1,4 +1,142 @@
 cycles:
+- number: 40
+  timestamp: "2026-05-06 22:21"
+  type: fix
+  phase: verify
+  what: >-
+    Cleaned up the completed non-avatar theater plan artifacts by correcting the progress timestamp contradiction flagged by the
+    post-plan health check and recording a clean follow-up health audit.
+  commit: none
+  inspiration: >-
+    Orkestrera post-plan health flagged that cycle 39 was listed before cycle 38 while carrying an earlier timestamp, weakening
+    trust in the progress artifact despite the implementation and verification passing.
+  discovered: >-
+    Cycle numbering was correct, but cycle 39's timestamp was stale relative to cycle 38. Correcting the timestamp preserves the
+    actual task order without rewriting completed task evidence.
+  verified: >-
+    Updated cycle 39 to timestamp after cycle 38 and added health audit 3 as a clean artifact-hygiene follow-up; uv run
+    "$HOME/.agents/agentera/scripts/agentera" plan reports the plan completed with 5/5 tasks complete, and uv run
+    "$HOME/.agents/agentera/scripts/agentera" health reports Audit 3 clean after artifact hygiene fix.
+  next: >-
+    The non-avatar agent identity and theater dynamics plan is cleanly complete; no commit or push was performed.
+  context:
+    intent: cleanup only after orchestration completed but post-plan health flagged progress timestamp ordering
+    constraints: no source behavior changes, no commit, no push, preserve completed task evidence
+    scope: .agentera/progress.yaml, .agentera/health.yaml
+- number: 39
+  timestamp: "2026-05-06 22:20"
+  type: verification
+  phase: verify
+  what: >-
+    Completed Task 5 verification and documentation checkpoint for the non-avatar agent identity and theater dynamics plan by confirming semantic renderer coverage, documenting avatar exclusions and identity/activity/progress rules, inspecting representative rich and plain CLI runs, and passing normal verification.
+  commit: none
+  inspiration: >-
+    Agentera plan Task 5 acceptance requires identity, activity, progress, and fallback behavior to be covered by semantic assertions; representative rich and plain CLI output to show the theater improvements do not require avatars; maintainers to have clear avatar exclusions and non-avatar identity/progress/activity rules; and the project test suite to pass before closing the plan.
+  discovered: >-
+    Existing output tests already cover the required semantic behavior across identity metadata, cast/header/turn consistency, unknown-agent fallback, activity rich/plain/redirected cleanup, bounded and unbounded progress metrics, final stats consistency, and no-color/dumb fallback. The remaining checkpoint gap was making the conventions document explicit about prohibited avatar dependencies and future theater rules.
+  verified: >-
+    Acceptance 1: go test -count=1 ./internal/output and go test -count=1 ./... passed with semantic assertions for identity, activity, progress, and fallback behavior, including exact AGENT badges, optional identity labels, unknown [A?] fallback, PHASE activity cleanup, bounded TURN/COST/TIME/CONSENSUS progress, unbounded TOKENS plain values, final stats consistency, NO_COLOR, TERM=dumb, and redirected stdout. Acceptance 2: representative rich and plain smokes passed and were inspected: script -q -e -c 'TERM=xterm-256color COLUMNS=100 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "task 5 rich theater smoke" --dry-run --yes --max-turns 2 --time 10 --budget 1 --verbose --synthesize --output /tmp/opencode/agora-task5-rich.jsonl' /tmp/opencode/agora-task5-rich.typescript; NO_COLOR=1 TERM=dumb COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "task 5 plain theater smoke" --dry-run --yes --max-turns 2 --time 10 --budget 1 --verbose --synthesize --output /tmp/opencode/agora-task5-plain.jsonl > /tmp/opencode/agora-task5-plain.out. Both outputs showed AGENT [A1 optimist]/[A2 skeptic], PHASE Generation/Synthesis, TURN progress, COST/TIME progress, final stats, synthesis, success/status output, and no avatar, portrait, or face dependency. Acceptance 3: internal/output/CONVENTIONS.md now explicitly documents avatar exclusions, non-avatar identity rules, activity/status fallbacks, bounded progress bars, unbounded metric labels, and final-stats consistency. Acceptance 4: go test -count=1 ./..., go build ./..., and go vet ./... passed.
+  next: >-
+    The Agent identity and theater dynamics without avatars plan is complete; no commit or push was performed.
+  context:
+    intent: satisfy Task 5 only as a checkpoint without adding feature behavior beyond documentation/status updates
+    constraints: no avatars, generated faces, portrait glyphs, external assets, avatar-specific config, transcript schema changes, deliberation behavior changes, exit semantic changes, model output field changes, commit, or push
+    scope: internal/output/CONVENTIONS.md, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 38
+  timestamp: "2026-05-06 22:18"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 4 metric progress presentation by rendering bounded live and final metrics as labeled value/bound percentages with ASCII bars, while leaving unbounded metrics such as tokens as plain labeled values.
+  commit: none
+  inspiration: >-
+    Agentera plan Task 4 acceptance requires bounded turn, time, budget, token, or consensus data to show both current value and progress toward the bound without misleading bars for unbounded metrics, and requires plain/no-color/final-stat consistency.
+  discovered: >-
+    The minimal implementation point was internal/output: TurnProgress already receives the turn bound, DeliberationHeader can retain runtime bounds for time, budget, and consensus display, and FinalStats has the state needed to render the same bounded metric values at completion. Transcript stats from raw records have no reliable bounds, so they continue to show labeled values without progress bars.
+  verified: >-
+    Acceptance 1: go test ./internal/output verifies live turn progress renders TURN 2/5 (40%) [####------], budget COST $0.250000/$1.00 (25%) [###-------], TIME current/60s with percent/bar, and CONSENSUS 1/2 (50%) [#####-----]. Acceptance 2: the same test verifies unbounded TOKENS 42 renders without a slash-bound or bar, and the CLI smoke verifies final Total tokens is a plain value. Acceptance 3: NO_COLOR=1 TERM=dumb unit tests and smoke output verify labels, numbers, percentages, and ASCII bars render without ANSI or Unicode box drawing. Acceptance 4: go test ./internal/output verifies final stats use the same bounded format for turns, duration, total cost, and consensus streak as live progress. Broader verification passed with go test ./..., go build ./..., and go vet ./.... Representative smoke passed: NO_COLOR=1 TERM=dumb COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "metric progress smoke" --dry-run --yes --max-turns 2 --time 10 --budget 1 --verbose --synthesize --output /tmp/opencode/agora-task4-metric-smoke.jsonl > /tmp/opencode/agora-task4-metric-smoke.out; the output showed TURN 1/2 and TURN 2/2 bounded progress with COST and TIME progress, final Turns completed/Duration/Total cost progress, Total tokens as a plain value, and no ANSI or Unicode box drawing.
+  next: >-
+    Task 5 remains pending and was not implemented; no commit or push was performed.
+  context:
+    intent: satisfy Task 4 only without docs checkpoint work, avatars, unrelated activity or identity changes, transcript schema changes, deliberation behavior changes, exit semantic changes, or model output field changes
+    constraints: bounded metrics show value, bound, percentage, and ASCII progress; unbounded metrics stay labeled values; plain/no-color/CI/dumb/narrow output remains readable
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 37
+  timestamp: "2026-05-06 21:56"
+  type: fix
+  phase: verify
+  what: >-
+    Retried Task 3 after Inspektera found redirected stdout under rich TERM emitted ANSI-styled activity status labels. The Activity non-rich fallback now prints a plain bracketed status label directly, while rich TTY spinner behavior and other status rendering remain unchanged.
+  commit: none
+  inspiration: >-
+    Task 3 acceptance requires readable activity updates without spinner or control artifacts for plain, CI, dumb-terminal, and redirected output; the evaluation failure specifically showed redirected stdout with TERM=xterm-256color rendering an ANSI-coded i INFO PHASE line.
+  discovered: >-
+    Activity already selected fallback mode when stdout was not a terminal through richOutput(), but the fallback delegated to statusLabel(), which only checks plainOutput() and can still style labels when TERM is rich. The narrow fix is to make the Activity fallback emit [INFO] directly instead of changing global output styling semantics.
+  verified: >-
+    Redirected stdout under rich TERM is explicitly covered by go test ./internal/output -run 'TestActivity(RedirectedStdoutRichTermEmitsPlainStatus|PlainModeEmitsReadableStatusWithoutSpinnerArtifacts|RichModeCleansLineBeforeFinalOutput|StopsBeforeVerboseTurnContent)', which passed and asserts TERM=xterm-256color with stdoutIsTerminal=false emits [INFO] PHASE Generation: optimist with no ANSI, carriage return, or spinner frames. Representative redirected stdout rich TERM smoke also passed for activity status: TERM=xterm-256color COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "activity redirected rich term retry smoke" --dry-run --yes --max-turns 2 --time 10 --verbose --synthesize --output /tmp/opencode/agora-task3-retry-richterm-redirected.jsonl > /tmp/opencode/agora-task3-retry-richterm-redirected.out; rg -n '^\[INFO\] PHASE ' /tmp/opencode/agora-task3-retry-richterm-redirected.out showed plain Generation and Synthesis phase lines; rg -n $'PHASE.*(\x1b\\[|\r|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏)|(\x1b\\[|\r|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏).*PHASE' /tmp/opencode/agora-task3-retry-richterm-redirected.out returned no matches; rg -n 'i INFO.*PHASE|PHASE.*i INFO' /tmp/opencode/agora-task3-retry-richterm-redirected.out returned no matches. Preserved behavior was verified with go test ./internal/output, go test ./internal/orchestrator -run TestRunStopsActivityBeforeTurnCallback, go test ./..., go build ./..., and go vet ./....
+  next: >-
+    Task 4 remains pending and was not implemented; no commit or push was performed.
+  context:
+    intent: satisfy only the Task 3 retry failure for redirected stdout activity fallback under rich TERM
+    constraints: preserve rich TTY spinner label, plain/CI/dumb behavior, cleanup before final output, verbose content separation, command behavior, transcript schema, deliberation behavior, exit semantics, and model output fields
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/progress.yaml
+- number: 36
+  timestamp: "2026-05-06 21:52"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 3 long-running activity feedback by adding adaptive phase activity lifecycle output for config generation, research, agent generation, and synthesis while keeping transcript data, model fields, deliberation behavior, and exit semantics unchanged.
+  commit: none
+  inspiration: >-
+    Agentera plan Task 3 acceptance criteria and internal/output/CONVENTIONS.md requirements that spinners are adaptive terminal affordances, labels carry meaning, and plain/no-color/CI/dumb/non-TTY output stays readable without control artifacts.
+  discovered: >-
+    The safe insertion points were around existing runner/evidence calls: CLI auto config generation, orchestrator evidence collection, per-agent runner generation, and final synthesis. Stopping the activity callback before turn rendering keeps verbose agent content and structured metadata readable without changing transcript records or model envelopes.
+  verified: >-
+    Acceptance 1: go test ./internal/output verifies rich-capable terminal activity renders a live spinner line with PHASE Generation: strategist. Acceptance 2: go test ./internal/output and NO_COLOR=1 TERM=dumb redirected CLI smoke verify plain activity emits readable [INFO] PHASE Research/Generation/Synthesis text and no carriage returns, ANSI escapes, or spinner frames. Acceptance 3: go test ./internal/output verifies rich activity cleanup writes a clear-line sequence before final TURN output; the redirected smoke showed final stats, synthesis, success, transcript, and halt output in a clean readable state. Acceptance 4: go test ./internal/output verifies verbose turn metadata and AGENT CONTENT render after activity cleanup, and go test ./internal/orchestrator verifies activity stops before the turn callback; broader verification passed with go test ./..., go build ./..., and go vet ./.... Representative smoke command passed: NO_COLOR=1 TERM=dumb COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "activity feedback smoke" --dry-run --yes --max-turns 2 --time 10 --verbose --synthesize --output /tmp/opencode/agora-task3-activity-smoke.jsonl > /tmp/opencode/agora-task3-activity-smoke.out, followed by ! rg -n $'\x1b\\[|\r|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏' /tmp/opencode/agora-task3-activity-smoke.out.
+  next: >-
+    Task 4 can add bounded metric progress presentation separately; no commit or push was performed.
+  context:
+    intent: satisfy Task 3 only without metric progress bars, docs checkpoint work, avatars, generated faces, portrait glyphs, unrelated identity changes, transcript schema changes, deliberation behavior changes, exit semantic changes, or model output field changes
+    constraints: rich spinner only for capable terminals; plain, CI, dumb-terminal, no-color, and redirected output use readable text updates only; verbose agent content remains separated from activity status
+    scope: internal/output/output.go, internal/output/output_test.go, internal/orchestrator/orchestrator.go, internal/orchestrator/orchestrator_test.go, cmd/agora/main.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 35
+  timestamp: "2026-05-06 21:48"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 2 cast and turn identity surfaces by sharing cast-line rendering between config preview and deliberation header, labeling prompt context, and verifying turn progress reuses the same run-local participant identity while preserving fallback badges for unknown or resumed agents.
+  commit: none
+  inspiration: >-
+    Agentera plan Task 2 acceptance criteria and the existing output identity convention that stable config-order badges plus exact agent_id remain the canonical run-local identity across preview, header, turns, and fallback transcript records.
+  discovered: >-
+    Task 1 had already added the reusable cast registration maps used by turn progress; the remaining Task 2 gap was explicit consistency and coverage for preview/header cast context plus one end-to-end semantic assertion spanning preview, header, turn progress, ordering, and unknown-agent fallback.
+  verified: >-
+    Acceptance 1: go test ./internal/output verifies config preview renders each participant with stable badge, exact agent_id, MODEL opencode/test, identity labels NAME/ROLE/AFFILIATION when configured, and CONTEXT from the first system prompt line. Acceptance 2: the same test verifies deliberation header renders the Cast section before turns with [A1 strategist] before [A2 skeptic] and the same run-local identity/context labels. Acceptance 3: the same test verifies turn progress for strategist renders AGENT [A1 strategist] NAME Mina ROLE Planner AFFILIATION Core Team and MODEL opencode/test rather than an unknown badge. Acceptance 4: the same test verifies a legacy-agent turn renders AGENT [A? legacy-agent] and is not reassigned or dropped. Broader verification passed with go test ./..., go build ./..., and go vet ./....
+  next: >-
+    Task 3 can build on the completed cast identity surfaces; no commit or push was performed.
+  context:
+    intent: satisfy Task 2 only without spinners, progress bars, metric bars, avatars, generated faces, portrait glyphs, animation, docs checkpoint work, command behavior changes, transcript schema changes, deliberation behavior changes, exit semantic changes, or model output field changes
+    constraints: preserve exact visible agent_id, stable run-local badges, fallback visibility for unknown/resumed agents, minimal Go renderer/test changes, no commit, no push
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 34
+  timestamp: "2026-05-06 15:30"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 1 non-avatar identity contract by adding optional agent identity metadata fields and rendering them only as labeled enrichment after the canonical stable badge and exact agent_id.
+  commit: none
+  inspiration: >-
+    Agentera plan Task 1 acceptance criteria and internal/output/CONVENTIONS.md requirement that exact agent_id visibility, stable config-order badges, decorative color, and plain/no-color fallbacks remain the production identity contract.
+  discovered: >-
+    AgentConfig was the right compatibility boundary: transcripts only store TurnRecord agent_id and model data, while config-driven render surfaces can carry optional identity metadata without requiring old configs or transcript records to gain new fields.
+  verified: >-
+    Acceptance 1: go test ./internal/output verifies agents without identity metadata still render AGENT [A1 skeptic] and configured turn badges such as AGENT [A2 skeptic]. Acceptance 2: go test ./internal/output verifies identity.display_name, identity.role, and identity.affiliation enrich preview output as AGENT [A1 strategist] NAME Mina ROLE Planner AFFILIATION Core Team while preserving strategist in the badge, and turn progress renders registered identity as AGENT [A1 strategist] NAME Mina ROLE Planner. Acceptance 3: go test ./internal/config verifies old-style configs still load and a new optional identity block loads without changing transcript types; go test ./internal/types passed existing transcript/record serialization coverage. Acceptance 4: NO_COLOR=1 TERM=dumb output tests verify identity labels render as plain text without ANSI or Unicode box dependence. Broader verification passed with go test ./..., go build ./..., and go vet ./....
+  next: >-
+    Task 2 can build on the identity contract; no commit or push was performed.
+  context:
+    intent: satisfy Task 1 only without avatars, theater dynamics, spinner/progress behavior, transcript schema changes, or deliberation behavior changes
+    constraints: optional config-only metadata, preserve exact visible agent_id, preserve stable badges, plain labels carry meaning, no commit, no push
+    scope: internal/types/types.go, internal/config/config_test.go, internal/output/output.go, internal/output/output_test.go, internal/output/CONVENTIONS.md, .agentera/plan.yaml, .agentera/progress.yaml
 - number: 33
   timestamp: "2026-05-06 14:55"
   type: fix

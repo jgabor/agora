@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -14,6 +15,11 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/jgabor/agora/internal/types"
 )
+
+var stdoutIsTerminal = func() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
 
 const (
 	ansiReset    = "\033[0m"
@@ -64,8 +70,12 @@ type StatsDict = map[string]any
 
 // OutputManager manages terminal output for deliberation progress.
 type OutputManager struct {
-	verbose     bool
-	agentBadges map[string]string
+	verbose         bool
+	agentBadges     map[string]string
+	agentIdentities map[string]*types.AgentIdentity
+	state           *types.DeliberationState
+	totalCost       float64
+	consensusStreak int
 }
 
 // NewOutputManager creates a new OutputManager.
@@ -110,18 +120,7 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 
 	agentLines := make([]string, 0, len(cfg.Agents))
 	for i, a := range cfg.Agents {
-		firstLine := a.SystemPrompt
-		if idx := strings.Index(a.SystemPrompt, "\n"); idx >= 0 {
-			firstLine = a.SystemPrompt[:idx]
-		}
-		line := fmt.Sprintf("AGENT %s", agentBadge(i, a.ID))
-		if a.Model != "" {
-			line += fmt.Sprintf(" MODEL %s", a.Model)
-		}
-		if firstLine != "" {
-			line += fmt.Sprintf(" - %s", firstLine)
-		}
-		agentLines = append(agentLines, line)
+		agentLines = append(agentLines, agentCastLine(i, a, true))
 	}
 	writeSection("Agents", agentLines)
 
@@ -130,6 +129,9 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 
 // DeliberationHeader prints the deliberation start banner.
 func (o *OutputManager) DeliberationHeader(state *types.DeliberationState) {
+	o.state = state
+	o.totalCost = 0
+	o.consensusStreak = 0
 	o.registerCast(state.Config)
 	fmt.Println()
 	fmt.Println(drawDeliberationHeaderAtWidth(state, outputWidth()))
@@ -146,11 +148,7 @@ func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) st
 
 	cast := make([]string, 0, len(state.Config.Agents))
 	for i, a := range state.Config.Agents {
-		line := fmt.Sprintf("AGENT %s", agentBadge(i, a.ID))
-		if a.Model != "" {
-			line += fmt.Sprintf(" MODEL %s", a.Model)
-		}
-		cast = append(cast, line)
+		cast = append(cast, agentCastLine(i, a, true))
 	}
 	writeSection("Cast", cast)
 
@@ -239,13 +237,53 @@ func unknownAgentBadge(id string) string {
 	return fmt.Sprintf("[A? %s]", id)
 }
 
+func agentDisplay(badge string, identity *types.AgentIdentity) string {
+	parts := []string{badge}
+	if identity == nil {
+		return badge
+	}
+	if identity.DisplayName != "" {
+		parts = append(parts, labelValue("NAME", identity.DisplayName))
+	}
+	if identity.Role != "" {
+		parts = append(parts, labelValue("ROLE", identity.Role))
+	}
+	if identity.Affiliation != "" {
+		parts = append(parts, labelValue("AFFILIATION", identity.Affiliation))
+	}
+	return strings.Join(parts, " ")
+}
+
+func agentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
+	line := fmt.Sprintf("AGENT %s", agentDisplay(agentBadge(index, agent.ID), agent.Identity))
+	if agent.Model != "" {
+		line += fmt.Sprintf(" MODEL %s", agent.Model)
+	}
+	if includeContext {
+		context := firstPromptLine(agent.SystemPrompt)
+		if context != "" {
+			line += fmt.Sprintf(" CONTEXT %s", context)
+		}
+	}
+	return line
+}
+
+func firstPromptLine(prompt string) string {
+	if idx := strings.Index(prompt, "\n"); idx >= 0 {
+		prompt = prompt[:idx]
+	}
+	return strings.TrimSpace(prompt)
+}
+
 func (o *OutputManager) registerCast(cfg *types.DeliberationConfig) {
 	if cfg == nil || len(cfg.Agents) == 0 {
 		return
 	}
 	o.agentBadges = make(map[string]string, len(cfg.Agents))
+	o.agentIdentities = make(map[string]*types.AgentIdentity, len(cfg.Agents))
 	for i, agent := range cfg.Agents {
 		o.agentBadges[agent.ID] = agentBadge(i, agent.ID)
+		o.agentIdentities[agent.ID] = agent.Identity
 	}
 }
 
@@ -258,9 +296,62 @@ func (o *OutputManager) agentBadgeFor(id string) string {
 	return unknownAgentBadge(id)
 }
 
+func (o *OutputManager) agentIdentityFor(id string) *types.AgentIdentity {
+	if o != nil && o.agentIdentities != nil {
+		return o.agentIdentities[id]
+	}
+	return nil
+}
+
 func plainOutput() bool {
 	term, hasTerm := os.LookupEnv("TERM")
 	return os.Getenv("NO_COLOR") != "" || os.Getenv("CI") != "" || !hasTerm || term == "" || term == "dumb"
+}
+
+func richOutput() bool {
+	return !plainOutput() && stdoutIsTerminal()
+}
+
+// Activity starts feedback for a long-running phase and returns a cleanup function.
+func (o *OutputManager) Activity(phase string) func() {
+	phase = strings.TrimSpace(phase)
+	if phase == "" {
+		phase = "Working"
+	}
+	label := fmt.Sprintf("PHASE %s", phase)
+	if !richOutput() {
+		fmt.Printf("[INFO] %s\n", label)
+		return func() {}
+	}
+
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	var once sync.Once
+	go func() {
+		defer close(stopped)
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		style := statusStyle("6")
+		ticker := time.NewTicker(120 * time.Millisecond)
+		defer ticker.Stop()
+		idx := 0
+		for {
+			fmt.Printf("\r%s %s", style.Render(frames[idx%len(frames)]), label)
+			idx++
+			select {
+			case <-done:
+				fmt.Print("\r\033[2K")
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	return func() {
+		once.Do(func() {
+			close(done)
+			<-stopped
+		})
+	}
 }
 
 func statusStyle(color string) lipgloss.Style {
@@ -284,6 +375,47 @@ func labelValue(label, value string) string {
 	return fmt.Sprintf("%s %s", label, value)
 }
 
+func boundedMetricValue(value, bound float64, valueText, boundText string) string {
+	if bound <= 0 {
+		return valueText
+	}
+	percent := 0
+	if value > 0 {
+		percent = int((value/bound)*100 + 0.5)
+	}
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return fmt.Sprintf("%s/%s (%d%%) %s", valueText, boundText, percent, metricBar(percent))
+}
+
+func metricBar(percent int) string {
+	const width = 10
+	filled := (percent*width + 50) / 100
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > width {
+		filled = width
+	}
+	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + "]"
+}
+
+func boundedIntMetricValue(value, bound int) string {
+	return boundedMetricValue(float64(value), float64(bound), fmt.Sprintf("%d", value), fmt.Sprintf("%d", bound))
+}
+
+func boundedSecondsMetricValue(value float64, bound int) string {
+	return boundedMetricValue(value, float64(bound), fmt.Sprintf("%.1fs", value), fmt.Sprintf("%ds", bound))
+}
+
+func boundedCostMetricValue(value, bound float64) string {
+	return boundedMetricValue(value, bound, fmt.Sprintf("$%.6f", value), fmt.Sprintf("$%.2f", bound))
+}
+
 // TurnProgress prints progress for a single turn.
 func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns int) {
 	elapsed := fmt.Sprintf("%.1fs", record.Elapsed)
@@ -291,12 +423,23 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 	if record.Tokens.Total != nil {
 		tokensTotal = fmt.Sprintf("%d", *record.Tokens.Total)
 	}
-	costStr := "?"
 	if record.Cost != nil {
-		costStr = fmt.Sprintf("$%.6f", *record.Cost)
+		o.totalCost += *record.Cost
+	}
+	costValue := "?"
+	if record.Cost != nil {
+		costValue = fmt.Sprintf("$%.6f", *record.Cost)
+	}
+	if o.state != nil && o.state.Budget != nil {
+		costValue = boundedCostMetricValue(o.totalCost, *o.state.Budget)
+	}
+	if record.Consensus {
+		o.consensusStreak++
+	} else {
+		o.consensusStreak = 0
 	}
 
-	agentDisplay := labelValue("AGENT", o.agentBadgeFor(record.AgentID))
+	agentDisplay := labelValue("AGENT", agentDisplay(o.agentBadgeFor(record.AgentID), o.agentIdentityFor(record.AgentID)))
 	if !plainOutput() {
 		agentDisplay = lipgloss.NewStyle().Foreground(lipgloss.Color(agentAccent(record.AgentID))).Bold(true).Render(agentDisplay)
 	}
@@ -309,10 +452,21 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 		modelDisplay,
 		labelValue("ELAPSED", elapsed),
 		labelValue("TOKENS", tokensTotal),
-		labelValue("COST", costStr),
+		labelValue("COST", costValue),
 	}, " | ")
+	if o.state != nil && o.state.StartTime > 0 && o.state.TimeLimit > 0 {
+		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
+		metadata += " | " + labelValue("TIME", boundedSecondsMetricValue(elapsedTotal, o.state.TimeLimit))
+	}
+	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
+		metadata += " | " + labelValue("CONSENSUS", boundedIntMetricValue(o.consensusStreak, o.state.Config.ConsensusThreshold))
+	}
 
-	fmt.Printf("TURN %d/%d | %s\n", turn+1, maxTurns, metadata)
+	turnValue := fmt.Sprintf("%d", turn+1)
+	if maxTurns > 0 {
+		turnValue = boundedIntMetricValue(turn+1, maxTurns)
+	}
+	fmt.Printf("TURN %s | %s\n", turnValue, metadata)
 
 	if record.Consensus {
 		label := "[CONSENSUS]"
@@ -382,18 +536,57 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 	}
 
 	fmt.Println()
-	fmt.Println(drawStructuredTable("Deliberation Summary", []string{"Metric", "Value"}, [][]string{
-		{"Turns completed", fmt.Sprintf("%d", actualTurns)},
-		{"Duration", fmt.Sprintf("%.1fs", duration)},
+	rows := [][]string{
+		{"Turns completed", finalTurnsValue(actualTurns, state.MaxTurns)},
+		{"Duration", finalDurationValue(duration, state.TimeLimit)},
 		{"Total tokens", fmt.Sprintf("%d", stats.TotalTokens)},
-		{"Total cost", fmt.Sprintf("$%.6f", stats.TotalCost)},
-		{"Halted by", state.HaltedBy},
-	}, []string{"", ""}, outputWidth(), "6"))
+		{"Total cost", finalCostValue(stats.TotalCost, state.Budget)},
+	}
+	if state.Config != nil && state.Config.ConsensusThreshold > 0 {
+		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(finalConsensusStreak(records), state.Config.ConsensusThreshold)})
+	}
+	rows = append(rows, []string{"Halted by", state.HaltedBy})
+	fmt.Println(drawStructuredTable("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 
 	if len(stats.PerAgent) > 0 {
 		fmt.Println()
 		fmt.Println(drawStructuredTable("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, finalAgentRows(stats.PerAgent, state.Config), []string{"", "right", "right", "right"}, outputWidth(), "4"))
 	}
+}
+
+func finalTurnsValue(value int, bound int) string {
+	if bound <= 0 {
+		return fmt.Sprintf("%d", value)
+	}
+	return boundedIntMetricValue(value, bound)
+}
+
+func finalDurationValue(value float64, bound int) string {
+	if bound <= 0 {
+		return fmt.Sprintf("%.1fs", value)
+	}
+	return boundedSecondsMetricValue(value, bound)
+}
+
+func finalCostValue(value float64, bound *float64) string {
+	if bound == nil {
+		return fmt.Sprintf("$%.6f", value)
+	}
+	return boundedCostMetricValue(value, *bound)
+}
+
+func finalConsensusStreak(records []types.TurnRecord) int {
+	streak := 0
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Consensus {
+			streak++
+			continue
+		}
+		if records[i].AgentID != "orchestrator" {
+			break
+		}
+	}
+	return streak
 }
 
 // PrintStats displays standalone statistics without requiring a live deliberation state.
@@ -668,7 +861,7 @@ func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.Deliber
 	if cfg != nil {
 		for i, agent := range cfg.Agents {
 			if s, ok := perAgent[agent.ID]; ok {
-				rows = append(rows, agentStatsRow(agentBadge(i, agent.ID), s))
+				rows = append(rows, agentStatsRow(agentDisplay(agentBadge(i, agent.ID), agent.Identity), s))
 				seen[agent.ID] = true
 			}
 		}

@@ -3,120 +3,100 @@ header:
   created: '2026-05-06'
   status: completed
   reviewed: '2026-05-06'
-  critic_issues: 12 found, 12 addressed, 0 dismissed
-  title: Charm v2 agent theater output system
+  critic_issues: 4 found, 4 addressed, 0 dismissed
+  title: Agent identity and theater dynamics without avatars
 what: >-
-  Redesign Agora's terminal output around a coherent agent-theater identity while preserving command semantics, transcript data,
-  and plain-terminal readability. The plan covers output inventory, Charm v2 dependency viability, shared visual language, the
-  major CLI output surfaces, prose rendering boundaries, test migration, and verification.
+  Add a production agent-identity and theater-dynamics layer that makes Agora runs easier to scan and more memorable without
+  rendering agent avatars. The work includes optional non-avatar identity metadata, stronger cast identity in preview/header/turns,
+  long-running activity indicators, progress-style metric presentation, and consistent plain-terminal fallbacks.
 why: >-
-  The current `internal/output` package hand-rolls ANSI colors, panels, tables, wrapping, width accounting, glyphs, and formatting.
-  Decision 7 makes visual polish the primary win: Agora's cast of debating agents should feel intentional and memorable while
-  staying clear, terminal-native, and maintainable.
+  Avatar work is still experimental and should not block the rest of the CLI personality system. Users can get meaningful gains
+  from named cast roles, stable badges, readable agent metadata, dynamic wait/progress feedback, and metric bars before any portrait
+  rendering is ready. This preserves Decision 7's Charm v2 theater direction while avoiding the visual and fallback risk of avatars.
 constraints: >-
-  Stable behavior means command flags, exit behavior, transcript schema, semantic data ordering, and error semantics do not change.
-  Visual styling, spacing, borders, wrapping, table formatting, and hierarchy may change. Lipgloss owns structured terminal UI.
-  Glamour is limited to paragraph-heavy Markdown-like prose. Color cannot be the only carrier of meaning. Interactive TUI work,
-  transcript format changes, deliberation behavior changes, and unrelated TODOs are out of scope.
+  Avatars, generated faces, portrait glyphs, external image assets, and avatar-specific config are out of scope. Non-avatar identity
+  fields are allowed when they preserve exact visible `agent_id` and degrade cleanly. Preserve command behavior, transcript replay
+  compatibility, deliberation behavior, exit semantics, and model output fields. Color, motion, bars, and symbols are decorative;
+  labels and text must carry meaning in `NO_COLOR`, CI, dumb-terminal, and narrow-width output.
 scope:
   included:
-  - output entry point inventory
-  - Charm v2 dependency viability and terminal capability behavior
-  - shared agent-theater visual language and fallback rules
-  - config preview and deliberation header
-  - turn progress, verbose content, simple status messages, and delimiters
-  - final stats, transcript stats, and synthesis output
-  - output test migration and representative command verification
+    - optional non-avatar agent identity metadata for display and cast readability
+    - cast preview and deliberation header identity treatment
+    - turn progress identity treatment and long-running activity feedback
+    - progress-style presentation for bounded metrics such as turns, time, budget, tokens, or consensus where available
+    - final stats and transcript stats identity consistency
+    - plain/no-color/narrow fallback behavior and tests
   excluded:
-  - interactive TUI
-  - transcript schema changes
-  - deliberation behavior changes
-  - changing command flags or exit semantics
-  - unrelated TODO items
+    - agent avatars or portraits
+    - generated pixel faces
+    - image assets or network-loaded identity assets
+    - interactive full-screen TUI
+    - changing deliberation topology or agent turn semantics
   deferred:
-  - user-configurable themes
-  - non-terminal report output
-  - screenshots as required tests
+    - user-selectable theme packs
+    - avatar/portrait production integration
+    - screenshot-based visual regression tests
 design: >-
-  Establish a small internal visual language for stage, cast, status, structured data, and prose. Apply it coherently across all
-  major output surfaces. Keep structured metadata rendered as structured terminal UI and reserve Markdown rendering for prose-heavy
-  content. Verification focuses on semantic content, width/fallback behavior, command compatibility, and maintainability rather
-  than brittle ANSI snapshots.
+  Treat identity as structured metadata first and ornament second. The canonical identity remains the exact `agent_id` plus stable
+  run-local badge. Optional non-avatar identity metadata may enrich display, but never replaces the canonical label. Treat spinners,
+  bars, and richer status rows as adaptive terminal affordances that appear only when they improve scanability and fall back to
+  plain labels, counts, percentages, and text.
 tasks:
-- number: 1
-  name: Output inventory and dependency checkpoint
-  depends_on: []
-  status: complete
-  acceptance:
-  - GIVEN current commands WHEN output paths are inventoried THEN every major stdout/stderr surface is classified as structured
-    metadata, prose, status, stats, or out of scope
-  - GIVEN Charm v2 modules are evaluated WHEN dependency resolution runs THEN exact modules are known and the normal Go build/test
-    workflow still works
-  - GIVEN terminal capability behavior is checked WHEN `NO_COLOR`, low-color, non-TTY, CI, or dumb-terminal conditions apply
-    THEN existing behavior is preserved or an explicit fallback decision is recorded
-- number: 2
-  name: Visual language and fallback rules
-  depends_on:
-  - Task 1
-  status: complete
-  acceptance:
-  - GIVEN agent roles appear across output surfaces WHEN rendered THEN role identity is consistent by label, ordering, and visual
-    treatment
-  - GIVEN semantic states appear WHEN color is unavailable THEN textual labels or symbols still distinguish success, error,
-    consensus, warning, cost, elapsed time, model, and agent identity
-  - GIVEN maintainers inspect output conventions WHEN adding future output THEN the Lipgloss/Glamour boundary and width/fallback
-    rules are documented internally
-- number: 3
-  name: Config preview and deliberation header
-  depends_on:
-  - Task 2
-  status: complete
-  acceptance:
-  - GIVEN auto config preview renders WHEN users inspect it THEN topology, consensus threshold, level caps, and agents are all
-    present and grouped as a coherent cast preview
-  - GIVEN deliberation starts WHEN the header renders THEN topic, cast, and run settings remain present with unchanged meaning
-  - GIVEN widths of 40, 80, and 120 columns WHEN preview/header output renders THEN critical labels remain present and output
-    does not panic or lose required fields
-- number: 4
-  name: Turn progress and status output
-  depends_on:
-  - Task 2
-  status: complete
-  acceptance:
-  - GIVEN a turn completes WHEN progress prints THEN agent identity, model, elapsed time, tokens, cost, and consensus state are
-    distinguishable without relying on color alone
-  - GIVEN verbose mode prints long agent content WHEN output renders THEN metadata remains separate from prose and body text is
-    readable
-  - GIVEN info, success, error, and delimiter messages render WHEN users scan logs THEN severity and progression remain clear
-    in color and plain modes
-- number: 5
-  name: Stats and synthesis output
-  depends_on:
-  - Task 2
-  status: complete
-  acceptance:
-  - GIVEN final run stats render WHEN deliberation completes THEN summary and per-agent tables preserve all current metrics
-  - GIVEN transcript stats render WHEN users inspect a saved transcript THEN totals, per-agent data, and consensus events remain
-    present
-  - GIVEN synthesis data renders WHEN available THEN recommendation, confidence, arguments, agreements, and tensions remain
-    faithful to model output while sharing the new visual language
-- number: 6
-  name: Test migration and verification checkpoint
-  depends_on:
-  - Task 3
-  - Task 4
-  - Task 5
-  status: complete
-  acceptance:
-  - GIVEN existing exact-output tests exist WHEN they are reviewed THEN each is preserved, normalized, or replaced with semantic
-    structure/content assertions
-  - GIVEN normal verification runs WHEN the plan completes THEN `go test ./...` passes
-  - GIVEN representative dry-run, verbose, stats, synthesis, and error/status paths are exercised WHEN inspected THEN the major
-    surfaces feel coherent and remain usable without color
+  - number: 1
+    name: Non-avatar identity contract
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN an agent has no extra identity metadata WHEN output renders THEN the exact `agent_id` and stable badge remain sufficient to identify the participant
+      - GIVEN an agent has supported non-avatar identity metadata WHEN output renders THEN the metadata enriches display without hiding or replacing `agent_id`
+      - GIVEN old configs or transcripts are used WHEN identity is resolved THEN they continue to render without requiring new fields
+      - GIVEN plain/no-color output is active WHEN identity metadata renders THEN text labels preserve meaning without color or glyph dependence
+  - number: 2
+    name: Cast and turn identity surfaces
+    depends_on:
+      - Task 1
+    status: complete
+    acceptance:
+      - GIVEN config preview renders WHEN agents are shown THEN each participant has consistent badge, `agent_id`, model, and readable role/context information
+      - GIVEN deliberation starts WHEN the header renders THEN cast ordering and run-local identity are clear before turns begin
+      - GIVEN a turn completes WHEN progress renders THEN the same participant identity appears as in the cast preview/header
+      - GIVEN an unknown or resumed agent appears WHEN output renders THEN it receives a clear fallback identity and is not dropped
+  - number: 3
+    name: Long-running activity feedback
+    depends_on:
+      - Task 2
+    status: complete
+    acceptance:
+      - GIVEN Agora is waiting on generation, research, synthesis, or another long-running phase WHEN the terminal supports rich output THEN users see a live activity indicator with a clear phase label
+      - GIVEN the same phase runs in plain, CI, dumb-terminal, or redirected output WHEN status is emitted THEN users see readable text updates without spinner artifacts
+      - GIVEN an activity indicator is interrupted by completion or error WHEN final output prints THEN the terminal is left in a clean readable state
+      - GIVEN verbose output is enabled WHEN activity feedback appears THEN it does not obscure agent content or structured metadata
+  - number: 4
+    name: Metric progress presentation
+    depends_on:
+      - Task 2
+    status: complete
+    acceptance:
+      - GIVEN bounded turn, time, budget, token, or consensus data is available WHEN progress or stats render THEN users can read both the value and its progress toward the bound
+      - GIVEN a metric has no meaningful bound WHEN output renders THEN it is shown as a labeled value rather than a misleading bar
+      - GIVEN color or Unicode is unavailable WHEN metric progress renders THEN labels, numbers, and percentages remain readable
+      - GIVEN final stats render WHEN a run completes THEN metric presentation stays consistent with live progress output
+  - number: 5
+    name: Verification and documentation checkpoint
+    depends_on:
+      - Task 1
+      - Task 2
+      - Task 3
+      - Task 4
+    status: complete
+    acceptance:
+      - GIVEN the feature is complete WHEN tests run THEN identity, activity, progress, and fallback behavior are covered by semantic assertions
+      - GIVEN representative rich and plain CLI runs are inspected WHEN output is reviewed THEN no avatar dependency is required for the theater improvements
+      - GIVEN maintainers inspect output conventions or user docs WHEN adding future theater work THEN avatar exclusions, identity rules, and progress/status rules are clear
+      - GIVEN normal verification runs WHEN the plan completes THEN the project test suite passes
 overall_acceptance:
-- GIVEN a normal Agora run WHEN users see preview, header, turns, stats, and synthesis THEN the CLI has a coherent agent-theater
-  identity without semantic behavior changes
-- GIVEN plain or low-color terminals WHEN users inspect output THEN labels and layout preserve all critical information
-- GIVEN future output changes WHEN maintainers inspect `internal/output` THEN visual decisions are centralized enough to avoid
-  scattered one-off styling
+  - GIVEN a normal Agora run WHEN users watch preview, waiting phases, turns, stats, and synthesis THEN agents feel consistently identifiable and the run feels active without avatars
+  - GIVEN old configs and transcripts WHEN rendered after the change THEN exact `agent_id` identity and existing semantics remain intact
+  - GIVEN plain, CI, dumb-terminal, narrow, or no-color output WHEN all theater surfaces render THEN labels and text preserve all critical meaning
+  - GIVEN avatar prototypes remain unmerged WHEN this plan completes THEN no production behavior depends on portrait rendering
 surprises: []

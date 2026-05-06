@@ -34,6 +34,9 @@ Be concise but thorough. Capture the essential insights from the deliberation.
 // TurnFunc is called after each agent turn completes.
 type TurnFunc func(record types.TurnRecord, turn int, maxTurns int)
 
+// ActivityFunc is called when a long-running phase starts and returns cleanup.
+type ActivityFunc func(phase string) func()
+
 // Orchestrator orchestrates multi-agent deliberation.
 type Orchestrator struct {
 	state      *types.DeliberationState
@@ -41,6 +44,7 @@ type Orchestrator struct {
 	runner     agent.Runner
 	evidence   EvidenceCollector
 	onTurn     TurnFunc
+	onActivity ActivityFunc
 
 	numAgents       int
 	consensusStreak int
@@ -72,6 +76,11 @@ func (o *Orchestrator) SetEvidenceCollector(collector EvidenceCollector) {
 // OnTurn registers a callback invoked after each agent turn.
 func (o *Orchestrator) OnTurn(fn TurnFunc) {
 	o.onTurn = fn
+}
+
+// OnActivity registers a callback invoked around long-running phases.
+func (o *Orchestrator) OnActivity(fn ActivityFunc) {
+	o.onActivity = fn
 }
 
 // Run executes the full deliberation loop.
@@ -145,7 +154,9 @@ func (o *Orchestrator) collectEvidence() bool {
 		return false
 	}
 
+	stop := o.activity("Research")
 	bundle, err := o.evidence.Collect(request)
+	stop()
 	if err != nil {
 		o.state.Running = false
 		o.state.HaltedBy = fmt.Sprintf("research_error: %v", err)
@@ -176,7 +187,20 @@ func (o *Orchestrator) Synthesize() map[string]any {
 	}
 
 	engine := NewSynthesisEngine(o.runner)
+	stop := o.activity("Synthesis")
+	defer stop()
 	return engine.Synthesize(o.transcript.Records(), o.state.Topic, o.state.Config)
+}
+
+func (o *Orchestrator) activity(phase string) func() {
+	if o.onActivity == nil {
+		return func() {}
+	}
+	stop := o.onActivity(phase)
+	if stop == nil {
+		return func() {}
+	}
+	return stop
 }
 
 func (o *Orchestrator) emitSeed() {
@@ -248,7 +272,9 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		envelope["history"] = fullHistory
 	}
 
+	stop := o.activity(fmt.Sprintf("Generation: %s", ag.ID))
 	content, metadata, err := o.runner.Run(ag, envelope)
+	stop()
 	if err != nil {
 		return types.TurnRecord{}, false
 	}

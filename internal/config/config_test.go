@@ -71,6 +71,31 @@ agents:
 	}
 }
 
+func TestLoadConfigOptionalAgentIdentity(t *testing.T) {
+	yaml := `
+agents:
+  - id: strategist
+    model: opencode/test
+    identity:
+      display_name: Mina
+      role: Planner
+      affiliation: Core Team
+`
+	path := writeTempYAML(t, yaml)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	identity := cfg.Agents[0].Identity
+	if identity == nil {
+		t.Fatal("identity: got nil")
+	}
+	if identity.DisplayName != "Mina" || identity.Role != "Planner" || identity.Affiliation != "Core Team" {
+		t.Fatalf("identity: got %#v", identity)
+	}
+}
+
 func TestLoadConfigFillsMissingAgentModelFromSettings(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)

@@ -139,6 +139,34 @@ func TestRunAttemptsResearchBeforeDeliberation(t *testing.T) {
 	}
 }
 
+func TestRunStopsActivityBeforeTurnCallback(t *testing.T) {
+	order := []string{}
+	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(1)})
+	state.MaxTurns = 1
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+	runner := &mockRunner{
+		content: "agent response",
+		onRun: func() {
+			order = append(order, "runner")
+		},
+	}
+	o := NewOrchestrator(state, tm, runner)
+	o.OnActivity(func(phase string) func() {
+		order = append(order, "start "+phase)
+		return func() { order = append(order, "stop "+phase) }
+	})
+	o.OnTurn(func(record types.TurnRecord, turn int, maxTurns int) {
+		order = append(order, "turn")
+	})
+
+	o.Run()
+
+	want := []string{"start Generation: agent-0", "runner", "stop Generation: agent-0", "turn"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("activity order: got %#v, want %#v", order, want)
+	}
+}
+
 func TestRunHaltsWhenResearchProducesNoReferences(t *testing.T) {
 	turnCalled := false
 	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(1)})
@@ -1006,6 +1034,11 @@ func TestOrchestratorSynthesize(t *testing.T) {
 			content: "```json\n{\"key_arguments\":[\"arg1\"],\"points_of_agreement\":[],\"unresolved_tensions\":[],\"recommended_decision\":\"proceed\",\"confidence\":\"medium\"}\n```",
 		}
 		o := NewOrchestrator(state, tm, mock)
+		order := []string{}
+		o.OnActivity(func(phase string) func() {
+			order = append(order, "start "+phase)
+			return func() { order = append(order, "stop "+phase) }
+		})
 		result := o.Synthesize()
 
 		if result == nil {
@@ -1013,6 +1046,9 @@ func TestOrchestratorSynthesize(t *testing.T) {
 		}
 		if result["confidence"] != "medium" {
 			t.Errorf("expected confidence=medium, got %v", result["confidence"])
+		}
+		if !reflect.DeepEqual(order, []string{"start Synthesis", "stop Synthesis"}) {
+			t.Fatalf("synthesis activity order: got %#v", order)
 		}
 	})
 }

@@ -2,10 +2,12 @@ package output
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jgabor/agora/internal/types"
@@ -107,6 +109,34 @@ func TestConfigPreviewPrintsGeneratedConfigPanel(t *testing.T) {
 	}
 }
 
+func TestConfigPreviewRendersOptionalIdentityWithoutReplacingAgentID(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents: []types.AgentConfig{
+			{
+				ID:    "strategist",
+				Model: "opencode/test",
+				Identity: &types.AgentIdentity{
+					DisplayName: "Mina",
+					Role:        "Planner",
+					Affiliation: "Core Team",
+				},
+			},
+		},
+	}
+
+	got := captureOutput(t, func() {
+		NewOutputManager(false).ConfigPreview(cfg, types.AutoQuick, types.LevelCaps{})
+	})
+
+	assertContains(t, got, "AGENT [A1 strategist] NAME Mina ROLE Planner AFFILIATION Core Team")
+	assertContains(t, got, "MODEL opencode/test")
+	assertNoANSI(t, got)
+	assertNoUnicodeBox(t, got)
+}
+
 func TestDeliberationHeaderPlainModeHasNoAnsi(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
@@ -163,7 +193,7 @@ func TestTurnProgressUsesCastBadgeForConfiguredAgent(t *testing.T) {
 		manager.TurnProgress(record, 1, 5)
 	})
 
-	assertContains(t, got, "TURN 2/5")
+	assertContains(t, got, "TURN 2/5 (40%) [####------]")
 	assertContains(t, got, "AGENT [A2 skeptic]")
 	assertNotContains(t, got, "[A? skeptic]")
 	assertContains(t, got, "MODEL opencode/test")
@@ -171,6 +201,65 @@ func TestTurnProgressUsesCastBadgeForConfiguredAgent(t *testing.T) {
 	assertContains(t, got, "TOKENS 42")
 	assertContains(t, got, "COST $0.012345")
 	assertContains(t, got, "[CONSENSUS] Ship the small fix.")
+}
+
+func TestTurnProgressShowsBoundedMetricsWithoutMisleadingUnboundedBars(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	tokens := 42
+	cost := 0.25
+	budget := 1.0
+	record := types.TurnRecord{
+		AgentID:   "skeptic",
+		Elapsed:   3.4,
+		Tokens:    types.TokenUsage{Total: &tokens},
+		Cost:      &cost,
+		Consensus: true,
+	}
+
+	got := captureOutput(t, func() {
+		manager := NewOutputManager(false)
+		manager.state = &types.DeliberationState{
+			StartTime: float64(time.Now().UnixNano())/1e9 - 10,
+			TimeLimit: 60,
+			Budget:    &budget,
+			Config:    &types.DeliberationConfig{ConsensusThreshold: 2},
+		}
+		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "skeptic"}}})
+		manager.TurnProgress(record, 1, 5)
+	})
+
+	assertContains(t, got, "TURN 2/5 (40%) [####------]")
+	assertContains(t, got, "COST $0.250000/$1.00 (25%) [###-------]")
+	assertContains(t, got, "TIME ")
+	assertContains(t, got, "/60s (")
+	assertContains(t, got, "CONSENSUS 1/2 (50%) [#####-----]")
+	assertContains(t, got, "TOKENS 42")
+	assertNotContains(t, got, "TOKENS 42/")
+	assertNoANSI(t, got)
+	assertNoUnicodeBox(t, got)
+}
+
+func TestTurnProgressRendersRegisteredIdentityAsPlainLabels(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	record := types.TurnRecord{AgentID: "strategist", Elapsed: 0.2}
+
+	got := captureOutput(t, func() {
+		manager := NewOutputManager(false)
+		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{
+			ID: "strategist",
+			Identity: &types.AgentIdentity{
+				DisplayName: "Mina",
+				Role:        "Planner",
+			},
+		}}})
+		manager.TurnProgress(record, 0, 1)
+	})
+
+	assertContains(t, got, "AGENT [A1 strategist] NAME Mina ROLE Planner")
+	assertContains(t, got, "ELAPSED 0.2s")
+	assertNoANSI(t, got)
 }
 
 func TestTurnProgressFallsBackForUnknownAgent(t *testing.T) {
@@ -184,6 +273,57 @@ func TestTurnProgressFallsBackForUnknownAgent(t *testing.T) {
 	})
 
 	assertContains(t, got, "AGENT [A? resumed-agent]")
+}
+
+func TestCastIdentityConsistentAcrossPreviewHeaderAndTurns(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	model := "opencode/test"
+	cfg := &types.DeliberationConfig{
+		Topology:           types.TopologyRing,
+		ConsensusThreshold: 2,
+		Agents: []types.AgentConfig{
+			{
+				ID:           "strategist",
+				Model:        model,
+				SystemPrompt: "Plan the smallest safe path.\nSecond line stays hidden.",
+				Identity: &types.AgentIdentity{
+					DisplayName: "Mina",
+					Role:        "Planner",
+					Affiliation: "Core Team",
+				},
+			},
+			{ID: "skeptic", Model: model, SystemPrompt: "Challenge weak claims."},
+		},
+	}
+	state := &types.DeliberationState{Topic: "Identity review", Config: cfg, TimeLimit: 30, MaxTurns: 2, Window: 1}
+	record := types.TurnRecord{AgentID: "strategist", Model: &model, Elapsed: 0.3}
+	unknown := types.TurnRecord{AgentID: "legacy-agent", Elapsed: 0.1}
+
+	manager := NewOutputManager(false)
+	preview := captureOutput(t, func() {
+		manager.ConfigPreview(cfg, types.AutoQuick, types.LevelCaps{MaxAgents: 2, MaxTurns: 4, TimeLimit: 60})
+	})
+	header := captureOutput(t, func() { manager.DeliberationHeader(state) })
+	turn := captureOutput(t, func() { manager.TurnProgress(record, 0, 2) })
+	fallback := captureOutput(t, func() { manager.TurnProgress(unknown, 1, 2) })
+
+	identity := "AGENT [A1 strategist] NAME Mina ROLE Planner AFFILIATION Core Team"
+	for name, output := range map[string]string{"preview": preview, "header": header, "turn": turn} {
+		assertContains(t, output, identity)
+		assertContains(t, output, "MODEL opencode/test")
+		assertNoANSI(t, output)
+		assertNoUnicodeBox(t, output)
+		if strings.Contains(output, "Second line stays hidden") {
+			t.Fatalf("%s should only render the first system prompt line", name)
+		}
+	}
+	assertContains(t, preview, "CONTEXT Plan the smallest safe path.")
+	assertContains(t, header, "CONTEXT Plan the smallest safe path.")
+	assertOrder(t, preview, "[A1 strategist]", "[A2 skeptic]")
+	assertOrder(t, header, "[A1 strategist]", "[A2 skeptic]")
+	assertContains(t, fallback, "AGENT [A? legacy-agent]")
+	assertNotContains(t, fallback, "[A2 legacy-agent]")
 }
 
 func TestVerboseTurnContentSeparatesMetadataFromBody(t *testing.T) {
@@ -202,7 +342,7 @@ func TestVerboseTurnContentSeparatesMetadataFromBody(t *testing.T) {
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "TURN 1/1 | AGENT [A1 strategist] | MODEL opencode/test | ELAPSED 1.2s")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] | MODEL opencode/test | ELAPSED 1.2s")
 	assertContains(t, got, "AGENT CONTENT")
 	assertContains(t, got, "  | # Decision")
 	assertContains(t, got, "  | This is a long agent response")
@@ -277,6 +417,49 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 	assertContains(t, got, "[A? orchestrator]")
 }
 
+func TestFinalStatsUsesSameBoundedMetricPresentationAsTurnProgress(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	tokensA := 30
+	tokensB := 40
+	costA := 0.25
+	costB := 0.25
+	budget := 1.0
+	state := &types.DeliberationState{
+		Config: &types.DeliberationConfig{
+			ConsensusThreshold: 2,
+			Agents:             []types.AgentConfig{{ID: "optimist"}, {ID: "skeptic"}},
+		},
+		StartTime: float64(time.Now().UnixNano())/1e9 - 30,
+		MaxTurns:  4,
+		TimeLimit: 60,
+		Budget:    &budget,
+		HaltedBy:  "consensus (2 consecutive agreements)",
+	}
+	records := []types.TurnRecord{
+		{Turn: 0, AgentID: "optimist", Tokens: types.TokenUsage{Total: &tokensA}, Cost: &costA, Elapsed: 1, Consensus: true},
+		{Turn: 1, AgentID: "skeptic", Tokens: types.TokenUsage{Total: &tokensB}, Cost: &costB, Elapsed: 1, Consensus: true},
+	}
+
+	got := captureOutput(t, func() {
+		NewOutputManager(false).FinalStats(records, state)
+	})
+
+	assertContains(t, got, "Turns completed")
+	assertContains(t, got, "2/4 (50%) [#####-----]")
+	assertContains(t, got, "Duration")
+	assertContains(t, got, "/60s (")
+	assertContains(t, got, "Total cost")
+	assertContains(t, got, "$0.500000/$1.00 (50%) [#####-----]")
+	assertContains(t, got, "Consensus streak")
+	assertContains(t, got, "2/2 (100%) [##########]")
+	assertContains(t, got, "Total tokens")
+	assertContains(t, got, "70")
+	assertNotContains(t, got, "Total tokens | 70/")
+	assertNoANSI(t, got)
+	assertNoUnicodeBox(t, got)
+}
+
 func TestSynthesisResultPreservesAllModelFields(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	result := map[string]any{
@@ -306,6 +489,90 @@ func TestSynthesisResultPreservesAllModelFields(t *testing.T) {
 	assertContains(t, got, "[CONSENSUS] Everyone accepts the core constraint.")
 	assertContains(t, got, "Unresolved Tensions")
 	assertContains(t, got, "[WARNING] Cost versus speed remains unresolved.")
+}
+
+func TestActivityPlainModeEmitsReadableStatusWithoutSpinnerArtifacts(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+
+	got := captureOutput(t, func() {
+		stop := NewOutputManager(false).Activity("Research")
+		stop()
+		fmt.Println("final output")
+	})
+
+	assertContains(t, got, "[INFO] PHASE Research")
+	assertContains(t, got, "final output")
+	assertNoANSI(t, got)
+	if strings.Contains(got, "\r") || strings.ContainsAny(got, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("plain activity should not contain spinner artifacts\noutput: %q", got)
+	}
+}
+
+func TestActivityRedirectedStdoutRichTermEmitsPlainStatus(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CI", "")
+	t.Setenv("TERM", "xterm-256color")
+	old := stdoutIsTerminal
+	stdoutIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdoutIsTerminal = old })
+
+	got := captureOutput(t, func() {
+		stop := NewOutputManager(false).Activity("Generation: optimist")
+		stop()
+		fmt.Println("final output")
+	})
+
+	assertContains(t, got, "[INFO] PHASE Generation: optimist")
+	assertContains(t, got, "final output")
+	assertNoANSI(t, got)
+	if strings.Contains(got, "\r") || strings.ContainsAny(got, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("redirected activity should not contain spinner artifacts\noutput: %q", got)
+	}
+}
+
+func TestActivityRichModeCleansLineBeforeFinalOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CI", "")
+	t.Setenv("TERM", "xterm-256color")
+	old := stdoutIsTerminal
+	stdoutIsTerminal = func() bool { return true }
+	t.Cleanup(func() { stdoutIsTerminal = old })
+
+	got := captureOutput(t, func() {
+		stop := NewOutputManager(false).Activity("Generation: strategist")
+		stop()
+		fmt.Println("TURN 1/1 | AGENT [A1 strategist]")
+	})
+
+	assertContains(t, got, "PHASE Generation: strategist")
+	assertContains(t, got, "\r\x1b[2KTURN 1/1 | AGENT [A1 strategist]\n")
+}
+
+func TestActivityStopsBeforeVerboseTurnContent(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CI", "")
+	t.Setenv("TERM", "xterm-256color")
+	old := stdoutIsTerminal
+	stdoutIsTerminal = func() bool { return true }
+	t.Cleanup(func() { stdoutIsTerminal = old })
+	model := "opencode/test"
+	record := types.TurnRecord{AgentID: "strategist", Model: &model, Elapsed: 0.4, Content: "# Decision\n\nKeep metadata readable."}
+
+	got := captureOutput(t, func() {
+		manager := NewOutputManager(true)
+		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist"}}})
+		stop := manager.Activity("Generation: strategist")
+		stop()
+		manager.TurnProgress(record, 0, 1)
+	})
+
+	assertContains(t, got, "\r\x1b[2KTURN 1/1")
+	assertContains(t, got, "AGENT [A1 strategist]")
+	assertContains(t, got, "AGENT CONTENT")
+	assertContains(t, got, "Keep metadata")
+	assertContains(t, got, "readable.")
+	assertOrder(t, got, "\x1b[2K", "AGENT CONTENT")
 }
 
 func TestSimpleStatusMethods(t *testing.T) {
@@ -384,5 +651,14 @@ func assertNoUnicodeBox(t *testing.T, s string) {
 		if strings.ContainsRune(s, r) {
 			t.Fatalf("expected output to contain no Unicode box drawing rune %q\noutput: %q", r, s)
 		}
+	}
+}
+
+func assertOrder(t *testing.T, s, first, second string) {
+	t.Helper()
+	firstIndex := strings.Index(s, first)
+	secondIndex := strings.Index(s, second)
+	if firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex {
+		t.Fatalf("expected %q before %q\noutput: %q", first, second, s)
 	}
 }
