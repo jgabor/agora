@@ -262,6 +262,54 @@ func TestTurnProgressRendersRegisteredIdentityAsPlainLabels(t *testing.T) {
 	assertNoANSI(t, got)
 }
 
+func TestTurnProgressRichModeUsesPanelBubblesAndReadableMetrics(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CI", "")
+	t.Setenv("TERM", "xterm-256color")
+	model := "opencode/test"
+	tokens := 42
+	cost := 0.25
+	budget := 1.0
+	record := types.TurnRecord{
+		AgentID:            "strategist",
+		Model:              &model,
+		Elapsed:            1.2,
+		Tokens:             types.TokenUsage{Total: &tokens},
+		Cost:               &cost,
+		Consensus:          true,
+		ConsensusStatement: "Ship the small fix.",
+		Content:            "# Decision\n\nKeep metadata readable.",
+	}
+
+	got := captureOutput(t, func() {
+		manager := NewOutputManager(true)
+		manager.state = &types.DeliberationState{
+			StartTime: float64(time.Now().UnixNano())/1e9 - 10,
+			TimeLimit: 60,
+			Budget:    &budget,
+			Config:    &types.DeliberationConfig{ConsensusThreshold: 2},
+		}
+		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{
+			ID: "strategist",
+			Identity: &types.AgentIdentity{
+				DisplayName: "Mina",
+				Role:        "Planner",
+			},
+		}}})
+		manager.TurnProgress(record, 1, 5)
+	})
+
+	assertContains(t, got, "╭")
+	assertContains(t, got, "Turn 2 of 5")
+	assertContains(t, got, "●")
+	assertContains(t, got, "○")
+	assertContains(t, got, "Agent")
+	assertContains(t, got, "NAME Mina ROLE Planner")
+	assertContains(t, got, "Agreement")
+	assertContains(t, got, "Agent Response")
+	assertContains(t, got, "Keep metadata")
+}
+
 func TestTurnProgressFallsBackForUnknownAgent(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	record := types.TurnRecord{AgentID: "resumed-agent", Elapsed: 0.1}
@@ -501,7 +549,7 @@ func TestActivityPlainModeEmitsReadableStatusWithoutSpinnerArtifacts(t *testing.
 		fmt.Println("final output")
 	})
 
-	assertContains(t, got, "[INFO] PHASE Research")
+	assertContains(t, got, "[INFO] Working: Research")
 	assertContains(t, got, "final output")
 	assertNoANSI(t, got)
 	if strings.Contains(got, "\r") || strings.ContainsAny(got, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
@@ -523,7 +571,7 @@ func TestActivityRedirectedStdoutRichTermEmitsPlainStatus(t *testing.T) {
 		fmt.Println("final output")
 	})
 
-	assertContains(t, got, "[INFO] PHASE Generation: optimist")
+	assertContains(t, got, "[INFO] Working: Generation: optimist")
 	assertContains(t, got, "final output")
 	assertNoANSI(t, got)
 	if strings.Contains(got, "\r") || strings.ContainsAny(got, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
@@ -545,7 +593,7 @@ func TestActivityRichModeCleansLineBeforeFinalOutput(t *testing.T) {
 		fmt.Println("TURN 1/1 | AGENT [A1 strategist]")
 	})
 
-	assertContains(t, got, "PHASE Generation: strategist")
+	assertContains(t, got, "Working: Generation: strategist")
 	assertContains(t, got, "\r\x1b[2KTURN 1/1 | AGENT [A1 strategist]\n")
 }
 
@@ -567,12 +615,13 @@ func TestActivityStopsBeforeVerboseTurnContent(t *testing.T) {
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "\r\x1b[2KTURN 1/1")
-	assertContains(t, got, "AGENT [A1 strategist]")
-	assertContains(t, got, "AGENT CONTENT")
+	assertContains(t, got, "\r\x1b[2K")
+	assertContains(t, got, "Turn 1 of 1")
+	assertContains(t, got, "[A1 strategist]")
+	assertContains(t, got, "Agent Response")
 	assertContains(t, got, "Keep metadata")
 	assertContains(t, got, "readable.")
-	assertOrder(t, got, "\x1b[2K", "AGENT CONTENT")
+	assertOrder(t, got, "\x1b[2K", "Agent Response")
 }
 
 func TestSimpleStatusMethods(t *testing.T) {

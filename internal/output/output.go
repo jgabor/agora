@@ -101,10 +101,23 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 	var sb strings.Builder
 	writeSection := sectionWriter(&sb, contentWidth)
 
-	writeSection("Cast Preview", []string{
+	shapeTitle := "Cast Preview"
+	shapeLines := []string{
 		fmt.Sprintf("Topology: %s", string(cfg.Topology)),
 		fmt.Sprintf("Consensus threshold: %d", cfg.ConsensusThreshold),
-	})
+	}
+	if !plainOutput() {
+		shapeTitle = "Run Shape"
+		agreementTarget := "none"
+		if cfg.ConsensusThreshold > 0 {
+			agreementTarget = fmt.Sprintf("%d agents", cfg.ConsensusThreshold)
+		}
+		shapeLines = []string{
+			fmt.Sprintf("Topology: %s", string(cfg.Topology)),
+			fmt.Sprintf("Agreement target: %s", agreementTarget),
+		}
+	}
+	writeSection(shapeTitle, shapeLines)
 
 	capLines := []string{fmt.Sprintf("Level caps: %s", string(level))}
 	if caps.MaxAgents == 0 {
@@ -116,13 +129,31 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 			fmt.Sprintf("Time limit: %ds", caps.TimeLimit),
 		)
 	}
-	writeSection("Run Bounds", capLines)
+	limitsTitle := "Run Bounds"
+	if !plainOutput() {
+		limitsTitle = "Limits"
+		capLines = []string{fmt.Sprintf("Auto level: %s", string(level))}
+		if caps.MaxAgents == 0 {
+			capLines = append(capLines, "Agents: no cap", "Turns: no cap", "Time: no cap")
+		} else {
+			capLines = append(capLines,
+				fmt.Sprintf("Agents: %d max", caps.MaxAgents),
+				fmt.Sprintf("Turns: %d max", caps.MaxTurns),
+				fmt.Sprintf("Time: %ds max", caps.TimeLimit),
+			)
+		}
+	}
+	writeSection(limitsTitle, capLines)
 
 	agentLines := make([]string, 0, len(cfg.Agents))
 	for i, a := range cfg.Agents {
 		agentLines = append(agentLines, agentCastLine(i, a, true))
 	}
-	writeSection("Agents", agentLines)
+	agentsTitle := "Agents"
+	if !plainOutput() {
+		agentsTitle = "Cast"
+	}
+	writeSection(agentsTitle, agentLines)
 
 	return theaterPanel("Generated Config", sb.String(), width, "6")
 }
@@ -158,13 +189,33 @@ func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) st
 		fmt.Sprintf("Max turns: %d", state.MaxTurns),
 		fmt.Sprintf("Window: %d", state.Window),
 	}
+	if !plainOutput() {
+		settings = []string{
+			fmt.Sprintf("Topology: %s", string(state.Config.Topology)),
+			fmt.Sprintf("Time: %ds max", state.TimeLimit),
+			fmt.Sprintf("Turns: %d max", state.MaxTurns),
+			fmt.Sprintf("Context window: %d prior messages", state.Window),
+		}
+	}
 	if state.Budget != nil {
-		settings = append(settings, fmt.Sprintf("Budget: $%.2f", *state.Budget))
+		budgetLine := fmt.Sprintf("Budget: $%.2f", *state.Budget)
+		if !plainOutput() {
+			budgetLine = fmt.Sprintf("Budget: $%.2f max", *state.Budget)
+		}
+		settings = append(settings, budgetLine)
 	}
 	if state.Config.ConsensusThreshold > 0 {
-		settings = append(settings, fmt.Sprintf("Consensus threshold: %d", state.Config.ConsensusThreshold))
+		agreementLine := fmt.Sprintf("Consensus threshold: %d", state.Config.ConsensusThreshold)
+		if !plainOutput() {
+			agreementLine = fmt.Sprintf("Agreement target: %d agents", state.Config.ConsensusThreshold)
+		}
+		settings = append(settings, agreementLine)
 	}
-	writeSection("Run Settings", settings)
+	settingsTitle := "Run Settings"
+	if !plainOutput() {
+		settingsTitle = "Limits"
+	}
+	writeSection(settingsTitle, settings)
 
 	return theaterPanel("Deliberation Start", sb.String(), width, "4")
 }
@@ -211,7 +262,7 @@ func sectionWriter(sb *strings.Builder, width int) func(string, []string) {
 			sb.WriteString("\n")
 		}
 		if !plainOutput() {
-			label = lipgloss.NewStyle().Bold(true).Render(label)
+			label = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5")).Render("▍ " + label)
 		}
 		sb.WriteString(label)
 		sb.WriteString("\n")
@@ -255,6 +306,9 @@ func agentDisplay(badge string, identity *types.AgentIdentity) string {
 }
 
 func agentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
+	if !plainOutput() {
+		return richAgentCastLine(index, agent, includeContext)
+	}
 	line := fmt.Sprintf("AGENT %s", agentDisplay(agentBadge(index, agent.ID), agent.Identity))
 	if agent.Model != "" {
 		line += fmt.Sprintf(" MODEL %s", agent.Model)
@@ -266,6 +320,43 @@ func agentCastLine(index int, agent types.AgentConfig, includeContext bool) stri
 		}
 	}
 	return line
+}
+
+func richAgentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
+	accent := agentAccent(agent.ID)
+	badge := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(fmt.Sprintf("● A%d %s", index+1, agent.ID))
+	parts := []string{badge}
+	if agent.Identity != nil {
+		if agent.Identity.DisplayName != "" {
+			parts = append(parts, lipgloss.NewStyle().Bold(true).Render(agent.Identity.DisplayName))
+		}
+		details := make([]string, 0, 2)
+		if agent.Identity.Role != "" {
+			details = append(details, agent.Identity.Role)
+		}
+		if agent.Identity.Affiliation != "" {
+			details = append(details, agent.Identity.Affiliation)
+		}
+		if len(details) > 0 {
+			parts = append(parts, mutedStyle().Render(strings.Join(details, " · ")))
+		}
+	}
+
+	lines := []string{strings.Join(parts, "  ")}
+	metadata := make([]string, 0, 2)
+	if agent.Model != "" {
+		metadata = append(metadata, "model "+agent.Model)
+	}
+	if includeContext {
+		context := firstPromptLine(agent.SystemPrompt)
+		if context != "" {
+			metadata = append(metadata, "context "+context)
+		}
+	}
+	if len(metadata) > 0 {
+		lines = append(lines, mutedStyle().Render(strings.Join(metadata, " · ")))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func firstPromptLine(prompt string) string {
@@ -312,13 +403,13 @@ func richOutput() bool {
 	return !plainOutput() && stdoutIsTerminal()
 }
 
-// Activity starts feedback for a long-running phase and returns a cleanup function.
-func (o *OutputManager) Activity(phase string) func() {
-	phase = strings.TrimSpace(phase)
-	if phase == "" {
-		phase = "Working"
+// Activity starts feedback for a long-running operation and returns a cleanup function.
+func (o *OutputManager) Activity(activity string) func() {
+	activity = strings.TrimSpace(activity)
+	if activity == "" {
+		activity = "Working"
 	}
-	label := fmt.Sprintf("PHASE %s", phase)
+	label := fmt.Sprintf("Working: %s", activity)
 	if !richOutput() {
 		fmt.Printf("[INFO] %s\n", label)
 		return func() {}
@@ -379,17 +470,22 @@ func boundedMetricValue(value, bound float64, valueText, boundText string) strin
 	if bound <= 0 {
 		return valueText
 	}
-	percent := 0
-	if value > 0 {
-		percent = int((value/bound)*100 + 0.5)
+	percent := boundedPercent(value, bound)
+	return fmt.Sprintf("%s/%s (%d%%) %s", valueText, boundText, percent, metricBar(percent))
+}
+
+func boundedPercent(value, bound float64) int {
+	if bound <= 0 || value <= 0 {
+		return 0
 	}
+	percent := int((value/bound)*100 + 0.5)
 	if percent < 0 {
-		percent = 0
+		return 0
 	}
 	if percent > 100 {
-		percent = 100
+		return 100
 	}
-	return fmt.Sprintf("%s/%s (%d%%) %s", valueText, boundText, percent, metricBar(percent))
+	return percent
 }
 
 func metricBar(percent int) string {
@@ -401,7 +497,24 @@ func metricBar(percent int) string {
 	if filled > width {
 		filled = width
 	}
-	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + "]"
+	if plainOutput() {
+		return "[" + strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + "]"
+	}
+
+	filledStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(progressColor(percent)))
+	emptyStyle := lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8"))
+	return filledStyle.Render(strings.Repeat("●", filled)) + emptyStyle.Render(strings.Repeat("○", width-filled))
+}
+
+func progressColor(percent int) string {
+	switch {
+	case percent >= 80:
+		return "2"
+	case percent >= 50:
+		return "3"
+	default:
+		return "6"
+	}
 }
 
 func boundedIntMetricValue(value, bound int) string {
@@ -466,6 +579,14 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 	if maxTurns > 0 {
 		turnValue = boundedIntMetricValue(turn+1, maxTurns)
 	}
+	if !plainOutput() {
+		fmt.Println(o.renderTurnCard(record, turn, maxTurns, elapsed, tokensTotal, costValue))
+		if o.verbose && record.Content != "" {
+			fmt.Println()
+			fmt.Print(renderVerboseBody(record.Content, outputWidth(), agentAccent(record.AgentID)))
+		}
+		return
+	}
 	fmt.Printf("TURN %s | %s\n", turnValue, metadata)
 
 	if record.Consensus {
@@ -478,16 +599,64 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 
 	if o.verbose && record.Content != "" {
 		fmt.Println()
-		fmt.Print(renderVerboseBody(record.Content, outputWidth()))
+		fmt.Print(renderVerboseBody(record.Content, outputWidth(), agentAccent(record.AgentID)))
 	}
 }
 
-func renderVerboseBody(content string, width int) string {
+func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTurns int, elapsed, tokensTotal, costValue string) string {
+	width := outputWidth()
+	accent := agentAccent(record.AgentID)
+	title := fmt.Sprintf("Turn %d", turn+1)
+	if maxTurns > 0 {
+		title = fmt.Sprintf("Turn %d of %d", turn+1, maxTurns)
+	}
+
+	model := "?"
+	if record.Model != nil {
+		model = *record.Model
+	}
+
+	var lines []string
+	agent := statusStyle(accent).Render(agentDisplay(o.agentBadgeFor(record.AgentID), o.agentIdentityFor(record.AgentID)))
+	lines = append(lines, richMetricLine("Agent", agent, accent))
+	lines = append(lines, richMetricLine("Model", model, "7"))
+	lines = append(lines, "")
+	if maxTurns > 0 {
+		percent := boundedPercent(float64(turn+1), float64(maxTurns))
+		lines = append(lines, richMetricLine("Run", fmt.Sprintf("%d/%d (%d%%) %s", turn+1, maxTurns, percent, metricBar(percent)), "6"))
+	} else {
+		lines = append(lines, richMetricLine("Run", fmt.Sprintf("%d", turn+1), "6"))
+	}
+	lines = append(lines, richMetricLine("Elapsed", elapsed, "7"))
+	lines = append(lines, richMetricLine("Tokens", tokensTotal, "7"))
+	lines = append(lines, richMetricLine("Cost", costValue, "7"))
+	if o.state != nil && o.state.StartTime > 0 && o.state.TimeLimit > 0 {
+		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
+		lines = append(lines, richMetricLine("Time limit", boundedSecondsMetricValue(elapsedTotal, o.state.TimeLimit), "3"))
+	}
+	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
+		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.consensusStreak, o.state.Config.ConsensusThreshold), "2"))
+	}
+	if record.Consensus {
+		statement := strings.TrimSpace(record.ConsensusStatement)
+		if statement == "" {
+			statement = "This turn agrees with the emerging decision."
+		}
+		lines = append(lines, "", statusStyle("2").Render("✓ Agreement"), statement)
+	}
+
+	return theaterPanel(title, strings.Join(lines, "\n"), width, accent)
+}
+
+func richMetricLine(label, value, color string) string {
+	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color)).Width(11)
+	return labelStyle.Render(label) + " " + value
+}
+
+func renderVerboseBody(content string, width int, borderColor string) string {
 	width = clampOutputWidth(width)
 	bodyWidth := width - 4
 	var sb strings.Builder
-	sb.WriteString(mutedStyle().Render("AGENT CONTENT"))
-	sb.WriteString("\n")
 
 	body := strings.TrimRight(content, "\n")
 	if !plainOutput() && markdownLike(body) {
@@ -498,6 +667,22 @@ func renderVerboseBody(content string, width int) string {
 		}
 	}
 
+	if !plainOutput() {
+		for _, line := range strings.Split(body, "\n") {
+			if line == "" {
+				sb.WriteString("\n")
+				continue
+			}
+			for _, wrapped := range wrapText(line, bodyWidth) {
+				sb.WriteString(wrapped)
+				sb.WriteString("\n")
+			}
+		}
+		return theaterPanel("Agent Response", sb.String(), width, borderColor) + "\n"
+	}
+
+	sb.WriteString(mutedStyle().Render("AGENT CONTENT"))
+	sb.WriteString("\n")
 	for _, line := range strings.Split(body, "\n") {
 		if line == "" {
 			sb.WriteString("  |\n")
@@ -906,11 +1091,15 @@ func drawStructuredTable(title string, headers []string, rows [][]string, aligns
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
 	raw := drawTable("", headers, rows, aligns)
-	raw = stripKnownANSI(raw)
+	if plainOutput() {
+		raw = stripKnownANSI(raw)
+	}
 
 	var sb strings.Builder
-	sb.WriteString(sectionTitle(title, color))
-	sb.WriteString("\n")
+	if plainOutput() {
+		sb.WriteString(sectionTitle(title, color))
+		sb.WriteString("\n")
+	}
 	for _, line := range strings.Split(strings.TrimRight(raw, "\n"), "\n") {
 		if plainOutput() {
 			line = asciiTableLine(line)
@@ -928,6 +1117,9 @@ func drawStructuredTable(title string, headers []string, rows [][]string, aligns
 				sb.WriteString("\n")
 			}
 		}
+	}
+	if !plainOutput() {
+		return theaterPanel(title, sb.String(), width, color)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
