@@ -1,145 +1,122 @@
 header:
   level: full
-  created: '2026-05-05'
+  created: '2026-05-06'
   status: completed
-  reviewed: '2026-05-05'
-  critic_issues: 9 found, 9 addressed, 0 dismissed
-  title: Orchestrator research and context sources
-what: Add opt-in research and context support so deliberations can start with current web evidence and local text context. `--research`
-  enables topic-inferred web research. Repeatable `--context` adds local files or directories. Project deliberation config may
-  also enable research and declare context for repeatable runs. Agora builds one shared evidence bundle, records source references,
-  and gives each agent the same evidence exactly once on that agent's first turn.
-why: Agents currently deliberate from the topic and transcript history only. Research/context support makes Agora useful for
-  current information, documentation-grounded decisions, and codebase-grounded deliberations without turning every agent into
-  an unbounded browser.
-constraints: Web research uses OpenCode's native web tools through the normal agent runtime boundary. Local context is text-only.
-  Research-enabled runs halt before deliberation if required evidence cannot be produced. Transcripts store references and a
-  readable research summary, not full source content. CLI flags override config and settings. Global settings may set safe defaults
-  or caps but must not silently enable web access.
+  reviewed: '2026-05-06'
+  critic_issues: 12 found, 12 addressed, 0 dismissed
+  title: Charm v2 agent theater output system
+what: >-
+  Redesign Agora's terminal output around a coherent agent-theater identity while preserving command semantics, transcript data,
+  and plain-terminal readability. The plan covers output inventory, Charm v2 dependency viability, shared visual language, the
+  major CLI output surfaces, prose rendering boundaries, test migration, and verification.
+why: >-
+  The current `internal/output` package hand-rolls ANSI colors, panels, tables, wrapping, width accounting, glyphs, and formatting.
+  Decision 7 makes visual polish the primary win: Agora's cast of debating agents should feel intentional and memorable while
+  staying clear, terminal-native, and maintainable.
+constraints: >-
+  Stable behavior means command flags, exit behavior, transcript schema, semantic data ordering, and error semantics do not change.
+  Visual styling, spacing, borders, wrapping, table formatting, and hierarchy may change. Lipgloss owns structured terminal UI.
+  Glamour is limited to paragraph-heavy Markdown-like prose. Color cannot be the only carrier of meaning. Interactive TUI work,
+  transcript format changes, deliberation behavior changes, and unrelated TODOs are out of scope.
 scope:
   included:
-  - '`--research` for web research'
-  - 'repeatable `--context` for local files and directories'
-  - project config research/context policy
-  - text-only local context with caps and secret-safe traversal rules
-  - 'topic-inferred bounded web research through OpenCode `websearch` and `webfetch`'
-  - shared evidence bundle delivered once per agent
-  - transcript research summary and source references only
-  - halt-on-failure behavior for enabled research
-  - dry-run and resume semantics
-  - README/examples/changelog updates
+  - output entry point inventory
+  - Charm v2 dependency viability and terminal capability behavior
+  - shared agent-theater visual language and fallback rules
+  - config preview and deliberation header
+  - turn progress, verbose content, simple status messages, and delimiters
+  - final stats, transcript stats, and synthesis output
+  - output test migration and representative command verification
   excluded:
-  - agent-requested retrieval during turns
-  - per-agent evidence filtering
-  - full source content in transcripts
-  - persistent source cache
-  - PDF/DOCX/binary document parsing
-  - browser rendering
+  - interactive TUI
+  - transcript schema changes
+  - deliberation behavior changes
+  - changing command flags or exit semantics
+  - unrelated TODO items
   deferred:
-  - separate research model
-  - source/domain allowlists
-  - transcript snippets
-  - replay-perfect research
-  - explicit research refresh on resume
-design: Treat research as a pre-deliberation evidence-gathering phase. Local context and web research both produce bounded evidence
-  plus source references. The orchestrator owns timing, failure semantics, and fair delivery. Deliberation agents receive evidence
-  through their turn input only on their first turn. The transcript receives a human-readable research summary with references
-  only.
+  - user-configurable themes
+  - non-terminal report output
+  - screenshots as required tests
+design: >-
+  Establish a small internal visual language for stage, cast, status, structured data, and prose. Apply it coherently across all
+  major output surfaces. Keep structured metadata rendered as structured terminal UI and reserve Markdown rendering for prose-heavy
+  content. Verification focuses on semantic content, width/fallback behavior, command compatibility, and maintainability rather
+  than brittle ANSI snapshots.
 tasks:
 - number: 1
-  name: Research UX and policy contract
+  name: Output inventory and dependency checkpoint
   depends_on: []
-  status: completed
+  status: complete
   acceptance:
-  - GIVEN `agora run --research --topic "X"` WHEN web research is allowed by the runtime THEN Agora attempts web research before
-    deliberation
-  - GIVEN repeated `--context` flags WHEN running THEN all declared local paths are considered part of the requested context
-  - GIVEN project config enables research WHEN running without `--research` THEN web research still runs
-  - GIVEN global settings contain research preferences WHEN no project config or CLI enables research THEN web research does
-    not run
-  - GIVEN CLI flags and config disagree on research/context values WHEN running THEN CLI flags take precedence
+  - GIVEN current commands WHEN output paths are inventoried THEN every major stdout/stderr surface is classified as structured
+    metadata, prose, status, stats, or out of scope
+  - GIVEN Charm v2 modules are evaluated WHEN dependency resolution runs THEN exact modules are known and the normal Go build/test
+    workflow still works
+  - GIVEN terminal capability behavior is checked WHEN `NO_COLOR`, low-color, non-TTY, CI, or dumb-terminal conditions apply
+    THEN existing behavior is preserved or an explicit fallback decision is recorded
 - number: 2
-  name: Text-only local context safety
+  name: Visual language and fallback rules
   depends_on:
   - Task 1
-  status: completed
+  status: complete
   acceptance:
-  - GIVEN `--context` points at a readable text file WHEN running THEN the evidence bundle contains a reference to that file
-  - GIVEN `--context` points at a directory WHEN running THEN text files under that directory are considered within configured
-    caps
-  - GIVEN a directory contains binary files, hidden VCS data, or secret-looking files WHEN resolving context THEN those files
-    are not sent to agents
-  - GIVEN directory traversal would exceed file, byte, or depth caps WHEN resolving context THEN Agora reports a clear bounded-context
-    error
-  - GIVEN context resolves to zero usable text sources WHEN running THEN deliberation does not start
+  - GIVEN agent roles appear across output surfaces WHEN rendered THEN role identity is consistent by label, ordering, and visual
+    treatment
+  - GIVEN semantic states appear WHEN color is unavailable THEN textual labels or symbols still distinguish success, error,
+    consensus, warning, cost, elapsed time, model, and agent identity
+  - GIVEN maintainers inspect output conventions WHEN adding future output THEN the Lipgloss/Glamour boundary and width/fallback
+    rules are documented internally
 - number: 3
-  name: Topic-inferred web query contract
-  depends_on:
-  - Task 1
-  status: completed
-  acceptance:
-  - GIVEN web research is enabled WHEN the topic is provided THEN Agora derives a bounded set of research queries from that
-    topic
-  - GIVEN query generation fails or produces no queries WHEN research is enabled THEN deliberation does not start
-  - GIVEN research caps are configured WHEN queries are derived THEN query count stays within those caps
-  - GIVEN a deliberation model is selected WHEN research queries are derived THEN the same model identity is used for the research
-    step
-- number: 4
-  name: OpenCode-backed web evidence collection
-  depends_on:
-  - Task 3
-  status: completed
-  acceptance:
-  - GIVEN web research is enabled WHEN OpenCode web tools are available THEN source references are produced from web search/fetch
-    results
-  - GIVEN OpenCode web tools are unavailable WHEN research is enabled THEN Agora fails before the first deliberation turn
-  - GIVEN the research response is malformed WHEN Agora reads it THEN Agora reports a parse failure and does not start deliberation
-  - GIVEN web research produces zero source references WHEN research is enabled THEN deliberation does not start
-  - GIVEN web research succeeds WHEN the transcript is written THEN source references include enough metadata to audit where
-    evidence came from
-- number: 5
-  name: Evidence delivery and transcript audit
+  name: Config preview and deliberation header
   depends_on:
   - Task 2
-  - Task 4
-  status: completed
+  status: complete
   acceptance:
-  - GIVEN multiple agents and a successful evidence bundle WHEN each agent takes its first turn THEN each receives the same
-    evidence bundle once
-  - GIVEN an agent takes a later turn WHEN evidence was already delivered to that agent THEN raw evidence is not attached again
-  - GIVEN research/context evidence exists WHEN the transcript is written THEN an orchestrator research summary appears before
-    agent turns
-  - GIVEN source references are written to the transcript WHEN inspecting the transcript THEN full source content is not present
-  - GIVEN no research or context is enabled WHEN running THEN deliberation behavior remains unchanged
+  - GIVEN auto config preview renders WHEN users inspect it THEN topology, consensus threshold, level caps, and agents are all
+    present and grouped as a coherent cast preview
+  - GIVEN deliberation starts WHEN the header renders THEN topic, cast, and run settings remain present with unchanged meaning
+  - GIVEN widths of 40, 80, and 120 columns WHEN preview/header output renders THEN critical labels remain present and output
+    does not panic or lose required fields
+- number: 4
+  name: Turn progress and status output
+  depends_on:
+  - Task 2
+  status: complete
+  acceptance:
+  - GIVEN a turn completes WHEN progress prints THEN agent identity, model, elapsed time, tokens, cost, and consensus state are
+    distinguishable without relying on color alone
+  - GIVEN verbose mode prints long agent content WHEN output renders THEN metadata remains separate from prose and body text is
+    readable
+  - GIVEN info, success, error, and delimiter messages render WHEN users scan logs THEN severity and progression remain clear
+    in color and plain modes
+- number: 5
+  name: Stats and synthesis output
+  depends_on:
+  - Task 2
+  status: complete
+  acceptance:
+  - GIVEN final run stats render WHEN deliberation completes THEN summary and per-agent tables preserve all current metrics
+  - GIVEN transcript stats render WHEN users inspect a saved transcript THEN totals, per-agent data, and consensus events remain
+    present
+  - GIVEN synthesis data renders WHEN available THEN recommendation, confidence, arguments, agreements, and tensions remain
+    faithful to model output while sharing the new visual language
 - number: 6
-  name: Resume, dry-run, and failure behavior
+  name: Test migration and verification checkpoint
   depends_on:
+  - Task 3
+  - Task 4
   - Task 5
-  status: completed
+  status: complete
   acceptance:
-  - GIVEN a transcript with prior research references WHEN resuming THEN Agora does not rerun research
-  - GIVEN `agora resume` is passed new research or context flags WHEN resuming THEN Agora rejects the changed evidence request
-  - GIVEN `--dry-run --research` WHEN running THEN Agora reports deterministic planned research behavior without live web tool
-    calls
-  - GIVEN `--dry-run --context` with local paths WHEN running THEN local context validation is exercised without model cost
-  - GIVEN enabled research fails WHEN running THEN no agent turn is appended
-- number: 7
-  name: Documentation and freshness checkpoint
-  depends_on:
-  - Task 6
-  status: completed
-  acceptance:
-  - GIVEN the feature is implemented WHEN reading CLI help THEN `--research` and `--context` behavior is discoverable
-  - GIVEN the feature is implemented WHEN reading README examples THEN web research and local context examples are present
-  - GIVEN the feature is implemented WHEN reading CHANGELOG THEN the research/context capability is recorded under Unreleased
-  - GIVEN implementation surfaces new follow-up work WHEN checking TODO THEN relevant follow-ups are captured
+  - GIVEN existing exact-output tests exist WHEN they are reviewed THEN each is preserved, normalized, or replaced with semantic
+    structure/content assertions
+  - GIVEN normal verification runs WHEN the plan completes THEN `go test ./...` passes
+  - GIVEN representative dry-run, verbose, stats, synthesis, and error/status paths are exercised WHEN inspected THEN the major
+    surfaces feel coherent and remain usable without color
 overall_acceptance:
-- GIVEN `agora run --research --topic "recent policy change"` WHEN web tools return usable references THEN agents deliberate
-  with shared current evidence
-- GIVEN `agora run --context README.md --context examples/ --topic "improve docs"` WHEN local context resolves THEN agents
-  deliberate with shared local evidence
-- GIVEN enabled research or context produces no usable references WHEN running THEN Agora halts before any agent response
-- GIVEN a transcript from a research-enabled run WHEN inspecting it THEN it contains a research summary and references but not
-  full source content
-- GIVEN a resumed transcript WHEN continuing deliberation THEN prior evidence is not refreshed or changed
+- GIVEN a normal Agora run WHEN users see preview, header, turns, stats, and synthesis THEN the CLI has a coherent agent-theater
+  identity without semantic behavior changes
+- GIVEN plain or low-color terminals WHEN users inspect output THEN labels and layout preserve all critical information
+- GIVEN future output changes WHEN maintainers inspect `internal/output` THEN visual decisions are centralized enough to avoid
+  scattered one-off styling
 surprises: []

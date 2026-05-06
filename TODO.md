@@ -4,6 +4,7 @@
 
 ## ⇉ Degraded
 
+- [x] Orkestrera Task 3 blocked: config preview/header implementation dispatch returned empty twice, leaving `.agentera/plan.yaml` pending and no progress evidence — resolved by recovery inspection in Cycle 30
 - [x] go.mod module path says kumbaja, should be agora (Decision 3 renamed project) — fixed in 8b729a4
 - [x] Orchestrator core loop at 0% coverage (partial: termination + turn execution tested in Cycle 5; Synthesize tested in Cycle 16; Run loop: consensus/max_turns/unlimited tested, time+budget halts tested at checkTerminationConditions level)
 

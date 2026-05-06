@@ -1,4 +1,121 @@
 cycles:
+- number: 32
+  timestamp: "2026-05-06 13:45"
+  type: fix
+  phase: verify
+  what: >-
+    Recovered the final-inspection failure by making turn progress reuse stable config-order agent badges when the output manager has cast metadata, preserving [A? id] only for agents outside the configured cast, and making plain/no-color panels ASCII-safe under dumb-terminal conditions.
+  commit: none
+  inspiration: >-
+    Final-inspection recovery request requiring non-empty evidence, stable ordinal agent badges across preview/header/stats/turn progress, continued unknown-agent fallback, ASCII-safe plain panels under NO_COLOR=1 TERM=dumb when safely local, and no commit or push.
+  discovered: >-
+    TurnProgress always rendered unknownAgentBadge(record.AgentID) even though preview/header/final stats already used config-order agentBadge values. The CLI uses the same OutputManager instance for DeliberationHeader and subsequent orchestrator turn callbacks, so storing the cast mapping in the output manager is sufficient for normal run/resume paths without changing orchestrator callback signatures or transcript schema. Lipgloss theater panels used RoundedBorder even in plain mode, and the legacy drawPanel helper always emitted ANSI and Unicode box drawing.
+  verified: >-
+    go test ./internal/output passed; go test ./... passed; go build ./... passed; go vet ./... passed; NO_COLOR=1 TERM=dumb COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "final inspection badge smoke" --dry-run --yes --max-turns 2 --time 10 --verbose --synthesize --output /tmp/opencode/agora-final-inspection-smoke.jsonl > /tmp/opencode/agora-final-inspection-smoke.out completed; smoke output showed the Deliberation Start panel with ASCII +-| borders, Cast lines AGENT [A1 optimist] and AGENT [A2 skeptic], TURN 1/2 AGENT [A1 optimist], and TURN 2/2 AGENT [A2 skeptic]; ! rg -n $'\x1b\\[' /tmp/opencode/agora-final-inspection-smoke.out found no ANSI escapes; ! rg -n '^TURN .*\[A\?' /tmp/opencode/agora-final-inspection-smoke.out found no unknown badges on turn lines; ! rg -n '[╭╮╰╯─│┼]' /tmp/opencode/agora-final-inspection-smoke.out found no Unicode box drawing in the no-color/dumb smoke.
+  next: Return final-inspection recovery evidence; no commit or push was performed and .agentera/plan.yaml remains status: completed.
+  context:
+    intent: satisfy final-inspection recovery only without broad output redesign or behavior/schema changes
+    constraints: no commit, no push, preserve command flags, exit behavior, transcript schema, semantic data ordering, and error semantics
+    unknowns: standalone transcript stats still cannot infer config-order badges from raw transcript records, so PrintStats continues to use [A? id] without cast metadata by design
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/progress.yaml
+- number: 31
+  timestamp: "2026-05-06 13:15"
+  type: verification
+  phase: verify
+  what: >-
+    Completed Task 6 test migration and verification checkpoint for the Charm v2 agent theater output system by migrating the remaining brittle exact terminal table snapshot, fixing plain-mode panel styling, and verifying representative no-color CLI paths.
+  commit: none
+  inspiration: >-
+    Agentera plan Task 6 acceptance criteria requiring exact-output test review, full Go verification, and representative dry-run, verbose, stats, synthesis, and error/status output inspection for coherent no-color usability.
+  discovered: >-
+    The output tests were already mostly semantic content/structure assertions, but TestDrawTableAlignsAndPadsCells still compared a full ANSI table snapshot. Representative NO_COLOR/TERM=dumb smoke output also exposed ANSI escapes in Lipgloss-rendered config/header panels because theaterPanel and sectionWriter always applied styled title, label, and border foreground rendering.
+  verified: >-
+    Acceptance 1: reviewed *_test.go exact-output patterns and replaced the remaining full drawTable ANSI snapshot with semantic content plus line-count and visual-width structure assertions while preserving focused pure-function exact checks for wrapText and visualLen; added plain-mode header/config checks that assert required labels and no ANSI escapes. Acceptance 2: go test ./... passed after the migration and plain-mode fix. Acceptance 3: inspected env NO_COLOR=1 TERM=dumb COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "Task 6 verification theater output" --dry-run --verbose --synthesize --max-turns 2 --time 10 --output /tmp/opencode/agora-output-task6-run.jsonl, go run ./cmd/agora stats /tmp/opencode/agora-output-task6-run.jsonl, successful validate, and missing-config validate error outputs; dry-run/verbose showed header, turn metadata, readable AGENT CONTENT prose, final stats, synthesis fallback, [SUCCESS], and [INFO]; stats preserved totals/per-agent tables; validate success/error paths were readable; grep for ANSI escape sequences across /tmp/opencode/agora-output-task6-*.out found none.
+  next: The Charm v2 agent theater output plan is complete; no commit or push was performed.
+  context:
+    intent: satisfy Task 6 only and close the active output-system plan after Tasks 1-5 were already complete
+    constraints: no commit, no push, preserve command flags, exit behavior, transcript schema, semantic data ordering, and error semantics
+    unknowns: no remaining Task 6 blockers after full Go tests and representative no-color CLI smoke inspection
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 30
+  timestamp: "2026-05-06 13:00"
+  type: audit
+  phase: audit
+  what: >-
+    Resolved the stale Task 3 blocked marker after recovery inspection verified the current repository satisfies config preview and deliberation header acceptance.
+  commit: none
+  inspiration: >-
+    Orkestrera recovery check for Task 3 after Task 4 inspection reported config preview and deliberation header renderer changes beyond the original Task 4 scope.
+  discovered: >-
+    Task 3 had no dedicated implementation progress cycle because both original dispatch attempts returned empty, but later renderer changes already made the preview and header satisfy the task's acceptance criteria.
+  verified: >-
+    Inspektera verified internal/output renders auto config preview with Generated Config, Cast Preview, Topology, Consensus threshold, Run Bounds, Level caps, and Agents; deliberation header renders Deliberation Start with Topic, Cast, and Run Settings while preserving state-derived meaning including configured consensus threshold when positive; go test ./internal/output passed; representative dry-run CLI checks at COLUMNS=40, 80, and 120 completed without panic and retained required preview/header labels.
+  next: Task 6 can run the final test migration and verification checkpoint now that Tasks 3, 4, and 5 are complete.
+  context:
+    intent: resolve Task 3 from blocked to complete using inspection evidence only, without additional implementation changes
+    constraints: no source edits, no commit, no push, preserve command flags, exit behavior, transcript schema, semantic data ordering, and error semantics
+    unknowns: 40-column wrapping remains visually rough for long IDs/models and NO_COLOR still showed some ANSI-colored Lipgloss borders during inspection, both deferred to Task 6/overall verification
+    scope: .agentera/plan.yaml, .agentera/progress.yaml, TODO.md
+- number: 29
+  timestamp: "2026-05-06 12:30"
+  type: implementation
+  phase: build
+  what: Completed Task 5 stats and synthesis output by moving final run stats, transcript stats, consensus events, and synthesis sections onto the shared structured output language while preserving existing metrics and model-provided synthesis fields.
+  commit: none
+  inspiration: Agentera plan Task 5 acceptance criteria, internal/output/CONVENTIONS.md Surface Mapping for final stats, transcript stats, and synthesis, and Firm Decision 7 that Lipgloss v2 owns structured UI while Glamour v2 is limited to long-form prose.
+  discovered: Final stats and transcript stats were still rendered through the legacy ANSI table path with nondeterministic map iteration for per-agent rows; transcript consensus events lacked the new semantic consensus label; synthesis output rendered recommendation, confidence, arguments, agreements, and tensions with manual ANSI/glyph formatting instead of the shared visual language.
+  verified: go test ./internal/output verifies FinalStats preserves Turns completed, Duration, Total tokens, Total cost, Halted by, and per-agent Agent/Turns/Tokens/Cost rows including configured-agent badges and unknown orchestrator fallback; the same package verifies PrintStats preserves Total turns, Total tokens, Total cost, Avg turn duration, per-agent data, and consensus event text with a [CONSENSUS] label; it also verifies SynthesisResult preserves recommended_decision, confidence, key_arguments, points_of_agreement, and unresolved_tensions strings with [CONSENSUS] agreement and [WARNING] tension labels; go test ./... passed for all packages; go build ./... passed; go vet ./... passed.
+  next: Task 6 can perform the broader test migration and representative command verification checkpoint; Task 3 remains blocked and was not touched beyond preserving compatibility with existing renderer changes.
+  context:
+    intent: satisfy Task 5 only without implementing config preview/header, turn/status scope, command flag changes, transcript schema changes, or behavior changes
+    constraints: no push, no commit, preserve command flags, exit behavior, transcript schema, semantic data ordering, synthesis fields, and error semantics
+    unknowns: none for Task 5 acceptance after targeted and full Go verification
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 28
+  timestamp: "2026-05-06 12:00"
+  type: implementation
+  phase: build
+  what: Completed Task 4 turn progress and status output by making turn-completion lines use plain semantic metadata labels, separating verbose agent body prose from structured metadata, and giving info/success/error/delimiter messages scan-friendly plain and rich labels.
+  commit: none
+  inspiration: Agentera plan Task 4 acceptance criteria, internal/output/CONVENTIONS.md Surface Mapping for turn progress and verbose agent content, Semantic Labels, Terminal Fallback, and Firm Decision 7 that Lipgloss v2 owns structured UI while Glamour v2 is limited to long-form prose.
+  discovered: Turn progress previously depended on colored agent names, dim metric separators, and a glyph-only consensus marker; verbose content was printed directly under the progress line with a dim side bar; simple status messages used glyphs without bracketed plain labels; delimiters used Unicode line drawing even in plain-style output.
+  verified: go test ./internal/output verifies plain/no-color turn progress includes AGENT [A? skeptic], MODEL opencode/test, ELAPSED 3.4s, TOKENS 42, COST $0.012345, and [CONSENSUS] text labels; the same package test verifies verbose mode prints a separate AGENT CONTENT section after the metadata line and keeps Markdown-like prose body lines readable behind a body prefix instead of merging metadata with prose; the simple status test verifies [INFO], [SUCCESS], [ERROR], and an ASCII delimiter in NO_COLOR mode; go test ./... passed for all packages; go build ./... passed; go vet ./... passed.
+  next: Task 5 can implement stats and synthesis output against the same conventions; Task 3 remains blocked and was not touched.
+  context:
+    intent: satisfy Task 4 only without implementing config preview/header, final stats, transcript stats, synthesis, or unrelated surfaces
+    constraints: no push, no commit, preserve command flags, exit behavior, transcript schema, semantic data ordering, and error semantics
+    unknowns: none for Task 4 acceptance after output tests and full Go verification
+    scope: internal/output/output.go, internal/output/output_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 27
+  timestamp: "2026-05-06 11:29"
+  type: documentation
+  phase: build
+  what: Completed Task 2 visual language and fallback rules by adding the internal output conventions contract for the Charm v2 agent theater system and marking the active plan task complete without rewriting any renderers.
+  commit: none
+  inspiration: Agentera plan Task 2 acceptance criteria and Firm Decision 7 requiring Lipgloss v2 for structured terminal UI, Glamour v2 only for long-form prose, and non-negotiable plain-terminal readability.
+  discovered: Current renderer code still uses manual ANSI colors, fixed-width Unicode panels, and map-based role colors; Task 2 intentionally leaves those rewrites to Tasks 3-5 and only defines the conventions future implementations must follow.
+  verified: internal/output/CONVENTIONS.md documents role identity consistency by exact agent_id label, config-order cast ordering, stable ordinal badges, stable visual accents, orchestrator/system and synthesizer placement, and fallback handling for unknown resumed agents; the same file documents no-color/plain semantic labels for SUCCESS, ERROR, CONSENSUS, WARNING, COST, ELAPSED, MODEL, and AGENT identity with plain examples; it also documents the Lipgloss/Glamour boundary, NO_COLOR/TERM=dumb/unset TERM/non-TTY/CI/low-color fallback rules, ASCII-safe plain structure, 40-column minimum required-label preservation, 80/120-column target coverage, table-to-key-value degradation, and Glamour width matching its Lipgloss container.
+  next: Task 3 can implement config preview and deliberation header rendering against internal/output/CONVENTIONS.md.
+  context:
+    intent: satisfy Task 2 only by creating the smallest useful internal visual/fallback convention artifact
+    constraints: no renderer rewrites, no push, no commit, preserve existing output behavior until later tasks
+    unknowns: exact Charm v2 API shape remains for implementation tasks, but the behavior contract is now defined
+    scope: internal/output/CONVENTIONS.md, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 26
+  timestamp: "2026-05-06 11:20"
+  type: documentation
+  phase: build
+  what: Completed Task 1 output inventory and dependency checkpoint for the Charm v2 agent theater output system by classifying current major stdout/stderr surfaces, resolving the correct Charm v2 module paths, recording rejected GitHub import paths, and documenting current terminal capability behavior without implementing visual rewrites.
+  commit: none
+  inspiration: Agentera plan Task 1 acceptance criteria and Firm Decision 7 requiring Lipgloss v2 for structured terminal UI, Glamour v2 only for long-form prose, and plain-terminal readability.
+  discovered: No .agentera/docs.yaml artifact mapping exists, so default artifact paths apply. Charm v2 modules reject the old github.com/charmbracelet import paths because their go.mod files declare charm.land module paths. Current output code has no NO_COLOR, low-color, CI, dumb-terminal, or non-TTY output fallback; only confirmProceed handles non-TTY stdin by auto-proceeding.
+  verified: .agentera/output-inventory.yaml classifies every major run, resume, stats, validate, list, root/help, and internal/output stdout/stderr surface as structured_metadata, prose, status, stats, or out_of_scope; go list -m -versions identified github.com/charmbracelet/lipgloss/v2 versions through v2.0.3 and github.com/charmbracelet/glamour/v2 v2.0.0 before go get rejected those paths due to declared charm.land module paths; go get charm.land/lipgloss/v2@v2.0.3 charm.land/glamour/v2@v2.0.0 succeeded and updated go.mod/go.sum; code inspection found no NO_COLOR/TERM/COLORTERM/CI/output-TTY fallback logic and found only non-TTY stdin auto-proceed behavior in confirmProceed; env NO_COLOR=1 TERM=dumb CI=1 go run ./cmd/agora validate examples/quick-sanity-check.yaml printed the existing validation status and config metadata; go test ./..., go build ./..., and go vet ./... passed after dependency resolution; uv run "$HOME/.agents/agentera/scripts/agentera" plan reports Task 1 status complete.
+  next: Task 2 should define visual language and fallback rules before any renderer rewrite.
+  context:
+    intent: satisfy Task 1 checkpoint only without implementing visual language or output rewrites
+    constraints: no push, no commit, preserve existing dirty Agentera artifacts not created by this cycle
+    unknowns: none for dependency compatibility after normal Go workflow verification
+    scope: .agentera/output-inventory.yaml, go.mod, go.sum, .agentera/plan.yaml, .agentera/progress.yaml
 - number: 25
   timestamp: "2026-05-05 23:25"
   type: fix

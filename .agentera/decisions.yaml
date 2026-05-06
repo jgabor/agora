@@ -218,4 +218,35 @@ decisions:
     replay in exchange for compact audit trails.'
   confidence: firm
   feeds_into: PLAN.md, TODO.md, internal/research, internal/orchestrator, internal/types, internal/config
+- number: 7
+  date: '2026-05-06'
+  question: How should Agora refactor terminal output to improve visual polish and maintainability?
+  context: The current `internal/output` package hand-rolls ANSI colors, panels, tables, wrapping, width accounting, status glyphs,
+    and CLI message formatting in a single module. The desired direction is a stronger visual identity built around Agora's cast
+    of deliberating agents, while preserving Go-only CLI ergonomics and usable output on plain terminals.
+  alternatives:
+  - name: Manual ANSI refinement
+    status: rejected
+    description: 'Keep the current dependency-light approach and improve the existing helpers. Win: minimal dependency risk.
+      Lose: continues fighting hand-rolled layout/color code and limits the visual leap.'
+  - name: Glamour-led renderer
+    status: rejected
+    description: 'Render most output through Glamour Markdown themes. Win: strong prose rendering. Lose: structured CLI surfaces
+      like turn progress, tables, and config previews become harder to control and test.'
+  - name: Coherent Charm v2 agent theater system
+    status: chosen
+    description: 'Use Lipgloss v2 for layout, color, borders, tables, and role identity, with Glamour v2 reserved for long-form
+      Markdown-like agent or synthesis prose. Win: coherent theatrical visual identity with maintainable styling primitives.
+      Lose: accepts v2 dependency maturity risk and a broader coordinated refactor.'
+  choice: Refactor `internal/output` around a coherent Charm v2 "agent theater" visual system. Lipgloss v2 owns structured
+    terminal UI, cast styling, panels, tables, status lines, and fallback-aware layout. Glamour v2 is limited to long-form prose
+    where Markdown rendering adds clarity. Update the major output surfaces together so config preview, deliberation header,
+    turn progress, stats, and synthesis share one visual language.
+  reasoning: The primary win is visual polish, not just removing helper code. Agora's product shape is a cast of agents debating,
+    so the output should make roles, turns, and synthesis feel theatrical and coherent. Plain-terminal usability is the hard
+    guardrail, which argues against decorative one-offs and against pushing compact status UI through Markdown rendering. A small
+    internal theme/cast foundation should come before renderer rewrites so the refactor produces a visual system rather than a
+    different kind of scattered styling.
+  confidence: firm
+  feeds_into: PLAN.md, TODO.md, internal/output, go.mod
 archive: []

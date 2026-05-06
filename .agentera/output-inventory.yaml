@@ -1,0 +1,240 @@
+header:
+  title: Charm v2 output inventory and dependency checkpoint
+  date: '2026-05-06'
+  plan: Charm v2 agent theater output system
+  task: 1
+scope:
+  included:
+  - current major Agora command stdout and stderr surfaces
+  - current internal/output renderer entry points
+  - Charm v2 dependency module resolution
+  - current terminal capability behavior for NO_COLOR, low-color, non-TTY, CI, and dumb terminals
+  excluded:
+  - visual language implementation
+  - output rewrites
+  - transcript schema changes
+classification_vocabulary:
+  structured_metadata: machine-derived labels, fields, tables, or configuration values rendered for humans
+  prose: user/model-authored long-form text where paragraph rendering matters
+  status: short progress, success, error, prompt, or delimiter messages
+  stats: aggregate metrics, per-agent metrics, consensus metrics, or transcript metrics
+  out_of_scope: generated framework help, captured subprocess streams, persisted JSONL transcript data, or non-user-facing strings
+surfaces:
+  - command: agora run
+    location: cmd/agora/main.go runCmd; internal/output.OutputManager
+    stdout:
+      - surface: auto config preview
+        renderer: OutputManager.ConfigPreview
+        classification: structured_metadata
+        notes: topology, consensus threshold, level caps, agent IDs, and first prompt line in a fixed ANSI/Unicode panel
+      - surface: preview confirmation prompt
+        renderer: confirmProceed
+        classification: status
+        notes: interactive prompt only; non-TTY stdin currently auto-proceeds without printing the prompt
+      - surface: aborted message
+        renderer: fmt.Println("Aborted.")
+        classification: status
+        notes: printed when the interactive preview prompt is declined
+      - surface: deliberation topic panel
+        renderer: OutputManager.DeliberationHeader -> drawPanel
+        classification: prose
+        notes: user-provided topic text wrapped in a fixed ANSI/Unicode panel
+      - surface: deliberation agents line
+        renderer: OutputManager.DeliberationHeader
+        classification: structured_metadata
+        notes: agent IDs colored by hard-coded role mapping
+      - surface: deliberation settings line
+        renderer: OutputManager.DeliberationHeader
+        classification: structured_metadata
+        notes: topology, time, max_turns, window, optional budget, and optional consensus threshold
+      - surface: turn progress line
+        renderer: OutputManager.TurnProgress
+        classification: status
+        notes: turn index, agent, optional model, elapsed time, token total, and cost; combines progress status with metadata
+      - surface: turn consensus line
+        renderer: OutputManager.TurnProgress
+        classification: status
+        notes: consensus glyph, label, and consensus statement
+      - surface: verbose agent body
+        renderer: OutputManager.TurnProgress
+        classification: prose
+        notes: model-authored content printed line-by-line with a dim gutter when verbose mode is enabled
+      - surface: final deliberation summary table
+        renderer: OutputManager.FinalStats
+        classification: stats
+        notes: turns completed, duration, total tokens, total cost, and halted-by reason
+      - surface: final per-agent stats table
+        renderer: OutputManager.FinalStats
+        classification: stats
+        notes: agent turn counts, tokens, and cost
+      - surface: synthesis section header
+        renderer: OutputManager.SynthesizeHeader
+        classification: status
+        notes: section transition label
+      - surface: synthesis recommended decision
+        renderer: OutputManager.SynthesisResult -> drawPanel
+        classification: prose
+        notes: model-authored recommendation text in a fixed ANSI/Unicode panel
+      - surface: synthesis confidence
+        renderer: OutputManager.SynthesisResult
+        classification: structured_metadata
+        notes: confidence label colored by high, medium, or low
+      - surface: synthesis arguments, agreements, and tensions
+        renderer: OutputManager.SynthesisResult
+        classification: prose
+        notes: model-authored list content with status-like glyphs for agreement and tension groups
+      - surface: completion, transcript, and halted-by lines
+        renderer: OutputManager.Success; OutputManager.Info
+        classification: status
+        notes: short run-completion and transcript-location messages
+    stderr:
+      - surface: cobra command errors and returned RunE errors
+        renderer: cobra default error handling
+        classification: status
+        notes: includes config loading, invalid flag combinations, evidence failures, transcript failures, and command usage errors
+    out_of_scope:
+      - surface: transcript JSONL output file
+        reason: persisted machine-readable transcript, not terminal stdout/stderr
+      - surface: opencode subprocess stdout/stderr
+        reason: captured and parsed by internal/agent; not streamed as Agora terminal output
+  - command: agora resume
+    location: cmd/agora/main.go resumeCmd; internal/output.OutputManager
+    stdout:
+      - surface: auto config preview
+        renderer: OutputManager.ConfigPreview
+        classification: structured_metadata
+        notes: same shape as agora run when resume uses auto mode
+      - surface: preview confirmation prompt and aborted message
+        renderer: confirmProceed; fmt.Println("Aborted.")
+        classification: status
+        notes: same interactive behavior as agora run when resume uses auto mode
+      - surface: deliberation topic panel
+        renderer: OutputManager.DeliberationHeader -> drawPanel
+        classification: prose
+        notes: same topic rendering as agora run
+      - surface: deliberation agents and settings lines
+        renderer: OutputManager.DeliberationHeader
+        classification: structured_metadata
+        notes: same metadata fields as agora run, using resume state
+      - surface: turn progress and consensus lines
+        renderer: OutputManager.TurnProgress
+        classification: status
+        notes: same progress renderer as agora run for additional turns
+      - surface: verbose agent body
+        renderer: OutputManager.TurnProgress
+        classification: prose
+        notes: same verbose prose renderer as agora run
+      - surface: final summary and per-agent tables
+        renderer: OutputManager.FinalStats
+        classification: stats
+        notes: same stats renderer as agora run, computed over copied plus resumed records
+      - surface: resumed completion and transcript lines
+        renderer: OutputManager.Success
+        classification: status
+        notes: resume-specific completion copy and output transcript location
+    stderr:
+      - surface: cobra command errors and returned RunE errors
+        classification: status
+        notes: includes resume source, evidence-change rejection, config, transcript, and flag errors
+  - command: agora stats TRANSCRIPT
+    location: cmd/agora/main.go statsCmd; internal/output.OutputManager.PrintStats
+    stdout:
+      - surface: transcript statistics table
+        classification: stats
+        notes: total turns, total tokens, total cost, and average turn duration
+      - surface: per-agent stats table
+        classification: stats
+        notes: agent turn counts, tokens, and cost
+      - surface: consensus events list
+        classification: stats
+        notes: consensus event turn, agent, and statement
+    stderr:
+      - surface: transcript loading and empty transcript errors
+        classification: status
+        notes: returned through Cobra default error handling
+  - command: agora validate CONFIG
+    location: cmd/agora/main.go validateCmd
+    stdout:
+      - surface: validation success line
+        classification: status
+        notes: plain confirmation text
+      - surface: validated config fields
+        classification: structured_metadata
+        notes: topology, agents, optional consensus threshold, and optional synthesis model
+    stderr:
+      - surface: config validation errors
+        classification: status
+        notes: returned through Cobra default error handling with existing ERROR prefix
+  - command: agora list
+    location: cmd/agora/main.go listCmd
+    stdout:
+      - surface: empty transcript store message
+        classification: status
+        notes: printed when no managed transcripts are found
+      - surface: transcript listing table
+        classification: structured_metadata
+        notes: date, slug, turns, and filename columns
+    stderr:
+      - surface: settings and transcript store errors
+        classification: status
+        notes: returned through Cobra default error handling
+  - command: agora root/help/version
+    location: cmd/agora/main.go rootCmd; Cobra framework
+    stdout:
+      - surface: generated help and version output
+        classification: out_of_scope
+        notes: framework-generated command metadata; not part of internal/output visual refactor checkpoint
+    stderr:
+      - surface: generated usage or parse errors
+        classification: out_of_scope
+        notes: Cobra framework behavior; command-specific returned errors are classified above
+  - command: internal output helpers
+    location: internal/output/output.go
+    stdout:
+      - surface: Info, Error, Success, and Delimiter helpers
+        classification: status
+        notes: reusable short messages; Error writes to stdout despite its name in current behavior
+      - surface: drawPanel and drawTable helpers
+        classification: structured_metadata/stats/prose
+        notes: classification depends on caller content; currently fixed width, ANSI-colored, and Unicode-bordered
+dependencies:
+  rejected:
+  - module: github.com/charmbracelet/lipgloss/v2
+    requested_version: v2.0.3
+    reason: module declares its path as charm.land/lipgloss/v2
+  - module: github.com/charmbracelet/glamour/v2
+    requested_version: v2.0.0
+    reason: module declares its path as charm.land/glamour/v2
+  selected:
+  - module: charm.land/lipgloss/v2
+    version: v2.0.3
+    purpose: structured terminal UI, styling, panels, tables, layout, and fallback-aware terminal rendering in later tasks
+  - module: charm.land/glamour/v2
+    version: v2.0.0
+    purpose: long-form Markdown-like prose rendering only in later tasks
+terminal_capability_checkpoint:
+  current_detection:
+    no_color: none
+    low_color: none
+    ci: none
+    dumb_terminal: none
+    non_tty_output: none
+    non_tty_input: confirmProceed checks stdin character device status and auto-proceeds without prompting when stdin is not a terminal
+  current_behavior:
+    no_color: ANSI color and Unicode glyph output is still emitted
+    low_color: ANSI color and Unicode glyph output is still emitted
+    ci: ANSI color and Unicode glyph output is still emitted
+    dumb_terminal: ANSI color and Unicode glyph output is still emitted
+    non_tty_output: ANSI color and Unicode glyph output is still emitted
+    non_tty_input: preview confirmation is skipped and deliberation proceeds
+  fallback_decision_for_task_1: Preserve existing behavior during this checkpoint. Record that Task 2 must define explicit fallback rules before renderer rewrites; plain-terminal readability remains non-negotiable under Decision 7.
+verification:
+  dependency_resolution:
+  - go list -m -versions github.com/charmbracelet/lipgloss/v2
+  - go list -m -versions github.com/charmbracelet/glamour/v2
+  - go get github.com/charmbracelet/lipgloss/v2@v2.0.3 github.com/charmbracelet/glamour/v2@v2.0.0
+  - go get charm.land/lipgloss/v2@v2.0.3 charm.land/glamour/v2@v2.0.0
+  terminal_behavior:
+  - code inspection found no NO_COLOR, TERM, COLORTERM, CI, or output TTY detection in internal/output or cmd/agora
+  - code inspection found non-TTY stdin handling only in confirmProceed
+  - env NO_COLOR=1 TERM=dumb CI=1 go run ./cmd/agora validate examples/quick-sanity-check.yaml printed the existing plain validation status and structured config fields

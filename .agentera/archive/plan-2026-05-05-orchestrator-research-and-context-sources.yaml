@@ -1,0 +1,145 @@
+header:
+  level: full
+  created: '2026-05-05'
+  status: completed
+  reviewed: '2026-05-05'
+  critic_issues: 9 found, 9 addressed, 0 dismissed
+  title: Orchestrator research and context sources
+what: Add opt-in research and context support so deliberations can start with current web evidence and local text context. `--research`
+  enables topic-inferred web research. Repeatable `--context` adds local files or directories. Project deliberation config may
+  also enable research and declare context for repeatable runs. Agora builds one shared evidence bundle, records source references,
+  and gives each agent the same evidence exactly once on that agent's first turn.
+why: Agents currently deliberate from the topic and transcript history only. Research/context support makes Agora useful for
+  current information, documentation-grounded decisions, and codebase-grounded deliberations without turning every agent into
+  an unbounded browser.
+constraints: Web research uses OpenCode's native web tools through the normal agent runtime boundary. Local context is text-only.
+  Research-enabled runs halt before deliberation if required evidence cannot be produced. Transcripts store references and a
+  readable research summary, not full source content. CLI flags override config and settings. Global settings may set safe defaults
+  or caps but must not silently enable web access.
+scope:
+  included:
+  - '`--research` for web research'
+  - 'repeatable `--context` for local files and directories'
+  - project config research/context policy
+  - text-only local context with caps and secret-safe traversal rules
+  - 'topic-inferred bounded web research through OpenCode `websearch` and `webfetch`'
+  - shared evidence bundle delivered once per agent
+  - transcript research summary and source references only
+  - halt-on-failure behavior for enabled research
+  - dry-run and resume semantics
+  - README/examples/changelog updates
+  excluded:
+  - agent-requested retrieval during turns
+  - per-agent evidence filtering
+  - full source content in transcripts
+  - persistent source cache
+  - PDF/DOCX/binary document parsing
+  - browser rendering
+  deferred:
+  - separate research model
+  - source/domain allowlists
+  - transcript snippets
+  - replay-perfect research
+  - explicit research refresh on resume
+design: Treat research as a pre-deliberation evidence-gathering phase. Local context and web research both produce bounded evidence
+  plus source references. The orchestrator owns timing, failure semantics, and fair delivery. Deliberation agents receive evidence
+  through their turn input only on their first turn. The transcript receives a human-readable research summary with references
+  only.
+tasks:
+- number: 1
+  name: Research UX and policy contract
+  depends_on: []
+  status: completed
+  acceptance:
+  - GIVEN `agora run --research --topic "X"` WHEN web research is allowed by the runtime THEN Agora attempts web research before
+    deliberation
+  - GIVEN repeated `--context` flags WHEN running THEN all declared local paths are considered part of the requested context
+  - GIVEN project config enables research WHEN running without `--research` THEN web research still runs
+  - GIVEN global settings contain research preferences WHEN no project config or CLI enables research THEN web research does
+    not run
+  - GIVEN CLI flags and config disagree on research/context values WHEN running THEN CLI flags take precedence
+- number: 2
+  name: Text-only local context safety
+  depends_on:
+  - Task 1
+  status: completed
+  acceptance:
+  - GIVEN `--context` points at a readable text file WHEN running THEN the evidence bundle contains a reference to that file
+  - GIVEN `--context` points at a directory WHEN running THEN text files under that directory are considered within configured
+    caps
+  - GIVEN a directory contains binary files, hidden VCS data, or secret-looking files WHEN resolving context THEN those files
+    are not sent to agents
+  - GIVEN directory traversal would exceed file, byte, or depth caps WHEN resolving context THEN Agora reports a clear bounded-context
+    error
+  - GIVEN context resolves to zero usable text sources WHEN running THEN deliberation does not start
+- number: 3
+  name: Topic-inferred web query contract
+  depends_on:
+  - Task 1
+  status: completed
+  acceptance:
+  - GIVEN web research is enabled WHEN the topic is provided THEN Agora derives a bounded set of research queries from that
+    topic
+  - GIVEN query generation fails or produces no queries WHEN research is enabled THEN deliberation does not start
+  - GIVEN research caps are configured WHEN queries are derived THEN query count stays within those caps
+  - GIVEN a deliberation model is selected WHEN research queries are derived THEN the same model identity is used for the research
+    step
+- number: 4
+  name: OpenCode-backed web evidence collection
+  depends_on:
+  - Task 3
+  status: completed
+  acceptance:
+  - GIVEN web research is enabled WHEN OpenCode web tools are available THEN source references are produced from web search/fetch
+    results
+  - GIVEN OpenCode web tools are unavailable WHEN research is enabled THEN Agora fails before the first deliberation turn
+  - GIVEN the research response is malformed WHEN Agora reads it THEN Agora reports a parse failure and does not start deliberation
+  - GIVEN web research produces zero source references WHEN research is enabled THEN deliberation does not start
+  - GIVEN web research succeeds WHEN the transcript is written THEN source references include enough metadata to audit where
+    evidence came from
+- number: 5
+  name: Evidence delivery and transcript audit
+  depends_on:
+  - Task 2
+  - Task 4
+  status: completed
+  acceptance:
+  - GIVEN multiple agents and a successful evidence bundle WHEN each agent takes its first turn THEN each receives the same
+    evidence bundle once
+  - GIVEN an agent takes a later turn WHEN evidence was already delivered to that agent THEN raw evidence is not attached again
+  - GIVEN research/context evidence exists WHEN the transcript is written THEN an orchestrator research summary appears before
+    agent turns
+  - GIVEN source references are written to the transcript WHEN inspecting the transcript THEN full source content is not present
+  - GIVEN no research or context is enabled WHEN running THEN deliberation behavior remains unchanged
+- number: 6
+  name: Resume, dry-run, and failure behavior
+  depends_on:
+  - Task 5
+  status: completed
+  acceptance:
+  - GIVEN a transcript with prior research references WHEN resuming THEN Agora does not rerun research
+  - GIVEN `agora resume` is passed new research or context flags WHEN resuming THEN Agora rejects the changed evidence request
+  - GIVEN `--dry-run --research` WHEN running THEN Agora reports deterministic planned research behavior without live web tool
+    calls
+  - GIVEN `--dry-run --context` with local paths WHEN running THEN local context validation is exercised without model cost
+  - GIVEN enabled research fails WHEN running THEN no agent turn is appended
+- number: 7
+  name: Documentation and freshness checkpoint
+  depends_on:
+  - Task 6
+  status: completed
+  acceptance:
+  - GIVEN the feature is implemented WHEN reading CLI help THEN `--research` and `--context` behavior is discoverable
+  - GIVEN the feature is implemented WHEN reading README examples THEN web research and local context examples are present
+  - GIVEN the feature is implemented WHEN reading CHANGELOG THEN the research/context capability is recorded under Unreleased
+  - GIVEN implementation surfaces new follow-up work WHEN checking TODO THEN relevant follow-ups are captured
+overall_acceptance:
+- GIVEN `agora run --research --topic "recent policy change"` WHEN web tools return usable references THEN agents deliberate
+  with shared current evidence
+- GIVEN `agora run --context README.md --context examples/ --topic "improve docs"` WHEN local context resolves THEN agents
+  deliberate with shared local evidence
+- GIVEN enabled research or context produces no usable references WHEN running THEN Agora halts before any agent response
+- GIVEN a transcript from a research-enabled run WHEN inspecting it THEN it contains a research summary and references but not
+  full source content
+- GIVEN a resumed transcript WHEN continuing deliberation THEN prior evidence is not refreshed or changed
+surprises: []
