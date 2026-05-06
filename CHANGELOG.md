@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `--context` now delivers bounded safe local text to agents once while transcripts keep source references only.
+
 ## [0.2.0] - 2026-05-05
 
 ### Added

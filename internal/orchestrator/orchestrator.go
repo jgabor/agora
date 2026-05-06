@@ -157,12 +157,14 @@ func (o *Orchestrator) collectEvidence() bool {
 		return false
 	}
 	o.sharedEvidence = bundle
+	auditEvidence := *bundle
+	auditEvidence.ContextDocuments = nil
 	_ = o.transcript.Append(types.TurnRecord{
 		Turn:      -2,
 		AgentID:   "orchestrator",
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   bundle.Summary,
-		Evidence:  bundle,
+		Evidence:  &auditEvidence,
 	})
 	return true
 }

@@ -21,6 +21,9 @@ func TestPolicyEvidenceCollectorReferencesReadableTextFile(t *testing.T) {
 	if len(bundle.SourceReferences) != 1 || bundle.SourceReferences[0].Path != path {
 		t.Fatalf("SourceReferences: got %#v, want %q", bundle.SourceReferences, path)
 	}
+	if len(bundle.ContextDocuments) != 1 || bundle.ContextDocuments[0].Path != path || bundle.ContextDocuments[0].Content != "useful context\n" {
+		t.Fatalf("ContextDocuments: got %#v, want delivered file content", bundle.ContextDocuments)
+	}
 }
 
 func TestPolicyEvidenceCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *testing.T) {
@@ -44,10 +47,17 @@ func TestPolicyEvidenceCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *test
 	got := referencePaths(bundle.SourceReferences)
 	assertContainsPath(t, got, keep)
 	assertContainsPath(t, got, alsoKeep)
+	docs := contextDocumentPaths(bundle.ContextDocuments)
+	assertContainsPath(t, docs, keep)
+	assertContainsPath(t, docs, alsoKeep)
 	assertNotContainsSubstring(t, got, "binary.dat")
 	assertNotContainsSubstring(t, got, ".git")
 	assertNotContainsSubstring(t, got, ".env")
 	assertNotContainsSubstring(t, got, "api-token.txt")
+	assertNotContainsSubstring(t, docs, "binary.dat")
+	assertNotContainsSubstring(t, docs, ".git")
+	assertNotContainsSubstring(t, docs, ".env")
+	assertNotContainsSubstring(t, docs, "api-token.txt")
 }
 
 func TestPolicyEvidenceCollectorReportsBoundedContextErrors(t *testing.T) {
@@ -340,6 +350,14 @@ func referencePaths(refs []types.SourceReference) []string {
 	paths := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		paths = append(paths, ref.Path)
+	}
+	return paths
+}
+
+func contextDocumentPaths(docs []types.ContextDocument) []string {
+	paths := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		paths = append(paths, doc.Path)
 	}
 	return paths
 }

@@ -10,6 +10,7 @@
 
 ## → Normal
 
+- [x] Fix `--context` delivery: agents must receive bounded safe text content once, while transcripts keep source references only
 - [x] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
 - [x] CI workflow (Go build, test, lint) for main branch
 

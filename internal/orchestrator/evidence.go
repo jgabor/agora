@@ -81,8 +81,9 @@ func (c PolicyEvidenceCollector) Collect(request types.EvidenceRequest) (*types.
 		if bundle.Summary != "" {
 			bundle.Summary += "\n\n"
 		}
-		bundle.Summary += "Local text context was resolved for pre-deliberation evidence."
+		bundle.Summary += "Local text context was resolved and delivered for pre-deliberation evidence."
 		bundle.SourceReferences = append(bundle.SourceReferences, resolver.refs...)
+		bundle.ContextDocuments = append(bundle.ContextDocuments, resolver.documents...)
 	}
 	if bundle.Summary == "" {
 		bundle.Summary = "No pre-deliberation evidence sources were resolved."
@@ -252,6 +253,7 @@ func positiveInt64OrDefault(value, fallback int64) int64 {
 
 type contextResolver struct {
 	refs       []types.SourceReference
+	documents  []types.ContextDocument
 	maxSources int
 	maxBytes   int64
 	maxDepth   int
@@ -306,8 +308,21 @@ func (r *contextResolver) addFile(path string, info os.FileInfo) error {
 	if r.totalBytes+info.Size() > r.maxBytes {
 		return fmt.Errorf("bounded-context error: context exceeds max bytes %d at %q", r.maxBytes, path)
 	}
-	r.totalBytes += info.Size()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("resolving context %q: %w", path, err)
+	}
+	text := string(content)
+	if strings.Contains(text, "\x00") || !utf8.ValidString(text) {
+		return nil
+	}
+	actualBytes := int64(len(content))
+	if r.totalBytes+actualBytes > r.maxBytes {
+		return fmt.Errorf("bounded-context error: context exceeds max bytes %d at %q", r.maxBytes, path)
+	}
+	r.totalBytes += actualBytes
 	r.refs = append(r.refs, types.SourceReference{Title: path, Path: path})
+	r.documents = append(r.documents, types.ContextDocument{Path: path, Content: text})
 	return nil
 }
 

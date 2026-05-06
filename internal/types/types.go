@@ -230,10 +230,17 @@ type SourceReference struct {
 	RetrievedAt string `yaml:"retrieved_at,omitempty" json:"retrieved_at,omitempty"`
 }
 
+// ContextDocument carries bounded local text to agents. Transcript records must omit it.
+type ContextDocument struct {
+	Path    string `yaml:"path" json:"path"`
+	Content string `yaml:"content" json:"content"`
+}
+
 // EvidenceBundle is the shared evidence result produced before deliberation.
 type EvidenceBundle struct {
 	Summary          string            `yaml:"summary" json:"summary"`
 	SourceReferences []SourceReference `yaml:"source_references" json:"source_references"`
+	ContextDocuments []ContextDocument `yaml:"context_documents,omitempty" json:"context_documents,omitempty"`
 }
 
 // ComputeStats computes DeliberationStats from a slice of TurnRecords.

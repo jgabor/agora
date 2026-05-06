@@ -144,7 +144,7 @@ Global `settings.yaml` may set evidence caps but does not silently enable web ac
 
 ### Research and Local Context
 
-Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context accepts readable text files and directories; directory traversal skips hidden VCS directories, binary files, and secret-looking files such as `.env` and private key names.
+Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal skips hidden VCS directories, binary files, and secret-looking files such as `.env` and private key names.
 
 Agora halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if local context exceeds file, byte, or depth caps. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths and caps without model cost.
 

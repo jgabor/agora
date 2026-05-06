@@ -246,6 +246,11 @@ func TestRunTranscriptEvidenceExcludesFullSourceContent(t *testing.T) {
 	o.SetEvidenceCollector(NewPolicyEvidenceCollector(runner))
 	o.Run()
 
+	evidence, ok := runner.envelope["evidence"].(*types.EvidenceBundle)
+	if !ok || len(evidence.ContextDocuments) != 1 || evidence.ContextDocuments[0].Content != fullSourceContent {
+		t.Fatalf("agent evidence context: got %#v, want delivered local text", runner.envelope["evidence"])
+	}
+
 	data, err := json.Marshal(tm.Records())
 	if err != nil {
 		t.Fatalf("marshal records: %v", err)

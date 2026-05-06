@@ -1,4 +1,23 @@
 cycles:
+- number: 33
+  timestamp: "2026-05-06 14:55"
+  type: fix
+  phase: verify
+  what: >-
+    Fixed `--context` delivery so safe bounded local text is included in the in-memory evidence bundle delivered once to each agent, while transcript evidence keeps source references only.
+  commit: none
+  inspiration: >-
+    Resonera decision that `--context` should guarantee local text delivery to agents, not merely pass path references, while preserving reference-only transcripts to avoid local-content leakage.
+  discovered: >-
+    The prior resolver validated local text paths and emitted source references, but never read file content into the agent evidence bundle. Because the same evidence pointer was written to transcripts and delivered to agents, the fix needed a sanitized transcript copy rather than serializing the full delivery bundle.
+  verified: >-
+    go test ./internal/orchestrator passed after adding delivery and transcript-sanitization assertions; go test ./..., go build ./..., and go vet ./... passed; go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "context delivery smoke" --context README.md --dry-run --yes --max-turns 1 --time 10 --output /tmp/opencode/agora-context-delivery-smoke.jsonl completed; reading the smoke transcript showed source_references for README.md without context_documents or README body content.
+  next: >-
+    Return implementation summary; no commit or push was performed.
+  context:
+    intent: implement the highest-priority realisera TODO for `--context` guaranteed delivery
+    constraints: agents receive bounded safe text once, transcripts store references only, preserve text-only safety and skip rules, no commit, no push
+    scope: internal/types/types.go, internal/orchestrator/evidence.go, internal/orchestrator/orchestrator.go, internal/orchestrator/evidence_test.go, internal/orchestrator/orchestrator_test.go, README.md, CHANGELOG.md, TODO.md, .agentera/progress.yaml
 - number: 32
   timestamp: "2026-05-06 13:45"
   type: fix
