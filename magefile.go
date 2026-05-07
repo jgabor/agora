@@ -120,9 +120,9 @@ func compress(path string) error {
 		fmt.Println("upx not found; skipping compression")
 		return nil
 	}
-	args := []string{"--best", "--overlay=strip", "--no-lzma", path}
+	args := []string{"-6", "--overlay=strip", "--no-lzma", path}
 	if os.Getenv("AGORA_COMPRESS") == "2" {
-		args = []string{"--best", "--overlay=strip", "--lzma", path}
+		args = []string{"--ultra-brute", "--overlay=strip", "--lzma", path}
 	}
 	fmt.Printf("compressing %s with upx\n", path)
 	return sh.Run(upx, args...)
