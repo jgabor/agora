@@ -14,17 +14,18 @@ import (
 )
 
 func TestDrawPanelWrapsAndPadsContent(t *testing.T) {
-	got := drawPanel("Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.", "Topic", ansiBlue)
+	got := drawPanel("Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.", "Topic", "4")
 
-	assertContains(t, got, ansiBlue+"╭")
-	assertContains(t, got, ansiBold+" Topic "+ansiReset)
-	assertContains(t, got, "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda")
-	assertContains(t, got, "mu.")
-	assertContains(t, got, ansiBlue+"╰"+strings.Repeat("─", 74)+"╯"+ansiReset)
+	assertContains(t, got, "╭")
+	assertContains(t, got, "Topic")
+	assertContains(t, got, "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.")
+	assertContains(t, got, "╰")
 
-	for _, line := range strings.Split(got, "\n") {
-		if strings.Contains(line, "│") && visualLen(line) != 76 {
-			t.Fatalf("content line visual width: got %d, want 76 in %q", visualLen(line), line)
+	lines := strings.Split(got, "\n")
+	wantWidth := visualLen(lines[0])
+	for _, line := range lines {
+		if strings.Contains(line, "│") && visualLen(line) != wantWidth {
+			t.Fatalf("content line visual width: got %d, want %d in %q", visualLen(line), wantWidth, line)
 		}
 	}
 }
@@ -33,11 +34,11 @@ func TestDrawPanelPlainModeUsesASCIIBorder(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 
-	got := drawPanel("Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.", "Topic", ansiBlue)
+	got := drawPanel("Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.", "Topic", "4")
 
 	assertContains(t, got, "+")
-	assertContains(t, got, strings.Repeat("-", 74))
-	assertContains(t, got, "| Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda")
+	assertContains(t, got, "| Topic")
+	assertContains(t, got, "| Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)
 }
@@ -48,18 +49,22 @@ func TestDrawTableAlignsAndPadsCells(t *testing.T) {
 		{"long-agent", "123"},
 	}, []string{"", "right"})
 
-	assertContains(t, got, ansiBold+"Stats"+ansiReset)
-	assertContains(t, got, ansiCyan+"Agent      │ Tokens"+ansiReset)
-	assertContains(t, got, "a          │      7")
-	assertContains(t, got, "long-agent │    123")
+	assertContains(t, got, "Stats")
+	assertContains(t, got, "Agent")
+	assertContains(t, got, "Tokens")
+	assertContains(t, got, "a")
+	assertContains(t, got, "7")
+	assertContains(t, got, "long-agent")
+	assertContains(t, got, "123")
 
 	lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
-	if len(lines) != 6 {
-		t.Fatalf("drawTable line count: got %d lines in %q, want title, separators, header, and two rows", len(lines), got)
+	if len(lines) != 7 {
+		t.Fatalf("drawTable line count: got %d lines in %q, want title, border, header, separator, rows, and border", len(lines), got)
 	}
-	for _, line := range lines[1:] {
-		if visualLen(line) != 19 {
-			t.Fatalf("drawTable visual width: got %d, want 19 in %q", visualLen(line), line)
+	width := visualLen(lines[1])
+	for _, line := range lines[2:] {
+		if visualLen(line) != width {
+			t.Fatalf("drawTable visual width: got %d, want %d in %q", visualLen(line), width, line)
 		}
 	}
 }
@@ -74,10 +79,43 @@ func TestWrapTextPreservesParagraphBreaks(t *testing.T) {
 }
 
 func TestVisualLenIgnoresAnsiEscapes(t *testing.T) {
-	got := visualLen(ansiBold + "ok" + ansiReset + " ✓")
+	got := visualLen("\x1b[1mok\x1b[0m ✓")
 	want := utf8.RuneCountInString("ok ✓")
 	if got != want {
 		t.Fatalf("visualLen: got %d, want %d", got, want)
+	}
+}
+
+func TestOutputWidthUsesDetectedTerminalWidthBeforeColumns(t *testing.T) {
+	old := detectedTerminalWidth
+	detectedTerminalWidth = func() (int, bool) { return 155, true }
+	t.Cleanup(func() { detectedTerminalWidth = old })
+	t.Setenv("COLUMNS", "90")
+
+	if got := outputWidth(); got != 150 {
+		t.Fatalf("outputWidth: got %d, want detected terminal width capped at 150", got)
+	}
+}
+
+func TestOutputWidthFallsBackToColumns(t *testing.T) {
+	old := detectedTerminalWidth
+	detectedTerminalWidth = func() (int, bool) { return 0, false }
+	t.Cleanup(func() { detectedTerminalWidth = old })
+	t.Setenv("COLUMNS", "120")
+
+	if got := outputWidth(); got != 120 {
+		t.Fatalf("outputWidth: got %d, want COLUMNS fallback", got)
+	}
+}
+
+func TestOutputWidthFallsBackToDefault(t *testing.T) {
+	old := detectedTerminalWidth
+	detectedTerminalWidth = func() (int, bool) { return 0, false }
+	t.Cleanup(func() { detectedTerminalWidth = old })
+	t.Setenv("COLUMNS", "")
+
+	if got := outputWidth(); got != 76 {
+		t.Fatalf("outputWidth: got %d, want default width", got)
 	}
 }
 

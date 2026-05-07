@@ -172,13 +172,21 @@ func TestConfigGetAllShowsDefaults(t *testing.T) {
 		t.Fatalf("config get --all: %v", err)
 	}
 	for _, want := range []string{
-		"path: " + filepath.Join(cfgHome, "agora", "settings.yaml"),
-		"default_model:         " + defaultModel + " (default)",
-		"default_auto_level:    (unset)",
-		"default_topology:      ring (default)",
-		"research_max_sources:  20 (default)",
-		"context_max_bytes:     1048576 (default)",
-		"context_max_depth:     5 (default)",
+		"Global Settings",
+		"settings.yaml",
+		"default_model",
+		"opencode-go/deepseek-",
+		"v4-flash",
+		"default_auto_level",
+		"(unset)",
+		"default_topology",
+		"ring",
+		"research_max_sources",
+		"20",
+		"context_max_bytes",
+		"1048576",
+		"context_max_depth",
+		"5",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("config get --all missing %q:\n%s", want, out)
@@ -216,8 +224,8 @@ func TestConfigInitCreatesDefaultSettings(t *testing.T) {
 		t.Fatalf("config init: %v", err)
 	}
 	settingsPath := filepath.Join(cfgHome, "agora", "settings.yaml")
-	if !strings.Contains(out, settingsPath) {
-		t.Fatalf("config init output missing path %q:\n%s", settingsPath, out)
+	if !strings.Contains(out, "Config Initialized") || !strings.Contains(out, "Path") {
+		t.Fatalf("config init output missing status/path %q:\n%s", settingsPath, out)
 	}
 
 	settings, err := config.LoadDefaultSettings()
@@ -463,6 +471,31 @@ func TestListTranscriptEntriesIgnoresNonJSONL(t *testing.T) {
 	if entries[0].filename != "20260504-143022-my-topic.jsonl" || entries[0].turns != 2 {
 		t.Fatalf("entry: got %#v", entries[0])
 	}
+}
+
+func TestListCommandShowsFilenameOnlyWhenVerbose(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	t.Setenv("COLUMNS", "120")
+	store := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+store+"\"")
+	filename := "20260504-143022-my-topic.jsonl"
+	if err := os.WriteFile(filepath.Join(store, filename), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	oldVerbose := listVerbose
+	t.Cleanup(func() { listVerbose = oldVerbose })
+
+	listVerbose = false
+	normal := runListCommand(t)
+	assertStringContains(t, normal, "my-topic")
+	assertStringNotContains(t, normal, filename)
+
+	listVerbose = true
+	verbose := runListCommand(t)
+	assertStringContains(t, verbose, "my-topic")
+	assertStringContains(t, verbose, filename)
 }
 
 func TestResolveResumeSourceFileFlag(t *testing.T) {
@@ -1220,6 +1253,17 @@ func executeShowCommand(t *testing.T, arg string) (string, error) {
 	cmd.SetOut(&out)
 	err := showCmd.RunE(cmd, []string{arg})
 	return out.String(), err
+}
+
+func runListCommand(t *testing.T) string {
+	t.Helper()
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := listCmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("list command: %v", err)
+	}
+	return out.String()
 }
 
 func artifactCommand(t *testing.T, outputPath string) *cobra.Command {

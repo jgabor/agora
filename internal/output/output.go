@@ -10,10 +10,13 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/list"
+	"charm.land/lipgloss/v2/table"
+	"charm.land/lipgloss/v2/tree"
+	xterm "github.com/charmbracelet/x/term"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -22,27 +25,28 @@ var stdoutIsTerminal = func() bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-const (
-	ansiReset    = "\033[0m"
-	ansiBold     = "\033[1m"
-	ansiDim      = "\033[2m"
-	ansiBlack    = "\033[30m"
-	ansiRed      = "\033[31m"
-	ansiGreen    = "\033[32m"
-	ansiYellow   = "\033[33m"
-	ansiBlue     = "\033[34m"
-	ansiMagenta  = "\033[35m"
-	ansiCyan     = "\033[36m"
-	ansiWhite    = "\033[37m"
-	ansiGray     = "\033[90m"
-	ansiBRed     = "\033[91m"
-	ansiBGreen   = "\033[92m"
-	ansiBYellow  = "\033[93m"
-	ansiBBlue    = "\033[94m"
-	ansiBMagenta = "\033[95m"
-	ansiBCyan    = "\033[96m"
-	ansiBWhite   = "\033[97m"
-)
+var detectedTerminalWidth = func() (int, bool) {
+	for _, file := range []*os.File{os.Stdout, os.Stderr, os.Stdin} {
+		if file == nil || !xterm.IsTerminal(file.Fd()) {
+			continue
+		}
+		width, _, err := xterm.GetSize(file.Fd())
+		if err == nil && width > 0 {
+			return width, true
+		}
+	}
+
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = tty.Close() }()
+	width, _, err := xterm.GetSize(tty.Fd())
+	if err == nil && width > 0 {
+		return width, true
+	}
+	return 0, false
+}
 
 func agentAccent(agentID string) string {
 	normalized := strings.ReplaceAll(agentID, "-", "_")
@@ -117,8 +121,6 @@ func drawAutoConfigPanel(cfg *types.DeliberationConfig, level types.AutoLevel, c
 func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps, width int) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
-	var sb strings.Builder
-	writeSection := sectionWriter(&sb, contentWidth)
 
 	shapeTitle := "Cast Preview"
 	shapeLines := []string{
@@ -136,8 +138,6 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 			fmt.Sprintf("Agreement target: %s", agreementTarget),
 		}
 	}
-	writeSection(shapeTitle, shapeLines)
-
 	capLines := []string{fmt.Sprintf("Level caps: %s", string(level))}
 	if caps.MaxAgents == 0 {
 		capLines = append(capLines, "Max agents: unlimited", "Max turns: unlimited", "Time limit: none")
@@ -162,16 +162,35 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 			)
 		}
 	}
-	writeSection(limitsTitle, capLines)
-
 	agentLines := make([]string, 0, len(cfg.Agents))
-	for i, a := range cfg.Agents {
-		agentLines = append(agentLines, agentCastLine(i, a, true))
+	if plainOutput() {
+		for i, a := range cfg.Agents {
+			agentLines = append(agentLines, agentCastLine(i, a, true))
+		}
+	} else {
+		agentLines = append(agentLines, agentCastTree(cfg.Agents, true, contentWidth))
 	}
 	agentsTitle := "Agents"
 	if !plainOutput() {
 		agentsTitle = "Cast"
 	}
+
+	if !plainOutput() {
+		leftWidth, rightWidth := splitWidths(contentWidth, 2, 0.5)
+		top := lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			lipgloss.NewStyle().Width(leftWidth).Render(sectionBlock(shapeTitle, shapeLines, leftWidth)),
+			lipgloss.NewStyle().Width(2).Render(""),
+			lipgloss.NewStyle().Width(rightWidth).Render(sectionBlock(limitsTitle, capLines, rightWidth)),
+		)
+		body := lipgloss.JoinVertical(lipgloss.Left, top, "", sectionBlock(agentsTitle, agentLines, contentWidth))
+		return theaterPanel("Generated Config", body, width, "6")
+	}
+
+	var sb strings.Builder
+	writeSection := sectionWriter(&sb, contentWidth)
+	writeSection(shapeTitle, shapeLines)
+	writeSection(limitsTitle, capLines)
 	writeSection(agentsTitle, agentLines)
 
 	return theaterPanel("Generated Config", sb.String(), width, "6")
@@ -191,16 +210,14 @@ func (o *OutputManager) DeliberationHeader(state *types.DeliberationState) {
 func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
-	var sb strings.Builder
-	writeSection := sectionWriter(&sb, contentWidth)
-
-	writeSection("Topic", []string{state.Topic})
+	topicLines := []string{state.Topic}
 
 	cast := make([]string, 0, len(state.Config.Agents))
-	for i, a := range state.Config.Agents {
-		cast = append(cast, agentCastLine(i, a, true))
+	if plainOutput() {
+		for i, a := range state.Config.Agents {
+			cast = append(cast, agentCastLine(i, a, true))
+		}
 	}
-	writeSection("Cast", cast)
 
 	settings := []string{
 		fmt.Sprintf("Topology: %s", string(state.Config.Topology)),
@@ -234,12 +251,51 @@ func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) st
 	if !plainOutput() {
 		settingsTitle = "Limits"
 	}
+
+	if !plainOutput() {
+		castWidth, settingsWidth := splitWidths(contentWidth, 2, 0.62)
+		cast = append(cast, agentCastTree(state.Config.Agents, true, castWidth))
+		castBlock := lipgloss.NewStyle().Width(castWidth).Render(sectionBlock("Cast", cast, castWidth))
+		settingsBlock := lipgloss.NewStyle().Width(settingsWidth).Render(sectionBlock(settingsTitle, settings, settingsWidth))
+		body := lipgloss.JoinVertical(
+			lipgloss.Left,
+			sectionBlock("Topic", topicLines, contentWidth),
+			"",
+			lipgloss.JoinHorizontal(lipgloss.Top, castBlock, lipgloss.NewStyle().Width(2).Render(""), settingsBlock),
+		)
+		return theaterPanel("Deliberation Start", body, width, "4")
+	}
+
+	var sb strings.Builder
+	writeSection := sectionWriter(&sb, contentWidth)
+	writeSection("Topic", topicLines)
+	writeSection("Cast", cast)
 	writeSection(settingsTitle, settings)
 
 	return theaterPanel("Deliberation Start", sb.String(), width, "4")
 }
 
+func splitWidths(total, gap int, leftRatio float64) (int, int) {
+	available := total - gap
+	if available < 2 {
+		return total, 0
+	}
+	left := int(float64(available) * leftRatio)
+	if left < 20 {
+		left = 20
+	}
+	right := available - left
+	if right < 20 {
+		right = 20
+		left = available - right
+	}
+	return left, right
+}
+
 func outputWidth() int {
+	if width, ok := detectedTerminalWidth(); ok {
+		return clampOutputWidth(width)
+	}
 	if raw := os.Getenv("COLUMNS"); raw != "" {
 		if width, err := strconv.Atoi(raw); err == nil {
 			return clampOutputWidth(width)
@@ -252,8 +308,8 @@ func clampOutputWidth(width int) int {
 	if width < 40 {
 		return 40
 	}
-	if width > 120 {
-		return 120
+	if width > 150 {
+		return 150
 	}
 	return width
 }
@@ -280,23 +336,35 @@ func sectionWriter(sb *strings.Builder, width int) func(string, []string) {
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
 		}
-		if !plainOutput() {
-			label = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5")).Render("▍ " + label)
-		}
-		sb.WriteString(label)
+		sb.WriteString(sectionBlock(label, lines, width))
 		sb.WriteString("\n")
-		if len(lines) == 0 {
-			sb.WriteString("  (none)\n")
-			return
+	}
+}
+
+func sectionBlock(label string, lines []string, width int) string {
+	var sb strings.Builder
+	if !plainOutput() {
+		label = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5")).Render("▍ " + label)
+	}
+	sb.WriteString(label)
+	sb.WriteString("\n")
+	if len(lines) == 0 {
+		sb.WriteString("  (none)")
+		return sb.String()
+	}
+	for lineIndex, line := range lines {
+		if lineIndex > 0 {
+			sb.WriteString("\n")
 		}
-		for _, line := range lines {
-			for _, wrapped := range wrapText(line, width-2) {
-				sb.WriteString("  ")
-				sb.WriteString(wrapped)
+		for wrappedIndex, wrapped := range wrapText(line, width-2) {
+			if wrappedIndex > 0 {
 				sb.WriteString("\n")
 			}
+			sb.WriteString("  ")
+			sb.WriteString(wrapped)
 		}
 	}
+	return sb.String()
 }
 
 func unknownAgentBadge(id string) string {
@@ -384,6 +452,59 @@ func richAgentCastLine(member types.CastMember, agent types.AgentConfig, include
 		lines = append(lines, mutedStyle().Render(strings.Join(metadata, " · ")))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func agentCastTree(agents []types.AgentConfig, includeContext bool, width int) string {
+	root := tree.Root("ensemble").
+		Enumerator(tree.RoundedEnumerator).
+		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))).
+		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
+		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
+		Width(width)
+
+	for i, agent := range agents {
+		member := types.CastMemberForAgent(i, agent)
+		accent := member.Color
+		if accent == "" {
+			accent = agentAccent(agent.ID)
+		}
+
+		heading := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(strings.Trim(castBadge(member), "[]"))
+		if member.Name != "" {
+			heading += " " + lipgloss.NewStyle().Bold(true).Render(member.Name)
+		}
+		if member.Persona != "" {
+			heading += " " + mutedStyle().Render(member.Persona)
+		}
+
+		agentNode := tree.Root(heading).
+			RootStyle(lipgloss.NewStyle().Foreground(lipgloss.Color(accent))).
+			Enumerator(tree.RoundedEnumerator).
+			EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color(accent))).
+			IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8")))
+
+		if member.ProviderModel != "" {
+			agentNode.Child(mutedStyle().Render("model " + member.ProviderModel))
+		}
+		if member.Color != "" {
+			agentNode.Child(mutedStyle().Render("color " + member.Color))
+		}
+		if includeContext {
+			if context := firstPromptLine(agent.SystemPrompt); context != "" {
+				agentNode.Child(mutedStyle().Render("context ") + renderInlineText(context, width-8))
+			}
+		}
+
+		root.Child(agentNode)
+	}
+	return root.String()
+}
+
+func renderInlineText(text string, width int) string {
+	if width <= 0 {
+		return strings.TrimSpace(text)
+	}
+	return strings.ReplaceAll(renderTextBlock(text, width), "\n", " ")
 }
 
 func firstPromptLine(prompt string) string {
@@ -1180,133 +1301,49 @@ func statusLabel(label, symbol, color string) string {
 
 func drawPanel(content, title string, borderColor string) string {
 	const panelWidth = 76
-	var sb strings.Builder
-	plain := plainOutput()
-	borderTopLeft, borderTopRight := "╭", "╮"
-	borderBottomLeft, borderBottomRight := "╰", "╯"
-	horizontal, vertical := "─", "│"
-	if plain {
-		borderTopLeft, borderTopRight = "+", "+"
-		borderBottomLeft, borderBottomRight = "+", "+"
-		horizontal, vertical = "-", "|"
-		borderColor = ""
-	}
-
-	contentLines := wrapText(content, panelWidth-4)
-
-	sb.WriteString(borderColor)
-	sb.WriteString(borderTopLeft)
-	titleStr := " " + title + " "
-	if len(titleStr) < panelWidth-2 {
-		remaining := panelWidth - 2 - len(titleStr)
-		left := remaining / 2
-		right := remaining - left
-		sb.WriteString(strings.Repeat(horizontal, left))
-		if !plain {
-			sb.WriteString(ansiReset)
-			sb.WriteString(ansiBold)
-		}
-		sb.WriteString(titleStr)
-		if !plain {
-			sb.WriteString(ansiReset)
-		}
-		sb.WriteString(borderColor)
-		sb.WriteString(strings.Repeat(horizontal, right))
-	} else {
-		sb.WriteString(strings.Repeat(horizontal, panelWidth-2))
-	}
-	sb.WriteString(borderTopRight)
-	if !plain {
-		sb.WriteString(ansiReset)
-	}
-	sb.WriteString("\n")
-
-	for _, line := range contentLines {
-		sb.WriteString(borderColor)
-		sb.WriteString(vertical)
-		if !plain {
-			sb.WriteString(ansiReset)
-		}
-		sb.WriteString(" ")
-		sb.WriteString(line)
-		padLen := panelWidth - 4 - visualLen(line)
-		if padLen > 0 {
-			sb.WriteString(strings.Repeat(" ", padLen))
-		}
-		sb.WriteString(" ")
-		sb.WriteString(borderColor)
-		sb.WriteString(vertical)
-		if !plain {
-			sb.WriteString(ansiReset)
-		}
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString(borderColor)
-	sb.WriteString(borderBottomLeft)
-	sb.WriteString(strings.Repeat(horizontal, panelWidth-2))
-	sb.WriteString(borderBottomRight)
-	if !plain {
-		sb.WriteString(ansiReset)
-	}
-
-	return sb.String()
+	return theaterPanel(title, renderTextBlock(content, panelWidth-4), panelWidth, normalizeColor(borderColor, "4"))
 }
 
 func wrapText(text string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		return []string{text}
 	}
-
-	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
-		paragraph = strings.TrimSpace(paragraph)
-		if paragraph == "" {
-			lines = append(lines, "")
-			continue
-		}
-
-		words := strings.Fields(paragraph)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-
-		currentLine := words[0]
-		for _, word := range words[1:] {
-			if visualLen(currentLine)+1+visualLen(word) <= maxWidth {
-				currentLine += " " + word
-			} else {
-				lines = append(lines, currentLine)
-				currentLine = word
-			}
-		}
-		lines = append(lines, currentLine)
+	block := renderTextBlock(text, maxWidth)
+	if block == "" {
+		return []string{""}
 	}
-	return lines
+	return strings.Split(block, "\n")
 }
 
 func visualLen(s string) int {
-	n := 0
-	inEscape := false
-	for i := 0; i < len(s); {
-		if inEscape {
-			if s[i] == 'm' {
-				inEscape = false
-			}
-			i++
-			continue
-		}
-		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
-			inEscape = true
-			i += 2
-			continue
-		}
-		_, size := utf8.DecodeRuneInString(s[i:])
-		n++
-		i += size
+	return lipgloss.Width(s)
+}
+
+func renderTextBlock(text string, width int) string {
+	if width <= 0 {
+		return strings.TrimRight(text, "\n")
 	}
-	return n
+	style := lipgloss.NewStyle().MaxWidth(width)
+	var out []string
+	for _, paragraph := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		paragraph = strings.TrimRight(paragraph, " \t")
+		if strings.TrimSpace(paragraph) == "" {
+			out = append(out, "")
+			continue
+		}
+		wrapped := lipgloss.Wrap(paragraph, width, " ")
+		for _, line := range strings.Split(strings.TrimRight(style.Render(wrapped), "\n"), "\n") {
+			out = append(out, strings.TrimRight(line, " "))
+		}
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+func normalizeColor(color string, fallback string) string {
+	if color == "" || strings.HasPrefix(color, "\x1b") {
+		return fallback
+	}
+	return color
 }
 
 func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.DeliberationConfig) [][]string {
@@ -1360,52 +1397,11 @@ func sectionTitle(title, color string) string {
 func drawStructuredTable(title string, headers []string, rows [][]string, aligns []string, width int, color string) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
-	raw := drawTable("", headers, rows, aligns)
+	raw := drawTableAtWidth("", headers, rows, aligns, contentWidth, color)
 	if plainOutput() {
-		raw = stripKnownANSI(raw)
+		return sectionTitle(title, color) + "\n" + raw
 	}
-
-	var sb strings.Builder
-	if plainOutput() {
-		sb.WriteString(sectionTitle(title, color))
-		sb.WriteString("\n")
-	}
-	for _, line := range strings.Split(strings.TrimRight(raw, "\n"), "\n") {
-		if plainOutput() {
-			line = asciiTableLine(line)
-		}
-		if line == "" {
-			sb.WriteString("\n")
-			continue
-		}
-		if visualLen(line) <= contentWidth {
-			sb.WriteString(line)
-			sb.WriteString("\n")
-		} else {
-			for _, wrapped := range wrapText(line, contentWidth) {
-				sb.WriteString(wrapped)
-				sb.WriteString("\n")
-			}
-		}
-	}
-	if !plainOutput() {
-		return theaterPanel(title, sb.String(), width, color)
-	}
-	return strings.TrimRight(sb.String(), "\n")
-}
-
-func asciiTableLine(s string) string {
-	s = strings.ReplaceAll(s, "─", "-")
-	s = strings.ReplaceAll(s, "┼", "+")
-	s = strings.ReplaceAll(s, "│", "|")
-	return s
-}
-
-func stripKnownANSI(s string) string {
-	for _, code := range []string{ansiReset, ansiBold, ansiDim, ansiBlack, ansiRed, ansiGreen, ansiYellow, ansiBlue, ansiMagenta, ansiCyan, ansiWhite, ansiGray, ansiBRed, ansiBGreen, ansiBYellow, ansiBBlue, ansiBMagenta, ansiBCyan, ansiBWhite} {
-		s = strings.ReplaceAll(s, code, "")
-	}
-	return s
+	return sectionTitle(title, color) + "\n" + raw
 }
 
 func renderConsensusEvents(events []any, width int) string {
@@ -1432,17 +1428,21 @@ func renderListSection(title string, list []any, width int, color string, marker
 func renderListLines(title string, lines []string, width int, color string) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
-	var sb strings.Builder
-	sb.WriteString(sectionTitle(title, color))
-	sb.WriteString("\n")
+	items := make([]any, 0, len(lines))
 	for _, line := range lines {
-		for _, wrapped := range wrapText(line, contentWidth-2) {
-			sb.WriteString("  ")
-			sb.WriteString(wrapped)
-			sb.WriteString("\n")
-		}
+		items = append(items, renderTextBlock(line, contentWidth-8))
 	}
-	return strings.TrimRight(sb.String(), "\n")
+	rendered := list.New().
+		Enumerator(list.Roman).
+		Items(items...)
+	if !plainOutput() {
+		rendered = rendered.
+			EnumeratorStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color))).
+			ItemStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("7"))).
+			IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8")))
+		return theaterPanel(title, rendered.String(), width, color)
+	}
+	return sectionTitle(title, color) + "\n" + rendered.String()
 }
 
 func renderProseSection(title, content string, width int, color string) string {
@@ -1457,114 +1457,148 @@ func renderProseSection(title, content string, width int, color string) string {
 		}
 	}
 
-	var sb strings.Builder
-	sb.WriteString(sectionTitle(title, color))
-	sb.WriteString("\n")
-	for _, line := range strings.Split(body, "\n") {
-		if line == "" {
-			sb.WriteString("\n")
-			continue
-		}
-		for _, wrapped := range wrapText(line, bodyWidth) {
-			sb.WriteString(wrapped)
-			sb.WriteString("\n")
-		}
+	body = renderTextBlock(body, bodyWidth)
+	if !plainOutput() {
+		return theaterPanel(title, body, width, color)
 	}
-	return strings.TrimRight(sb.String(), "\n")
+	return sectionTitle(title, color) + "\n" + body
 }
 
 func drawTable(title string, headers []string, rows [][]string, aligns []string) string {
+	return drawTableAtWidth(title, headers, rows, aligns, 0, "6")
+}
+
+func drawTableAtWidth(title string, headers []string, rows [][]string, aligns []string, width int, color string) string {
 	if len(headers) == 0 {
 		return ""
 	}
-
-	colWidths := make([]int, len(headers))
-	for i, h := range headers {
-		colWidths[i] = visualLen(h)
-	}
+	normalizedRows := make([][]string, 0, len(rows))
 	for _, row := range rows {
-		for i, cell := range row {
-			if i >= len(colWidths) {
-				break
-			}
-			if l := visualLen(cell); l > colWidths[i] {
-				colWidths[i] = l
-			}
+		normalized := make([]string, len(headers))
+		copy(normalized, row)
+		normalizedRows = append(normalizedRows, normalized)
+	}
+
+	t := table.New().
+		Headers(headers...).
+		Rows(normalizedRows...).
+		Wrap(true)
+	if width > 0 {
+		t.Width(width)
+	}
+	cellStyle := func(row, col int) lipgloss.Style {
+		style := lipgloss.NewStyle().Padding(0, 1)
+		if col < len(aligns) && aligns[col] == "right" {
+			style = style.AlignHorizontal(lipgloss.Right)
 		}
-	}
-
-	for i := range colWidths {
-		if colWidths[i] < 4 {
-			colWidths[i] = 4
+		if plainOutput() {
+			return style
 		}
-	}
-
-	var sb strings.Builder
-
-	if title != "" {
-		sb.WriteString(ansiBold)
-		sb.WriteString(title)
-		sb.WriteString(ansiReset)
-		sb.WriteString("\n")
-	}
-
-	sep := ""
-	for i, w := range colWidths {
-		if i > 0 {
-			sep += "─┼─"
+		if row == table.HeaderRow {
+			return style.Bold(true).Foreground(lipgloss.Color("6"))
 		}
-		sep += strings.Repeat("─", w)
-	}
-	if sep != "" {
-		sb.WriteString(ansiDim)
-		sb.WriteString(sep)
-		sb.WriteString(ansiReset)
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString(ansiCyan)
-	for i, h := range headers {
-		if i > 0 {
-			sb.WriteString(" │ ")
+		if row%2 == 1 {
+			return style.Faint(true)
 		}
-		sb.WriteString(padCell(h, colWidths[i], "left"))
+		return style
 	}
-	sb.WriteString(ansiReset)
-	sb.WriteString("\n")
-
-	sb.WriteString(ansiDim)
-	sb.WriteString(sep)
-	sb.WriteString(ansiReset)
-	sb.WriteString("\n")
-
-	for _, row := range rows {
-		for i, cell := range row {
-			if i > 0 {
-				sb.WriteString(" │ ")
-			}
-			if i >= len(colWidths) {
-				break
-			}
-			align := "left"
-			if i < len(aligns) && aligns[i] != "" {
-				align = aligns[i]
-			}
-			sb.WriteString(padCell(cell, colWidths[i], align))
-		}
-		sb.WriteString("\n")
+	if plainOutput() {
+		t.Border(lipgloss.ASCIIBorder()).StyleFunc(cellStyle)
+	} else {
+		borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+		t.Border(lipgloss.RoundedBorder()).
+			BorderStyle(borderStyle).
+			StyleFunc(cellStyle)
 	}
 
-	return sb.String()
+	rendered := strings.TrimRight(t.Render(), "\n")
+	if title == "" {
+		return rendered
+	}
+	return sectionTitle(title, color) + "\n" + rendered
 }
 
-func padCell(s string, width int, align string) string {
-	vLen := visualLen(s)
-	if vLen >= width {
-		return s
+// RenderTable renders a terminal-width-aware table for human-facing commands.
+func RenderTable(title string, headers []string, rows [][]string, aligns []string, color string) string {
+	return drawStructuredTable(title, headers, rows, aligns, outputWidth(), color)
+}
+
+// RenderStatus renders a compact status panel for human-facing command results.
+func RenderStatus(title string, rows [][]string, color string) string {
+	width := outputWidth()
+	contentWidth := clampOutputWidth(width) - 4
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		label := row[0]
+		value := ""
+		if len(row) > 1 {
+			value = row[1]
+		}
+		if plainOutput() {
+			lines = append(lines, fmt.Sprintf("%s: %s", label, value))
+			continue
+		}
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color)).Render(label)+" "+value)
 	}
-	pad := strings.Repeat(" ", width-vLen)
-	if align == "right" {
-		return pad + s
+	return theaterPanel(title, renderTextBlock(strings.Join(lines, "\n"), contentWidth), width, color)
+}
+
+// RenderConfigSummary renders a validated config as a rich tree when styling is available.
+func RenderConfigSummary(cfg *types.DeliberationConfig) string {
+	if cfg == nil {
+		return ""
 	}
-	return s + pad
+	if plainOutput() {
+		rows := [][]string{
+			{"Topology", string(cfg.Topology)},
+			{"Agents", fmt.Sprintf("%d", len(cfg.Agents))},
+		}
+		if cfg.ConsensusThreshold > 0 {
+			rows = append(rows, []string{"Consensus threshold", fmt.Sprintf("%d", cfg.ConsensusThreshold)})
+		}
+		if cfg.SynthesisModel != nil {
+			rows = append(rows, []string{"Synthesis model", *cfg.SynthesisModel})
+		}
+		return drawStructuredTable("Configuration Valid", []string{"Field", "Value"}, rows, []string{"", ""}, outputWidth(), "2")
+	}
+
+	agents := tree.Root(fmt.Sprintf("Agents (%d)", len(cfg.Agents))).
+		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))).
+		Enumerator(tree.RoundedEnumerator).
+		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))).
+		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8")))
+	for i, agent := range cfg.Agents {
+		member := types.CastMemberForAgent(i, agent)
+		label := fmt.Sprintf("%s %s", strings.Trim(castBadge(member), "[]"), agent.ID)
+		if agent.Model != "" {
+			label += " · " + agent.Model
+		}
+		agents.Child(label)
+	}
+
+	shape := tree.Root("Run Shape").
+		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))).
+		Enumerator(tree.RoundedEnumerator).
+		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("5"))).
+		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
+		Child("topology " + string(cfg.Topology))
+	if cfg.ConsensusThreshold > 0 {
+		shape.Child(fmt.Sprintf("agreement target %d agents", cfg.ConsensusThreshold))
+	}
+	if cfg.SynthesisModel != nil {
+		shape.Child("synthesis " + *cfg.SynthesisModel)
+	}
+
+	root := tree.Root("valid configuration").
+		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))).
+		Enumerator(tree.RoundedEnumerator).
+		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("2"))).
+		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
+		Child(shape, agents).
+		Width(outputWidth() - 4)
+
+	return theaterPanel("Configuration Valid", root.String(), outputWidth(), "2")
 }

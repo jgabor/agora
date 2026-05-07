@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/output"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -192,7 +193,7 @@ func newConfigInitCommand() *cobra.Command {
 			if err := config.SaveSettings(path, settings); err != nil {
 				return fmt.Errorf("saving settings: %w", err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Initialized global config: %s\n", path)
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderStatus("Config Initialized", [][]string{{"Path", path}}, "2"))
 			return err
 		},
 	}
@@ -321,41 +322,33 @@ func printAllSettings(w io.Writer, settings config.Settings) error {
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "path: %s\n\n", path); err != nil {
-		return err
-	}
 
 	currentGroup := ""
+	rows := [][]string{{"settings", "path", path, "resolved"}}
 	for _, def := range settingKeyDefs {
 		if def.Group != currentGroup {
-			if currentGroup != "" {
-				if _, err := fmt.Fprintln(w); err != nil {
-					return err
-				}
-			}
 			currentGroup = def.Group
-			if _, err := fmt.Fprintln(w, currentGroup); err != nil {
-				return err
-			}
 		}
 
 		value, explicit, err := effectiveSettingValue(def, settings)
 		if err != nil {
 			return err
 		}
-		marker := ""
+		source := "set"
 		if !explicit {
 			if value == "" {
 				value = "(unset)"
 			} else {
-				marker = " (default)"
+				source = "default"
 			}
 		}
-		if _, err := fmt.Fprintf(w, "  %-22s %s%s\n", def.Key+":", value, marker); err != nil {
-			return err
+		if !explicit && value == "(unset)" {
+			source = "unset"
 		}
+		rows = append(rows, []string{def.Group, def.Key, value, source})
 	}
-	return nil
+	_, err = fmt.Fprintln(w, output.RenderTable("Global Settings", []string{"Group", "Key", "Value", "Source"}, rows, []string{"", "", "", ""}, "5"))
+	return err
 }
 
 func effectiveSettingValue(def settingKeyDef, settings config.Settings) (string, bool, error) {

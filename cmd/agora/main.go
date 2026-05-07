@@ -100,7 +100,7 @@ var runCmd = &cobra.Command{
 
 			if !runYes {
 				if !confirmProceed() {
-					fmt.Println("Aborted.")
+					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
 					return nil
 				}
 			}
@@ -334,20 +334,8 @@ var validateCmd = &cobra.Command{
 			return fmt.Errorf("ERROR: %w", err)
 		}
 
-		fmt.Println("Configuration is valid.")
-		fmt.Printf("  Topology: %s\n", cfg.Topology)
-		fmt.Printf("  Agents (%d):\n", len(cfg.Agents))
-		for _, a := range cfg.Agents {
-			fmt.Printf("    - %s (%s)\n", a.ID, a.Model)
-		}
-		if cfg.ConsensusThreshold > 0 {
-			fmt.Printf("  Consensus threshold: %d\n", cfg.ConsensusThreshold)
-		}
-		if cfg.SynthesisModel != nil {
-			fmt.Printf("  Synthesis model: %s\n", *cfg.SynthesisModel)
-		}
-
-		return nil
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderConfigSummary(cfg))
+		return err
 	},
 }
 
@@ -359,6 +347,8 @@ type transcriptEntry struct {
 	filename string
 	turns    int
 }
+
+var listVerbose bool
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -381,16 +371,35 @@ var listCmd = &cobra.Command{
 			return err
 		}
 		if len(entries) == 0 {
-			fmt.Println("No transcripts found.")
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderStatus("Managed Transcripts", [][]string{{"Status", "No transcripts found"}}, "6"))
+			return err
 		}
 
-		fmt.Println("Date                 Slug       Turns  Filename")
-		for _, entry := range entries {
-			fmt.Printf("%s  %-9s  %5d  %s\n", entry.date.Format("2006-01-02 15:04:05"), entry.slug, entry.turns, entry.filename)
+		headers := []string{"Date", "Turns", "Slug"}
+		aligns := []string{"", "right", ""}
+		if listVerbose {
+			headers = []string{"Date", "Turns", "Transcript"}
 		}
-		return nil
+
+		rows := make([][]string, 0, len(entries))
+		for _, entry := range entries {
+			row := []string{
+				entry.date.Format("2006-01-02 15:04:05"),
+				fmt.Sprintf("%d", entry.turns),
+				entry.slug,
+			}
+			if listVerbose {
+				row[2] = entry.slug + "\n" + entry.filename
+			}
+			rows = append(rows, row)
+		}
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderTable("Managed Transcripts", headers, rows, aligns, "6"))
+		return err
 	},
+}
+
+func init() {
+	listCmd.Flags().BoolVarP(&listVerbose, "verbose", "v", false, "Show transcript filenames")
 }
 
 // --- resume -------------------------------------------------------
@@ -510,7 +519,7 @@ var resumeCmd = &cobra.Command{
 
 			if !resumeYes {
 				if !confirmProceed() {
-					fmt.Println("Aborted.")
+					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
 					return nil
 				}
 			}
