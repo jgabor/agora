@@ -137,3 +137,19 @@ func TestLoadSettingsInvalidYAMLReturnsError(t *testing.T) {
 		t.Fatal("expected invalid YAML error")
 	}
 }
+
+func TestSaveSettingsCreatesParentAndRoundTrips(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "settings.yaml")
+
+	if err := SaveSettings(path, Settings{DefaultAutoLevel: "quick", ContextMaxDepth: 3}); err != nil {
+		t.Fatalf("SaveSettings: %v", err)
+	}
+
+	settings, err := LoadSettings(path)
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if settings.DefaultAutoLevel != "quick" || settings.ContextMaxDepth != 3 {
+		t.Fatalf("settings: got %#v", settings)
+	}
+}

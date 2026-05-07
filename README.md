@@ -54,6 +54,7 @@ go build -o agora ./cmd/agora
 ```bash
 go install ./cmd/agora
 agora validate examples/example-default.yaml
+agora config init
 ```
 
 ## Example Configs
@@ -95,7 +96,12 @@ Optional (all have sensible defaults):
   --no-research            Disable config-enabled web research for this run
   --context PATH           Local text context path to include before deliberation (repeatable)
   --dry-run                Run with simulated agent responses (no LLM calls)
+  --auto LEVEL             Auto-generate agent config (quick, normal, deep, yolo)
+  -M, --model MODEL        Model for auto config generation and deliberation agents
+  --yes                    Skip auto config preview confirmation
 ```
+
+With `--auto`, the level supplies default time and max-turn caps. Explicit `--time` or `--max-turns` values override those caps.
 
 ### `agora resume` — Continue from an existing transcript
 
@@ -121,6 +127,17 @@ agora validate CONFIG
 
 Checks config for errors without starting a deliberation.
 
+### `agora config` — Manage global settings
+
+```
+agora config init
+agora config get --all
+agora config get KEY
+agora config set KEY VALUE
+```
+
+Reads and writes the global `settings.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
+
 ## Configuration
 
 | Key | Type | Default | Description |
@@ -134,10 +151,14 @@ Checks config for errors without starting a deliberation.
 
 CLI flags override project config. For evidence, `--research` enables web research, `--no-research` disables config-enabled research, and any `--context` flags replace config `context` paths for that run.
 
-Global `settings.yaml` may set evidence caps but does not silently enable web access:
+Global `settings.yaml` can be managed with `agora config`. It may set CLI defaults and evidence caps, but does not silently enable web access:
 
 | Key | Default | Description |
 |---|---|---|
+| `default_model` | `opencode-go/deepseek-v4-flash` | Model for auto config generation and omitted agent models |
+| `default_auto_level` | — | Auto level used when `--auto` and `--config` are omitted: `quick`, `normal`, `deep`, or `yolo` |
+| `default_topology` | `ring` | Topology used when a YAML config omits `topology` |
+| `default_output_dir` | platform data dir | Directory for managed transcript output |
 | `research_max_sources` | `20` | Maximum web sources, generated web queries, and local context file references |
 | `context_max_bytes` | `1048576` | Maximum total bytes of local context |
 | `context_max_depth` | `5` | Maximum directory traversal depth for local context |

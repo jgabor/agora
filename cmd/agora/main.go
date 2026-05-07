@@ -20,11 +20,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultModel = "opencode-go/deepseek-v4-flash"
+
 var version = "0.2.0"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")
-	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, listCmd)
+	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, listCmd, configCmd)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -52,7 +54,7 @@ var (
 	runFullContext bool
 	runDryRun      bool
 	runAuto        string
-	runModel       string = "opencode-go/deepseek-v4-flash"
+	runModel       string = defaultModel
 	runYes         bool
 	runResearch    bool
 	runNoResearch  bool
@@ -132,10 +134,9 @@ var runCmd = &cobra.Command{
 			Evidence:    evidenceRequest,
 		}
 
-		// Override MaxTurns and TimeLimit with level caps for auto mode
+		// Auto level caps are defaults; explicit CLI limits win.
 		if autoMode {
-			state.MaxTurns = levelCaps.MaxTurns
-			state.TimeLimit = levelCaps.TimeLimit
+			applyAutoLevelCaps(cmd, state, levelCaps, 0)
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
@@ -251,6 +252,20 @@ func resumeEvidenceRequestChanged(cmd *cobra.Command) bool {
 	return cmd.Flags().Changed("research") || cmd.Flags().Changed("no-research") || cmd.Flags().Changed("context")
 }
 
+func applyAutoLevelCaps(cmd *cobra.Command, state *types.DeliberationState, caps types.LevelCaps, existingTurns int) {
+	if !cmd.Flags().Changed("time") {
+		state.TimeLimit = caps.TimeLimit
+	}
+	if cmd.Flags().Changed("max-turns") {
+		return
+	}
+	if caps.MaxTurns == 0 {
+		state.MaxTurns = 0
+		return
+	}
+	state.MaxTurns = existingTurns + caps.MaxTurns
+}
+
 // --- stats --------------------------------------------------------
 
 var statsCmd = &cobra.Command{
@@ -360,7 +375,7 @@ var (
 	resumeFullContext bool
 	resumeDryRun      bool
 	resumeAuto        string
-	resumeModel       string = "opencode-go/deepseek-v4-flash"
+	resumeModel       string = defaultModel
 	resumeYes         bool
 	resumeFile        string
 	resumeResearch    bool
@@ -511,14 +526,9 @@ var resumeCmd = &cobra.Command{
 			Turn:        existingTurns,
 		}
 
-		// Override MaxTurns and TimeLimit with level caps for auto mode
+		// Auto level caps are defaults; explicit CLI limits win.
 		if autoMode {
-			state.TimeLimit = levelCaps.TimeLimit
-			if levelCaps.MaxTurns == 0 {
-				state.MaxTurns = 0
-			} else {
-				state.MaxTurns = existingTurns + levelCaps.MaxTurns
-			}
+			applyAutoLevelCaps(cmd, state, levelCaps, existingTurns)
 		}
 
 		outMgr := output.NewOutputManager(resumeVerbose)
