@@ -102,6 +102,23 @@ type AgentConfig struct {
 	Identity     *AgentIdentity `yaml:"identity,omitempty" json:"identity,omitempty"`
 }
 
+// CastMember is the durable display identity assigned to an agent for a run.
+type CastMember struct {
+	ID            int    `yaml:"id" json:"id"`
+	Name          string `yaml:"name" json:"name"`
+	Persona       string `yaml:"persona" json:"persona"`
+	ProviderModel string `yaml:"provider_model" json:"provider_model"`
+	Color         string `yaml:"color" json:"color"`
+}
+
+// TranscriptMetadata is written into the first transcript record so replay can
+// render the original cast without reloading the config file.
+type TranscriptMetadata struct {
+	SchemaVersion int                 `yaml:"schema_version" json:"schema_version"`
+	Cast          []CastMember        `yaml:"cast" json:"cast"`
+	Config        *DeliberationConfig `yaml:"config" json:"config"`
+}
+
 // Validate checks that the agent has a non-empty id and model.
 func (a *AgentConfig) Validate() error {
 	if a.ID == "" {
@@ -121,6 +138,82 @@ type DeliberationConfig struct {
 	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
 	ResearchEnabled    bool          `yaml:"research" json:"research"`
 	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
+}
+
+var castNames = []string{
+	"Solon",
+	"Aspasia",
+	"Pericles",
+	"Socrates",
+	"Plato",
+	"Themistocles",
+	"Demosthenes",
+	"Phidias",
+}
+
+var castColors = []string{
+	"6",
+	"4",
+	"2",
+	"1",
+	"3",
+	"5",
+	"12",
+	"9",
+}
+
+// NewTranscriptMetadata captures the run setup needed to replay a transcript.
+func NewTranscriptMetadata(cfg *DeliberationConfig) *TranscriptMetadata {
+	return &TranscriptMetadata{
+		SchemaVersion: 1,
+		Cast:          BuildCast(cfg),
+		Config:        CloneDeliberationConfig(cfg),
+	}
+}
+
+// BuildCast assigns stable display metadata to the configured agent order.
+func BuildCast(cfg *DeliberationConfig) []CastMember {
+	if cfg == nil {
+		return nil
+	}
+	cast := make([]CastMember, 0, len(cfg.Agents))
+	for i, agent := range cfg.Agents {
+		cast = append(cast, CastMemberForAgent(i, agent))
+	}
+	return cast
+}
+
+// CastMemberForAgent returns the display identity for one configured agent.
+func CastMemberForAgent(index int, agent AgentConfig) CastMember {
+	name := castNames[index%len(castNames)]
+	return CastMember{
+		ID:            index + 1,
+		Name:          name,
+		Persona:       agent.ID,
+		ProviderModel: agent.Model,
+		Color:         castColors[index%len(castColors)],
+	}
+}
+
+// CloneDeliberationConfig returns a deep copy suitable for transcript metadata.
+func CloneDeliberationConfig(cfg *DeliberationConfig) *DeliberationConfig {
+	if cfg == nil {
+		return nil
+	}
+	clone := *cfg
+	clone.Agents = append([]AgentConfig(nil), cfg.Agents...)
+	for i := range clone.Agents {
+		if cfg.Agents[i].Identity != nil {
+			identity := *cfg.Agents[i].Identity
+			clone.Agents[i].Identity = &identity
+		}
+	}
+	clone.ContextPaths = append([]string(nil), cfg.ContextPaths...)
+	if cfg.SynthesisModel != nil {
+		model := *cfg.SynthesisModel
+		clone.SynthesisModel = &model
+	}
+	return &clone
 }
 
 // Validate checks the full configuration for correctness.
@@ -164,17 +257,18 @@ type TokenUsage struct {
 
 // TurnRecord represents a single turn in the deliberation transcript.
 type TurnRecord struct {
-	Turn               int             `yaml:"turn" json:"turn"`
-	AgentID            string          `yaml:"agent_id" json:"agent_id"`
-	Model              *string         `yaml:"model,omitempty" json:"model,omitempty"`
-	Timestamp          float64         `yaml:"timestamp" json:"timestamp"`
-	Content            string          `yaml:"content" json:"content"`
-	Evidence           *EvidenceBundle `yaml:"evidence,omitempty" json:"evidence,omitempty"`
-	Tokens             TokenUsage      `yaml:"tokens" json:"tokens"`
-	Cost               *float64        `yaml:"cost,omitempty" json:"cost,omitempty"`
-	Consensus          bool            `yaml:"consensus" json:"consensus"`
-	ConsensusStatement string          `yaml:"consensus_statement" json:"consensus_statement"`
-	Elapsed            float64         `yaml:"elapsed" json:"elapsed"`
+	Turn               int                 `yaml:"turn" json:"turn"`
+	AgentID            string              `yaml:"agent_id" json:"agent_id"`
+	Model              *string             `yaml:"model,omitempty" json:"model,omitempty"`
+	Transcript         *TranscriptMetadata `yaml:"transcript,omitempty" json:"transcript,omitempty"`
+	Timestamp          float64             `yaml:"timestamp" json:"timestamp"`
+	Content            string              `yaml:"content" json:"content"`
+	Evidence           *EvidenceBundle     `yaml:"evidence,omitempty" json:"evidence,omitempty"`
+	Tokens             TokenUsage          `yaml:"tokens" json:"tokens"`
+	Cost               *float64            `yaml:"cost,omitempty" json:"cost,omitempty"`
+	Consensus          bool                `yaml:"consensus" json:"consensus"`
+	ConsensusStatement string              `yaml:"consensus_statement" json:"consensus_statement"`
+	Elapsed            float64             `yaml:"elapsed" json:"elapsed"`
 }
 
 // DeliberationStats holds statistics computed from deliberation records.

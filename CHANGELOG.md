@@ -2,7 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- `agora show` displays transcript records by slug or path using the same turn cards and response styling as `run`, including plain-output fallback, evidence summaries/source references, and consensus statements.
+
 ### Changed
+- Transcripts now persist run setup metadata on the first record, including full config and enriched cast entries with numeric ID, generated name, persona, provider/model, and theme-adaptive ANSI color slot for faithful `show` replay.
+- Transcript commands now use slug-first inputs while preserving explicit path compatibility: `show`, `stats`, and positional `resume` resolve managed transcript slugs; `validate` resolves config slugs from the current directory and `examples/`.
+- User-facing transcript loading is strict: malformed non-blank JSONL records now fail for `show`, `stats`, and `resume` instead of being silently skipped.
+- Default live output for `run` and `resume` now shows agent response bodies; `--quiet` keeps metadata/progress-only output, and `--verbose` adds diagnostics to response output.
 - `--context` now delivers bounded safe local text to agents once while transcripts keep source references only.
 
 ## [0.2.0] - 2026-05-05

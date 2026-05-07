@@ -23,6 +23,7 @@
 - [ ] Add source/domain allowlists for web research evidence when users need stricter provenance controls
 - [ ] Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence
 - [ ] Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety
+- [ ] Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
 - [x] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText (covered in d956003; package coverage 67.3%)
 
 ## Resolved

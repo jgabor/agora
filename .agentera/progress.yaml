@@ -1,4 +1,179 @@
 cycles:
+- number: 49
+  timestamp: "2026-05-07 17:47"
+  type: verification
+  phase: verify
+  what: >-
+    Completed Task 7 plan-level freshness checkpoint for the transcript show and slug-first CLI UX plan by verifying Tasks 1-6 remain complete, checking indexed documentation freshness, closing Task 7, and setting the top-level plan status to complete after broad verification passed.
+  commit: none
+  inspiration: >-
+    Task 7 is a plan-level evidence and freshness checkpoint only: it should not add product behavior, but must make the plan/progress state trustworthy after the already-passing implementation tasks.
+  discovered: >-
+    Tasks 1-6 were already marked complete with non-empty progress evidence in cycles 41-48, including the Task 1 retry evidence in cycle 42 and Task 4 documentation-fix evidence in cycle 46. TODO.md already records the relevant deferred follow-up for explicit research refresh/replay controls, matching the plan's excluded/deferred evidence-refresh scope. `.agentera/vision.yaml` had no diff before checkpoint edits and was not modified.
+  verified: >-
+    Fresh broad verification passed after Tasks 1-6 docs/code changes and again after checkpoint metadata edits: `go test -count=1 ./...`; `go build ./...`; `go vet ./...`. Indexed documentation metadata was checked and refreshed for README.md, CHANGELOG.md, and TODO.md; no stale indexed documentation claims were found for `list`, `show`, `stats`, `resume`, `validate`, `--quiet`, or `--verbose` behavior.
+  next: >-
+    Plan is complete after final post-checkpoint verification. No commit or push was performed; preserve all unrelated worktree changes.
+  context:
+    intent: implement only Task 7 plan-level freshness and evidence checkpoint
+    constraints: no product behavior changes, no commit, do not modify .agentera/vision.yaml, preserve unrelated changes, mark Task 7 complete only after verification passes
+    scope: .agentera/plan.yaml, .agentera/progress.yaml, .agentera/docs.yaml
+    worktree_summary: |-
+      Modified: .agentera/docs.yaml, .agentera/plan.yaml, .agentera/progress.yaml, CHANGELOG.md, README.md, cmd/agora/main.go, cmd/agora/main_test.go, internal/output/output.go, internal/output/output_test.go, internal/transcript/transcript.go, internal/transcript/transcript_test.go.
+      Untracked: .agentera/archive/plan-2026-05-06-agent-identity-theater-dynamics.yaml, cmd/agora/artifact_resolution.go.
+      .agentera/vision.yaml: no diff; not modified.
+- number: 48
+  timestamp: "2026-05-07 17:46"
+  type: documentation
+  phase: verify
+  what: >-
+    Completed Task 6 verification, docs, and version note by making README command examples and references consistent with the slug-first transcript UX, documenting `agora show`, `agora list`, `stats`, `resume`, `validate`, and live output modes, and adding concise Unreleased changelog notes for the user-facing feature set.
+  commit: none
+  inspiration: >-
+    Task 6 is the checkpoint that turns the already-implemented CLI behavior into documented user-facing behavior and records the feature/minor-worthy version note without prematurely cutting a release.
+  discovered: >-
+    `.agentera/docs.yaml` maps version documentation to `CHANGELOG.md`, and no standalone established version file was found through repository glob checks for `**/*version*`, `**/VERSION*`, or package metadata. The CLI has an in-source released version string, but the repository policy for unreleased feature changes is satisfied by the Unreleased changelog entry rather than a release bump.
+  verified: >-
+    Docs updated: README now documents slug-first/path-compatible `show`, `stats`, and `resume`; `list` as the source of managed transcript slugs; `validate CONFIG|SLUG` resolution from the current directory and `examples/`; strict malformed transcript loading for user-facing transcript commands; and output modes where default shows response bodies, `--quiet` is metadata/progress-only, and `--verbose` adds diagnostics. CHANGELOG.md Unreleased now records `agora show` under Added and slug-first UX, strict transcript loading, and output mode changes under Changed. Commands run and passed: go test -count=1 ./...; go build ./...; go vet ./.... Version decision: no version file was found or needed for unreleased changes, so no version bump was made and the changelog records the minor-worthy note.
+  next: >-
+    Task 6 is complete; Task 7 remains pending for plan-level freshness cleanup. No commit or push was performed, and .agentera/vision.yaml was not modified.
+  context:
+    intent: implement only Task 6 verification, docs, and version note
+    constraints: no commit, do not modify .agentera/vision.yaml, preserve unrelated changes, do not bump a version unless an established version file requires it, record docs and verification evidence before marking Task 6 complete
+    scope: README.md, CHANGELOG.md, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 47
+  timestamp: "2026-05-07 17:45"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 5 validate config slug UX by making the validate command advertise `CONFIG|SLUG` and adding command-level coverage for slug validation, explicit path compatibility, missing path-like failures, and ambiguous slug failures with candidate details.
+  commit: none
+  inspiration: >-
+    The shared config artifact resolver was already wired into `validate`, so Task 5 needed the remaining user-facing validate surface and command-level regression coverage rather than broader documentation or version work reserved for Task 6.
+  discovered: >-
+    Existing Task 1 work already satisfied validate slug success and missing path-like command behavior. The remaining gaps were explicit path compatibility at the command level, ambiguous slug behavior at the command level, and the visible usage string still saying only `CONFIG`.
+  verified: >-
+    gofmt -w cmd/agora/main.go cmd/agora/main_test.go passed; go test -count=1 ./cmd/agora passed. Focused tests now cover `validate quick` resolving `examples/quick.yaml`, `validate <path>` preserving explicit path behavior even when a colliding invalid config exists in examples, `validate missing.yml` failing as a missing path-like config, ambiguous `validate quick` reporting ambiguity plus `quick.yaml` and `examples/quick.yml` candidates, and validate usage advertising `validate CONFIG|SLUG`.
+  next: >-
+    Task 5 is complete; Task 6 remains pending for broader verification, README/changelog/help documentation, and version note work. No commit or push was performed, and .agentera/vision.yaml was not modified.
+  context:
+    intent: implement only Task 5 validate config slug UX
+    constraints: no commit, do not modify .agentera/vision.yaml, preserve unrelated changes, keep broad docs/version work for Task 6, support both slugs and explicit file paths, keep missing path-like inputs as path failures
+    scope: cmd/agora/main.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 46
+  timestamp: "2026-05-07 17:36"
+  type: fix
+  phase: verify
+  what: >-
+    Fixed the Task 4 evaluator documentation failure by updating README `run` and `resume` CLI reference text for the completed live output mode semantics. The README now states that default live output shows response bodies, `--quiet` suppresses live response bodies for metadata/progress-only output, and `--verbose` shows response bodies plus diagnostics/metrics.
+  commit: none
+  inspiration: >-
+    The runtime help and tests already satisfied Task 4, but user-facing README reference text still described the pre-Task-4 `--verbose` behavior and omitted `--quiet`, which made the docs contradict the implemented output modes.
+  discovered: >-
+    The stale Task 4 docs were limited to the README CLI reference around `agora run` and the shared `agora resume` optional flag description. No broader Task 6 documentation, changelog, or plan-status changes were needed.
+  verified: >-
+    README was checked directly for the stale `--verbose` text and missing `--quiet` reference. go test -count=1 ./internal/output passed; go test -count=1 ./cmd/agora passed.
+  next: >-
+    Task 4 remains complete; Task 5 and Task 6 remain separate pending work. No commit or push was performed, and .agentera/vision.yaml was not modified.
+  context:
+    intent: fix only the Task 4 evaluator README output-mode documentation failure
+    constraints: no commit, do not modify .agentera/vision.yaml, keep .agentera/plan.yaml Task 4 complete, avoid broader Task 6 docs work
+    scope: README.md, .agentera/progress.yaml
+- number: 45
+  timestamp: "2026-05-07 17:35"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 4 live output modes by adding explicit quiet, normal, and verbose live output semantics. `run` and `resume` now show agent response bodies by default, `--quiet` keeps the prior metadata/progress-only live output, and `--verbose` shows response bodies plus concrete diagnostics including token breakdowns, cumulative cost, and consensus streak when available.
+  commit: none
+  inspiration: >-
+    Task 4 requires the deliberation content to be visible in normal live output while preserving the old low-noise metadata stream behind `--quiet` and making `--verbose` meaningfully more diagnostic than normal output.
+  discovered: >-
+    The narrow implementation boundary was to add an explicit `internal/output.OutputMode` while preserving the old boolean constructor as a compatibility wrapper for existing internal callers. Command wiring only needed run/resume quiet flags, shared mode resolution, and a clear conflict rejection for `--quiet` plus `--verbose`.
+  verified: >-
+    gofmt -w cmd/agora/main.go cmd/agora/main_test.go internal/output/output.go internal/output/output_test.go passed; go test -count=1 ./internal/output passed; go test -count=1 ./cmd/agora passed. Focused output tests cover normal response body rendering without diagnostics, quiet response-body suppression with metadata retained, and verbose diagnostics with input/output/reasoning token fields and cumulative cost. Command tests cover run default response output, run quiet suppression while preserving final status, resume default response output, resume verbose diagnostics, shared mode mapping, and run/resume rejection of `--quiet` with `--verbose`.
+  next: >-
+    Task 4 is complete; Task 5 can implement validate config slug UX separately. No commit or push was performed, and .agentera/vision.yaml was not modified.
+  context:
+    intent: implement only Task 4 live output modes
+    constraints: no commit, do not modify .agentera/vision.yaml, preserve unrelated Task 1-3 worktree changes, keep terminal visual identity stable, avoid expensive new measurements, reject quiet/verbose conflicts
+    scope: cmd/agora/main.go, cmd/agora/main_test.go, internal/output/output.go, internal/output/output_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 44
+  timestamp: "2026-05-07 17:07"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 3 transcript show command by adding `agora show TRANSCRIPT|SLUG`, resolving inputs through the shared transcript artifact resolver, loading JSONL with the strict transcript loader, and rendering transcript records in file order with record number, turn, agent identity, optional model, content, evidence summaries/source references, and consensus statements.
+  commit: none
+  inspiration: >-
+    Task 3 requires transcript viewing without requiring generated JSONL paths, while preserving strict malformed transcript handling and predictable display for agent, orchestrator, evidence, and consensus records.
+  discovered: >-
+    The existing `types.TurnRecord` schema has enough fields for a minimal readable renderer. The safe implementation boundary was the CLI package: reuse `resolveTranscriptSource` and `loadTranscriptFile`, render all records by slice order, use `unknown` for missing agent IDs, and skip blank content only for evidence-style records while still showing their position and references.
+  verified: >-
+    gofmt -w cmd/agora/main.go cmd/agora/main_test.go passed; go test -count=1 ./cmd/agora passed. Focused tests cover show slug resolution through the managed transcript store, explicit transcript path compatibility, malformed non-blank JSONL failure through the strict loader, empty transcript failure, readable output containing record order, turn number, agent identity, model, response content, orchestrator/evidence summaries and source references, fallback unknown agent labels, and consensus statements.
+  next: >-
+    Task 3 is complete; Task 4 can implement live output modes separately. No commit or push was performed, and .agentera/vision.yaml was not modified.
+  context:
+    intent: implement only Task 3 transcript show command
+    constraints: no commit, no live output mode changes, no validate UX work, no transcript schema changes, preserve slug-or-path contract, malformed non-blank transcript records fail strictly, no .agentera/vision.yaml edits
+    scope: cmd/agora/main.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 43
+  timestamp: "2026-05-07 17:06"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 2 transcript command resolution and strict loading by routing `stats` and positional `resume` transcript inputs through the shared transcript artifact resolver, preserving `resume --file` as a direct path override, and exposing strict JSONL transcript loading for current command reads and future `show` usage.
+  commit: none
+  inspiration: >-
+    Task 2 requires transcript-backed commands to accept managed transcript slugs without weakening the Task 1 path contract or implementing the deferred display command.
+  discovered: >-
+    The existing CLI helper silently skipped malformed JSONL records, and `stats` loaded only literal paths. A single strict loader in `internal/transcript` keeps command behavior and future `show` behavior aligned without creating another resolver.
+  verified: >-
+    gofmt -w cmd/agora/main.go cmd/agora/main_test.go internal/transcript/transcript.go internal/transcript/transcript_test.go passed; go test -count=1 ./cmd/agora passed; go test -count=1 ./internal/transcript passed. Focused tests cover stats slug resolution, stats malformed transcript failure, resume slug selection of the newest matching transcript without --file, resume malformed transcript failure, existing path compatibility, --file override compatibility, missing path-like transcript failures, and strict loader rejection of malformed non-blank records for future show use.
+  next: >-
+    Task 2 is complete; Task 3 can add the transcript display command on top of the strict loader. No commit or push was performed.
+  context:
+    intent: implement only Task 2 transcript command resolution and strict loading
+    constraints: no show command, no rendering command, no docs, no live output modes, preserve explicit paths, preserve resume --file override, missing path-like transcript inputs fail as paths, no commit
+    scope: cmd/agora/main.go, cmd/agora/main_test.go, internal/transcript/transcript.go, internal/transcript/transcript_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 42
+  timestamp: "2026-05-07 17:05"
+  type: fix
+  phase: verify
+  what: >-
+    Retried Task 1 after evaluation found config-consuming commands bypassed the shared config artifact resolver. `run`, `resume`, and `validate` now load configs through the resolver, so explicit paths are preserved and missing path-like config inputs fail as paths instead of falling back to slug search.
+  commit: none
+  inspiration: >-
+    The artifact resolution contract is only satisfied if supported command paths use the resolver, not just unit-level helper tests. The retry scope explicitly excludes transcript show, strict transcript loading, docs, and live output mode changes.
+  discovered: >-
+    The previous implementation added config resolution but left `config.LoadConfig` wired directly in all config-consuming commands. A small shared `loadConfigArtifact` helper was sufficient to keep command behavior consistent without expanding future Task 2 or Task 5 transcript/display scope.
+  verified: >-
+    gofmt -w cmd/agora/artifact_resolution.go cmd/agora/main.go cmd/agora/main_test.go passed; go test -count=1 ./cmd/agora passed. Focused command-level tests now cover `run` explicit config path success and missing path-like config failure, `resume` explicit config path success and missing path-like config failure, and `validate` config slug success plus missing path-like config failure, alongside the existing transcript and config resolver tier/path tests.
+  next: >-
+    Task 1 now satisfies the evaluator finding; no commit or push was performed.
+  context:
+    intent: retry only Task 1 artifact resolution contract after evaluator failure
+    constraints: no commit, no transcript show, no strict transcript loading, no docs, no live output mode changes, preserve explicit config path support, missing path-like config inputs fail as paths
+    scope: cmd/agora/artifact_resolution.go, cmd/agora/main.go, cmd/agora/main_test.go, .agentera/progress.yaml
+- number: 41
+  timestamp: "2026-05-07 16:45"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 1 artifact resolution contract by adding reusable transcript and config artifact resolvers, preserving explicit path behavior, rejecting missing path-like inputs as paths, ranking transcript slug matches by exact, prefix, then substring, and reporting config slug collisions instead of guessing.
+  commit: none
+  inspiration: >-
+    The active plan requires a shared resolution contract before wiring later transcript and validate UX changes, with no persistent config registry and no scope creep into rendering or output modes.
+  discovered: >-
+    The existing resume resolver was substring-only and chose newest substring matches before exact matches. The narrow contract boundary was to keep resume source wiring on the shared transcript resolver while leaving validate slug wiring to Task 5.
+  verified: >-
+    gofmt -w cmd/agora/artifact_resolution.go cmd/agora/main.go cmd/agora/main_test.go and go test -count=1 ./cmd/agora passed, covering transcript path success/failure, transcript slug exact/prefix/substring tiering with newest deterministic selection, config path success/failure, config stem success, and config collision failure.
+  next: >-
+    Task 2 can wire transcript commands to the shared transcript resolver; Task 5 can wire validate to the shared config resolver. No commit or push was performed.
+  context:
+    intent: implement only Task 1 shared artifact resolution contract
+    constraints: no show command, no output-mode changes, no validate slug UX wiring, no persistent config registry, preserve explicit path behavior, no commit, no push
+    scope: cmd/agora/artifact_resolution.go, cmd/agora/main.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
 - number: 40
   timestamp: "2026-05-06 22:21"
   type: fix

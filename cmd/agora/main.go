@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,7 +25,7 @@ var version = "0.2.0"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")
-	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, listCmd, configCmd)
+	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, showCmd, listCmd, configCmd)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -48,6 +47,7 @@ var (
 	runMaxTurns    int = 10
 	runOutput      string
 	runVerbose     bool
+	runQuiet       bool
 	runBudget      float64
 	runBudgetFlag  bool
 	runSynthesize  bool
@@ -79,7 +79,7 @@ var runCmd = &cobra.Command{
 				return err
 			}
 			levelCaps = types.CapsForLevel(level)
-			outMgr := output.NewOutputManager(runVerbose)
+			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
 
 			if runDryRun {
 				cfg, err = autogen.GenerateDryRunConfig(runTopic, level, runModel)
@@ -106,7 +106,7 @@ var runCmd = &cobra.Command{
 			}
 		} else {
 			var err error
-			cfg, err = config.LoadConfig(runConfig)
+			cfg, err = loadConfigArtifact(runConfig)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -140,7 +140,8 @@ var runCmd = &cobra.Command{
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
-		outMgr := output.NewOutputManager(runVerbose)
+		tm.SetMetadata(types.NewTranscriptMetadata(cfg))
+		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.SetEvidenceCollector(orchestrator.NewPolicyEvidenceCollector(runner))
@@ -178,7 +179,8 @@ func init() {
 	runCmd.Flags().IntVarP(&runWindow, "window", "w", 2, "Number of predecessor messages each agent sees")
 	runCmd.Flags().IntVarP(&runMaxTurns, "max-turns", "m", 10, "Maximum total turns")
 	runCmd.Flags().StringVarP(&runOutput, "output", "o", "", "Path to write the JSONL transcript")
-	runCmd.Flags().BoolVarP(&runVerbose, "verbose", "v", false, "Print agent responses in real-time")
+	runCmd.Flags().BoolVarP(&runVerbose, "verbose", "v", false, "Print response bodies plus additional live diagnostics")
+	runCmd.Flags().BoolVarP(&runQuiet, "quiet", "q", false, "Suppress live response bodies and show metadata/progress only")
 	runCmd.Flags().Float64Var(&runBudget, "budget", 0, "Cost cap in dollars")
 	runCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
 	runCmd.Flags().BoolVar(&runFullContext, "full-context", false, "Show last K messages from ALL agents")
@@ -194,6 +196,9 @@ func init() {
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		runBudgetFlag = cmd.Flags().Changed("budget")
+		if runQuiet && runVerbose {
+			return fmt.Errorf("cannot use --quiet and --verbose together")
+		}
 		if cmd.Flags().Changed("research") && cmd.Flags().Changed("no-research") {
 			return fmt.Errorf("cannot use --research and --no-research together")
 		}
@@ -273,7 +278,11 @@ var statsCmd = &cobra.Command{
 	Short: "Print statistics from a deliberation transcript",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		records, err := loadTranscriptFile(args[0])
+		path, err := resolveTranscriptSource(args[0])
+		if err != nil {
+			return fmt.Errorf("loading transcript: %w", err)
+		}
+		records, err := loadTranscriptFile(path)
 		if err != nil {
 			return fmt.Errorf("loading transcript: %w", err)
 		}
@@ -289,14 +298,38 @@ var statsCmd = &cobra.Command{
 	},
 }
 
+// --- show ---------------------------------------------------------
+
+var showCmd = &cobra.Command{
+	Use:   "show TRANSCRIPT|SLUG",
+	Short: "Show a deliberation transcript",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path, err := resolveTranscriptSource(args[0])
+		if err != nil {
+			return fmt.Errorf("loading transcript: %w", err)
+		}
+		records, err := loadTranscriptFile(path)
+		if err != nil {
+			return fmt.Errorf("loading transcript: %w", err)
+		}
+		if len(records) == 0 {
+			return fmt.Errorf("transcript empty: %s", path)
+		}
+
+		output.RenderTranscript(cmd.OutOrStdout(), records)
+		return nil
+	},
+}
+
 // --- validate -----------------------------------------------------
 
 var validateCmd = &cobra.Command{
-	Use:   "validate CONFIG",
+	Use:   "validate CONFIG|SLUG",
 	Short: "Validate a configuration file",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.LoadConfig(args[0])
+		cfg, err := loadConfigArtifact(args[0])
 		if err != nil {
 			return fmt.Errorf("ERROR: %w", err)
 		}
@@ -370,6 +403,7 @@ var (
 	resumeMaxTurns    int = 10
 	resumeOutput      string
 	resumeVerbose     bool
+	resumeQuiet       bool
 	resumeBudget      float64
 	resumeBudgetFlag  bool
 	resumeFullContext bool
@@ -400,6 +434,9 @@ var resumeCmd = &cobra.Command{
 	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		resumeBudgetFlag = cmd.Flags().Changed("budget")
+		if resumeQuiet && resumeVerbose {
+			return fmt.Errorf("cannot use --quiet and --verbose together")
+		}
 		if resumeEvidenceRequestChanged(cmd) {
 			return fmt.Errorf("resume cannot change research or context evidence; existing transcript evidence is reused")
 		}
@@ -452,7 +489,7 @@ var resumeCmd = &cobra.Command{
 				return err
 			}
 			levelCaps = types.CapsForLevel(level)
-			outMgr := output.NewOutputManager(resumeVerbose)
+			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeQuiet, resumeVerbose))
 
 			if resumeDryRun {
 				cfg, err = autogen.GenerateDryRunConfig(resumeTopic, level, resumeModel)
@@ -478,7 +515,7 @@ var resumeCmd = &cobra.Command{
 				}
 			}
 		} else {
-			cfg, err = config.LoadConfig(resumeConfig)
+			cfg, err = loadConfigArtifact(resumeConfig)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -493,6 +530,7 @@ var resumeCmd = &cobra.Command{
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
+		tm.SetMetadata(types.NewTranscriptMetadata(cfg))
 		if _, err := tm.LoadExisting(); err != nil {
 			return fmt.Errorf("loading existing output transcript: %w", err)
 		}
@@ -531,7 +569,7 @@ var resumeCmd = &cobra.Command{
 			applyAutoLevelCaps(cmd, state, levelCaps, existingTurns)
 		}
 
-		outMgr := output.NewOutputManager(resumeVerbose)
+		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeQuiet, resumeVerbose))
 		runner := agent.NewAgentRunner(resumeDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.OnTurn(outMgr.TurnProgress)
@@ -556,7 +594,8 @@ func init() {
 	resumeCmd.Flags().IntVarP(&resumeWindow, "window", "w", 2, "Window size")
 	resumeCmd.Flags().IntVarP(&resumeMaxTurns, "max-turns", "m", 10, "Additional max turns")
 	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "", "Path to write the updated JSONL transcript")
-	resumeCmd.Flags().BoolVarP(&resumeVerbose, "verbose", "v", false, "Print agent responses in real-time")
+	resumeCmd.Flags().BoolVarP(&resumeVerbose, "verbose", "v", false, "Print response bodies plus additional live diagnostics")
+	resumeCmd.Flags().BoolVarP(&resumeQuiet, "quiet", "q", false, "Suppress live response bodies and show metadata/progress only")
 	resumeCmd.Flags().Float64Var(&resumeBudget, "budget", 0, "Remaining cost budget")
 	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents")
 	resumeCmd.Flags().BoolVar(&resumeDryRun, "dry-run", false, "Run with simulated agent responses")
@@ -572,6 +611,16 @@ func init() {
 }
 
 // --- helpers ------------------------------------------------------
+
+func liveOutputMode(quiet, verbose bool) output.OutputMode {
+	if quiet {
+		return output.OutputQuiet
+	}
+	if verbose {
+		return output.OutputVerbose
+	}
+	return output.OutputNormal
+}
 
 func applyDefaultModelFromSettings(cmd *cobra.Command, model *string) error {
 	return applySettingsDefaults(cmd, model, nil)
@@ -630,6 +679,9 @@ func listTranscriptEntries(dir string) ([]transcriptEntry, error) {
 	}
 
 	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].date.Equal(entries[j].date) {
+			return entries[i].filename > entries[j].filename
+		}
 		return entries[i].date.After(entries[j].date)
 	})
 	return entries, nil
@@ -656,13 +708,10 @@ func resolveResumeSource(fileFlag string, args []string) (string, error) {
 		return fileFlag, nil
 	}
 
-	arg := args[0]
-	if _, err := os.Stat(arg); err == nil {
-		return arg, nil
-	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("checking transcript path: %w", err)
-	}
+	return resolveTranscriptSource(args[0])
+}
 
+func resolveTranscriptSource(input string) (string, error) {
 	settings, err := config.LoadDefaultSettings()
 	if err != nil {
 		return "", fmt.Errorf("loading settings: %w", err)
@@ -675,16 +724,7 @@ func resolveResumeSource(fileFlag string, args []string) (string, error) {
 		}
 	}
 
-	entries, err := listTranscriptEntries(dir)
-	if err != nil {
-		return "", err
-	}
-	for _, entry := range entries {
-		if strings.Contains(entry.slug, arg) || strings.Contains(entry.filename, arg) {
-			return filepath.Join(dir, entry.filename), nil
-		}
-	}
-	return "", fmt.Errorf("no matching transcript found for slug %q", arg)
+	return resolveTranscriptArtifact(input, dir)
 }
 
 func confirmProceed() bool {
@@ -701,29 +741,7 @@ func confirmProceed() bool {
 }
 
 func loadTranscriptFile(path string) ([]types.TurnRecord, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var records []types.TurnRecord
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		var r types.TurnRecord
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			continue
-		}
-		records = append(records, r)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return records, nil
+	return transcript.LoadFileStrict(path)
 }
 
 func statsToDict(s types.DeliberationStats) map[string]any {

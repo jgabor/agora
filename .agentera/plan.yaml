@@ -1,102 +1,128 @@
 header:
   level: full
-  created: '2026-05-06'
-  status: completed
-  reviewed: '2026-05-06'
-  critic_issues: 4 found, 4 addressed, 0 dismissed
-  title: Agent identity and theater dynamics without avatars
+  created: '2026-05-07'
+  status: complete
+  reviewed: '2026-05-07'
+  critic_issues: 12 found, 12 addressed, 0 dismissed
+  title: Transcript Show And Slug-First CLI UX
 what: >-
-  Add a production agent-identity and theater-dynamics layer that makes Agora runs easier to scan and more memorable without
-  rendering agent avatars. The work includes optional non-avatar identity metadata, stronger cast identity in preview/header/turns,
-  long-running activity indicators, progress-style metric presentation, and consistent plain-terminal fallbacks.
+  Add a transcript viewing command and make saved-artifact commands accept human-scale slugs by default while preserving explicit
+  file paths. `agora show` displays transcripts, `run` and `resume` show agent responses by default, `--quiet` restores the current
+  metadata-only output, and `--verbose` becomes expanded diagnostics.
 why: >-
-  Avatar work is still experimental and should not block the rest of the CLI personality system. Users can get meaningful gains
-  from named cast roles, stable badges, readable agent metadata, dynamic wait/progress feedback, and metric bars before any portrait
-  rendering is ready. This preserves Decision 7's Charm v2 theater direction while avoiding the visual and fallback risk of avatars.
+  Users should not need generated JSONL paths to inspect, resume, or analyze deliberations. Showing responses by default better
+  matches Agora's purpose: the deliberation content is the primary value, not just the metrics stream.
 constraints: >-
-  Avatars, generated faces, portrait glyphs, external image assets, and avatar-specific config are out of scope. Non-avatar identity
-  fields are allowed when they preserve exact visible `agent_id` and degrade cleanly. Preserve command behavior, transcript replay
-  compatibility, deliberation behavior, exit semantics, and model output fields. Color, motion, bars, and symbols are decorative;
-  labels and text must carry meaning in `NO_COLOR`, CI, dumb-terminal, and narrow-width output.
+  Keep Go-only implementation, managed transcript store behavior, existing explicit path support, resume evidence reuse, and the
+  current terminal visual identity. Do not add a persistent config registry. Path-like missing inputs must fail as missing paths,
+  not silently fall back to slug search.
 scope:
   included:
-    - optional non-avatar agent identity metadata for display and cast readability
-    - cast preview and deliberation header identity treatment
-    - turn progress identity treatment and long-running activity feedback
-    - progress-style presentation for bounded metrics such as turns, time, budget, tokens, or consensus where available
-    - final stats and transcript stats identity consistency
-    - plain/no-color/narrow fallback behavior and tests
+    - `show` command for transcript viewing
+    - slug-or-path behavior for transcript-backed commands
+    - config slug-or-path behavior for `validate`
+    - normal/quiet/verbose live output modes
+    - strict malformed-transcript handling for user-facing transcript commands
+    - README, changelog, command help, and verification
   excluded:
-    - agent avatars or portraits
-    - generated pixel faces
-    - image assets or network-loaded identity assets
-    - interactive full-screen TUI
-    - changing deliberation topology or agent turn semantics
+    - transcript schema migration
+    - evidence refresh or replay controls
+    - transcript editing
+    - pager/TUI mode
+    - remote transcript storage
   deferred:
-    - user-selectable theme packs
-    - avatar/portrait production integration
-    - screenshot-based visual regression tests
+    - transcript search/filtering
+    - HTML or Markdown export
+    - persistent named config registry
 design: >-
-  Treat identity as structured metadata first and ornament second. The canonical identity remains the exact `agent_id` plus stable
-  run-local badge. Optional non-avatar identity metadata may enrich display, but never replaces the canonical label. Treat spinners,
-  bars, and richer status rows as adaptive terminal affordances that appear only when they improve scanability and fall back to
-  plain labels, counts, percentages, and text.
+  Use a clear artifact-resolution contract. Existing path-like inputs are paths; if missing, they fail. Transcript slugs search the
+  managed transcript store with exact match before prefix match before substring match, selecting newest deterministically within a
+  tier. Config slugs for `validate` resolve by file stem in the current directory and `examples/`, with collisions reported rather
+  than guessed. Live output has three modes: quiet metadata, normal readable responses, and verbose expanded diagnostics.
 tasks:
   - number: 1
-    name: Non-avatar identity contract
+    name: Artifact resolution contract
     depends_on: []
     status: complete
     acceptance:
-      - GIVEN an agent has no extra identity metadata WHEN output renders THEN the exact `agent_id` and stable badge remain sufficient to identify the participant
-      - GIVEN an agent has supported non-avatar identity metadata WHEN output renders THEN the metadata enriches display without hiding or replacing `agent_id`
-      - GIVEN old configs or transcripts are used WHEN identity is resolved THEN they continue to render without requiring new fields
-      - GIVEN plain/no-color output is active WHEN identity metadata renders THEN text labels preserve meaning without color or glyph dependence
+      - GIVEN an existing explicit path WHEN a supported command receives it THEN that path is used directly.
+      - GIVEN a path-like input that does not exist WHEN a supported command receives it THEN the command reports the missing path instead of searching slugs.
+      - GIVEN a transcript slug WHEN a transcript command resolves it THEN exact matches win before prefix matches before substring matches.
+      - GIVEN multiple transcript matches within the same match tier WHEN resolution succeeds THEN the newest matching transcript is selected deterministically.
+      - GIVEN resolution behavior is verified WHEN checks run THEN each artifact type has at least one success case and one failure case.
   - number: 2
-    name: Cast and turn identity surfaces
+    name: Transcript command resolution and strict loading
     depends_on:
       - Task 1
     status: complete
     acceptance:
-      - GIVEN config preview renders WHEN agents are shown THEN each participant has consistent badge, `agent_id`, model, and readable role/context information
-      - GIVEN deliberation starts WHEN the header renders THEN cast ordering and run-local identity are clear before turns begin
-      - GIVEN a turn completes WHEN progress renders THEN the same participant identity appears as in the cast preview/header
-      - GIVEN an unknown or resumed agent appears WHEN output renders THEN it receives a clear fallback identity and is not dropped
+      - GIVEN a stored transcript slug WHEN `resume` uses it THEN the latest matching transcript is selected without requiring `--file`.
+      - GIVEN a stored transcript slug WHEN `stats` uses it THEN statistics are computed from that transcript.
+      - GIVEN a transcript contains malformed non-blank records WHEN `resume`, `stats`, or `show` reads it THEN the command fails with a transcript-specific error.
+      - GIVEN legacy path-based transcript workflows WHEN the commands run THEN path compatibility remains intact.
   - number: 3
-    name: Long-running activity feedback
+    name: Transcript show command
     depends_on:
+      - Task 1
       - Task 2
     status: complete
     acceptance:
-      - GIVEN Agora is waiting on generation, research, synthesis, or another long-running phase WHEN the terminal supports rich output THEN users see a live activity indicator with a clear phase label
-      - GIVEN the same phase runs in plain, CI, dumb-terminal, or redirected output WHEN status is emitted THEN users see readable text updates without spinner artifacts
-      - GIVEN an activity indicator is interrupted by completion or error WHEN final output prints THEN the terminal is left in a clean readable state
-      - GIVEN verbose output is enabled WHEN activity feedback appears THEN it does not obscure agent content or structured metadata
+      - GIVEN a saved transcript WHEN `show <slug>` runs THEN turns render in order with agent identity and response content.
+      - GIVEN transcript evidence records WHEN shown THEN source summaries and references remain visible without exposing omitted full source contents.
+      - GIVEN consensus markers WHEN shown THEN consensus statements appear at the relevant turns.
+      - GIVEN an empty transcript WHEN shown THEN the command fails with a clear message.
+      - GIVEN transcript display is verified WHEN checks run THEN there is at least one successful display case and one failure case.
   - number: 4
-    name: Metric progress presentation
-    depends_on:
-      - Task 2
+    name: Live output modes
+    depends_on: []
     status: complete
     acceptance:
-      - GIVEN bounded turn, time, budget, token, or consensus data is available WHEN progress or stats render THEN users can read both the value and its progress toward the bound
-      - GIVEN a metric has no meaningful bound WHEN output renders THEN it is shown as a labeled value rather than a misleading bar
-      - GIVEN color or Unicode is unavailable WHEN metric progress renders THEN labels, numbers, and percentages remain readable
-      - GIVEN final stats render WHEN a run completes THEN metric presentation stays consistent with live progress output
+      - GIVEN `run` or `resume` runs without output-mode flags WHEN an agent turn completes THEN response content is displayed by default.
+      - GIVEN `--quiet` is passed WHEN an agent turn completes THEN output matches the prior metadata-only behavior.
+      - GIVEN `--verbose` is passed WHEN an agent turn completes THEN response content plus expanded diagnostics are displayed.
+      - GIVEN verbose diagnostics are displayed WHEN token or cost details exist THEN input/output/reasoning tokens, cumulative cost, elapsed timing, and consensus progress are visible where available.
+      - GIVEN incompatible output-mode flags are passed WHEN the command starts THEN the command rejects the combination clearly.
   - number: 5
-    name: Verification and documentation checkpoint
+    name: Validate config slug UX
+    depends_on:
+      - Task 1
+    status: complete
+    acceptance:
+      - GIVEN a config file stem in the current directory or `examples/` WHEN `validate <slug>` runs THEN the intended config is validated.
+      - GIVEN a config path WHEN `validate <path>` runs THEN existing path-based validation still works.
+      - GIVEN multiple configs share a slug WHEN validation is requested THEN the command reports candidates instead of guessing.
+      - GIVEN no matching config exists WHEN validation is requested THEN the error describes the searched config locations.
+  - number: 6
+    name: Verification, docs, and version note
+    depends_on:
+      - Task 2
+      - Task 3
+      - Task 4
+      - Task 5
+    status: complete
+    acceptance:
+      - GIVEN the implementation is complete WHEN project checks run THEN build, tests, and vet/lint equivalents pass.
+      - GIVEN users read command help or README examples THEN `list`, `show`, `stats`, `resume`, `validate`, `--quiet`, and `--verbose` behavior is clear.
+      - GIVEN the changelog is read THEN the new command, default-output change, and slug-first inputs are recorded as feature/user-visible changes.
+      - GIVEN command behavior changed WHEN tests are reviewed THEN each changed command has at least one expected-use and one failure-path check.
+  - number: 7
+    name: Plan-level freshness checkpoint
     depends_on:
       - Task 1
       - Task 2
       - Task 3
       - Task 4
+      - Task 5
+      - Task 6
     status: complete
     acceptance:
-      - GIVEN the feature is complete WHEN tests run THEN identity, activity, progress, and fallback behavior are covered by semantic assertions
-      - GIVEN representative rich and plain CLI runs are inspected WHEN output is reviewed THEN no avatar dependency is required for the theater improvements
-      - GIVEN maintainers inspect output conventions or user docs WHEN adding future theater work THEN avatar exclusions, identity rules, and progress/status rules are clear
-      - GIVEN normal verification runs WHEN the plan completes THEN the project test suite passes
+      - GIVEN the work is complete WHEN project state is updated THEN plan status, progress, TODO, and surprises reflect delivered behavior.
+      - GIVEN user-visible CLI behavior changed WHEN docs metadata is checked THEN no indexed documentation claims stale command behavior.
+      - GIVEN follow-up work remains WHEN the plan closes THEN it is recorded as deferred or TODO.
 overall_acceptance:
-  - GIVEN a normal Agora run WHEN users watch preview, waiting phases, turns, stats, and synthesis THEN agents feel consistently identifiable and the run feels active without avatars
-  - GIVEN old configs and transcripts WHEN rendered after the change THEN exact `agent_id` identity and existing semantics remain intact
-  - GIVEN plain, CI, dumb-terminal, narrow, or no-color output WHEN all theater surfaces render THEN labels and text preserve all critical meaning
-  - GIVEN avatar prototypes remain unmerged WHEN this plan completes THEN no production behavior depends on portrait rendering
+  - GIVEN a managed transcript slug WHEN `show`, `stats`, or `resume` runs THEN the user does not need the generated JSONL path.
+  - GIVEN a config slug or path WHEN `validate` runs THEN validation remains one-argument and path-compatible.
+  - GIVEN a deliberation is running normally WHEN turns complete THEN agent responses are visible without `--verbose`.
+  - GIVEN quiet output is needed WHEN `--quiet` is used THEN the prior low-noise live output remains available.
+  - GIVEN diagnostics are needed WHEN `--verbose` is used THEN expanded metrics appear without hiding response content.
 surprises: []

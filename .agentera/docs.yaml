@@ -1,4 +1,4 @@
-last_audit: 2026-05-07 (vision naming refresh)
+last_audit: 2026-05-07 (plan-level freshness checkpoint)
 conventions:
   doc_root: .
   style: technical, concise, evidence-backed; README uses command examples and tables
@@ -41,15 +41,15 @@ mapping:
 index:
   - document: README
     path: README.md
-    last_updated: 2026-05-06
+    last_updated: 2026-05-07
     status: current
   - document: Changelog
     path: CHANGELOG.md
-    last_updated: 2026-05-06
+    last_updated: 2026-05-07
     status: current
   - document: TODO
     path: TODO.md
-    last_updated: 2026-05-06
+    last_updated: 2026-05-07
     status: current
   - document: Vision
     path: .agentera/vision.yaml
@@ -65,6 +65,13 @@ coverage:
   stale: none found during 2026-05-07 audit
   tests: 11 Go test files; CI runs go test ./... -race -coverprofile=coverage.out
 audit_log:
+  - date: 2026-05-07
+    label: plan-level freshness checkpoint
+    findings:
+      - type: freshness
+        severity: info
+        description: Active transcript show and slug-first CLI UX plan completed with fresh Go verification and indexed README, changelog, and TODO metadata checked current.
+        resolution: Tasks 1-7 are complete; no stale indexed documentation claims found for the delivered CLI behavior.
   - date: 2026-05-07
     label: first-run survey
     findings:

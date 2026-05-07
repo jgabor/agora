@@ -37,8 +37,10 @@ go build -o agora ./cmd/agora
   --context README.md \
   --context examples/
 
-# Stats
-./agora stats transcript.jsonl
+# Browse saved transcripts, then inspect one by slug
+./agora list
+./agora show is-ai-alignment-a-solvable-problem
+./agora stats is-ai-alignment-a-solvable-problem
 ```
 
 ### With your own config and real LLMs
@@ -88,7 +90,8 @@ Optional (all have sensible defaults):
   -w, --window N           Number of predecessor messages each agent sees (default: 2)
   -m, --max-turns N        Maximum total turns (default: 10)
   -o, --output PATH        JSONL transcript output path (default: transcript.jsonl)
-  -v, --verbose            Print agent responses in real-time
+  -q, --quiet              Suppress live response bodies; show metadata/progress only
+  -v, --verbose            Print response bodies plus diagnostics and metrics
   --budget FLOAT           Cost cap in dollars
   --synthesize             Run final synthesis agent after deliberation
   --full-context           Show last K messages from ALL agents (not just predecessor)
@@ -103,29 +106,61 @@ Optional (all have sensible defaults):
 
 With `--auto`, the level supplies default time and max-turn caps. Explicit `--time` or `--max-turns` values override those caps.
 
+By default, live output includes agent response bodies as turns complete. Use `--quiet` for the lower-noise metadata/progress-only stream, or `--verbose` to keep response bodies and add diagnostics such as token, cost, timing, and consensus metrics when available.
+
+### Transcript slugs and paths
+
+Agora writes managed transcripts under the configured transcript store with filenames like `20260507-143022-is-ai-alignment-a-solvable-problem.jsonl`. `agora list` shows the human-readable `Slug` column from those filenames.
+
+Transcript commands are slug-first and path-compatible:
+
+| Command | Slug input | Path input |
+|---|---|---|
+| `agora show SLUG` | Shows the newest managed transcript whose slug matches exactly, then by prefix, then by substring | `agora show path/to/transcript.jsonl` reads that file directly |
+| `agora stats SLUG` | Computes stats from the newest matching managed transcript | `agora stats path/to/transcript.jsonl` reads that file directly |
+| `agora resume ... SLUG` | Continues from the newest matching managed transcript | `agora resume ... path/to/transcript.jsonl` reads that file directly |
+
+Path-like inputs stay paths: if you pass a missing `*.jsonl`, `./file`, `../file`, or directory-style path, Agora reports the missing path instead of searching transcript slugs.
+
+### `agora list` — List managed transcripts
+
+```
+agora list
+```
+
+Lists managed transcripts from the configured transcript store, newest first, with date, slug, turn count, and filename. Use the slug with `show`, `stats`, or `resume`; use the filename/path when you need an exact file.
+
+### `agora show` — Show a transcript
+
+```
+agora show TRANSCRIPT|SLUG
+```
+
+Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references and consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped.
+
 ### `agora resume` — Continue from an existing transcript
 
 ```
-agora resume --config PATH --topic TEXT TRANSCRIPT [flags]
+agora resume --config PATH --topic TEXT TRANSCRIPT|SLUG [flags]
 
-Same optional flags as run, except evidence flags are rejected on resume. Loads prior records and continues from the last turn. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context.
+Same optional flags as run, except evidence flags are rejected on resume. Loads prior records from a transcript slug or explicit path and continues from the last turn. Live output uses the same modes as `run`: default shows response bodies, `--quiet` suppresses live response bodies for metadata/progress only, and `--verbose` shows response bodies plus diagnostics/metrics. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context.
 ```
 
 ### `agora stats` — Show transcript statistics
 
 ```
-agora stats TRANSCRIPT
+agora stats TRANSCRIPT|SLUG
 ```
 
-Displays total turns, tokens, cost, per-agent breakdown, and consensus events.
+Displays total turns, tokens, cost, per-agent breakdown, and consensus events for a transcript slug or explicit path. Malformed non-blank JSONL records fail instead of being skipped.
 
 ### `agora validate` — Validate a config file
 
 ```
-agora validate CONFIG
+agora validate CONFIG|SLUG
 ```
 
-Checks config for errors without starting a deliberation.
+Checks config for errors without starting a deliberation. Explicit paths are read directly. Non-path slugs resolve by config file stem in the current directory and `examples/`; ambiguous slug matches report candidate files instead of guessing.
 
 ### `agora config` — Manage global settings
 
@@ -199,10 +234,10 @@ When `--synthesize` is enabled, a final agent call produces a structured JSON su
 
 ## Transcript Format
 
-JSONL, one turn per line. Research/context runs add an orchestrator evidence summary before agent turns. Transcript evidence stores source references and a readable summary, not full source content; the same evidence bundle is delivered to each agent exactly once on that agent's first turn.
+JSONL, one turn per line. The first written record embeds a `transcript` metadata block with schema version, full run config, and the durable cast used for replay. Cast members include numeric ID, generated display name, persona, provider/model, and a theme-adaptive ANSI color slot so `agora show` can replay the same `[A1 persona]` labels and styling as the original run without reloading the config file. Research/context runs add an orchestrator evidence summary before agent turns. Transcript evidence stores source references and a readable summary, not full source content; the same evidence bundle is delivered to each agent exactly once on that agent's first turn. User-facing transcript commands (`show`, `stats`, and `resume`) load transcripts strictly: malformed non-blank records fail with an error instead of being ignored.
 
 ```json
-{"turn": 0, "agent_id": "skeptic", "model": "openai/gpt-4o", "timestamp": 1715000000.0, "content": "...", "tokens": {"total": 150, "input": 100, "output": 50}, "cost": 0.001, "consensus": false, "consensus_statement": "", "elapsed": 2.5}
+{"turn": 0, "agent_id": "skeptic", "model": "openai/gpt-4o", "transcript": {"schema_version": 1, "cast": [{"id": 1, "name": "Solon", "persona": "skeptic", "provider_model": "openai/gpt-4o", "color": "6"}], "config": {"agents": [{"id": "skeptic", "model": "openai/gpt-4o", "system_prompt": "..."}], "topology": "ring", "consensus_threshold": 0}}, "timestamp": 1715000000.0, "content": "...", "tokens": {"total": 150, "input": 100, "output": 50}, "cost": 0.001, "consensus": false, "consensus_statement": "", "elapsed": 2.5}
 ```
 
 ## Development

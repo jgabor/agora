@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,7 @@ func mkRecordWithCost(turn int, agentID, content string, cost float64, tokens in
 
 func TestTranscriptAppendAndLoad(t *testing.T) {
 	tm := newTestTranscript(t)
+	tm.SetMetadata(types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "agent1", Model: "test-model"}}}))
 
 	record := mkRecord(0, "agent1", "hello", false, "")
 	if err := tm.Append(record); err != nil {
@@ -77,6 +79,42 @@ func TestTranscriptAppendAndLoad(t *testing.T) {
 	}
 	if loaded[0].AgentID != "agent1" {
 		t.Errorf("loaded agent_id: got %q, want %q", loaded[0].AgentID, "agent1")
+	}
+	if tm2.Metadata() == nil || len(tm2.Metadata().Cast) != 1 {
+		t.Fatalf("loaded metadata: %#v, want one cast member", tm2.Metadata())
+	}
+	member := tm2.Metadata().Cast[0]
+	if member.ID != 1 || member.Name != "Solon" || member.Persona != "agent1" || member.ProviderModel != "test-model" || member.Color != "6" {
+		t.Fatalf("cast member: %#v", member)
+	}
+}
+
+func TestTranscriptAppendWritesMetadataOnFirstRecordOnly(t *testing.T) {
+	tm := newTestTranscript(t)
+	tm.SetMetadata(types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{
+		{ID: "alpha", Model: "openai/gpt-5.5"},
+		{ID: "beta", Model: "anthropic/claude"},
+	}}))
+
+	if err := tm.Append(mkRecord(0, "alpha", "hello", false, "")); err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	if err := tm.Append(mkRecord(1, "beta", "reply", false, "")); err != nil {
+		t.Fatalf("append second: %v", err)
+	}
+
+	loaded, err := LoadFileStrict(tm.path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded[0].Transcript == nil || len(loaded[0].Transcript.Cast) != 2 || loaded[0].Transcript.Config == nil {
+		t.Fatalf("first record metadata: %#v", loaded[0].Transcript)
+	}
+	if loaded[0].Transcript.Cast[1].ID != 2 || loaded[0].Transcript.Cast[1].Name != "Aspasia" || loaded[0].Transcript.Cast[1].Persona != "beta" {
+		t.Fatalf("second cast member: %#v", loaded[0].Transcript.Cast[1])
+	}
+	if loaded[1].Transcript != nil {
+		t.Fatalf("second record should not duplicate transcript metadata: %#v", loaded[1].Transcript)
 	}
 }
 
@@ -120,6 +158,19 @@ func TestTranscriptLoadNonexistent(t *testing.T) {
 	}
 	if records != nil {
 		t.Errorf("expected nil records for nonexistent file, got %d", len(records))
+	}
+}
+
+func TestLoadFileStrictRejectsMalformedNonBlankRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	content := `{"turn":0,"agent_id":"a","timestamp":1,"content":"ok","tokens":{},"consensus":false,"consensus_statement":"","elapsed":0}` + "\n\nnot-json\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	_, err := LoadFileStrict(path)
+	if err == nil || !strings.Contains(err.Error(), "malformed transcript record") || !strings.Contains(err.Error(), ":3:") {
+		t.Fatalf("error: got %v, want malformed transcript record at line 3", err)
 	}
 }
 

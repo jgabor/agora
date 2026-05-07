@@ -3,6 +3,7 @@ package output
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -70,17 +71,35 @@ type StatsDict = map[string]any
 
 // OutputManager manages terminal output for deliberation progress.
 type OutputManager struct {
-	verbose         bool
+	mode            OutputMode
 	agentBadges     map[string]string
 	agentIdentities map[string]*types.AgentIdentity
+	castMembers     map[string]types.CastMember
 	state           *types.DeliberationState
 	totalCost       float64
 	consensusStreak int
 }
 
+// OutputMode controls how much live turn output is rendered.
+type OutputMode int
+
+const (
+	OutputQuiet OutputMode = iota
+	OutputNormal
+	OutputVerbose
+)
+
 // NewOutputManager creates a new OutputManager.
 func NewOutputManager(verbose bool) *OutputManager {
-	return &OutputManager{verbose: verbose}
+	if verbose {
+		return NewOutputManagerWithMode(OutputVerbose)
+	}
+	return NewOutputManagerWithMode(OutputQuiet)
+}
+
+// NewOutputManagerWithMode creates a new OutputManager with explicit output semantics.
+func NewOutputManagerWithMode(mode OutputMode) *OutputManager {
+	return &OutputManager{mode: mode}
 }
 
 // ConfigPreview displays a preview of an auto-generated configuration
@@ -280,10 +299,6 @@ func sectionWriter(sb *strings.Builder, width int) func(string, []string) {
 	}
 }
 
-func agentBadge(index int, id string) string {
-	return fmt.Sprintf("[A%d %s]", index+1, id)
-}
-
 func unknownAgentBadge(id string) string {
 	return fmt.Sprintf("[A? %s]", id)
 }
@@ -305,13 +320,28 @@ func agentDisplay(badge string, identity *types.AgentIdentity) string {
 	return strings.Join(parts, " ")
 }
 
-func agentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
-	if !plainOutput() {
-		return richAgentCastLine(index, agent, includeContext)
+func castDisplay(badge string, member types.CastMember) string {
+	parts := []string{badge}
+	if member.Name != "" {
+		parts = append(parts, labelValue("NAME", member.Name))
 	}
-	line := fmt.Sprintf("AGENT %s", agentDisplay(agentBadge(index, agent.ID), agent.Identity))
-	if agent.Model != "" {
-		line += fmt.Sprintf(" MODEL %s", agent.Model)
+	if member.Persona != "" {
+		parts = append(parts, labelValue("PERSONA", member.Persona))
+	}
+	return strings.Join(parts, " ")
+}
+
+func agentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
+	member := types.CastMemberForAgent(index, agent)
+	if !plainOutput() {
+		return richAgentCastLine(member, agent, includeContext)
+	}
+	line := fmt.Sprintf("AGENT %s", castDisplay(castBadge(member), member))
+	if member.ProviderModel != "" {
+		line += fmt.Sprintf(" MODEL %s", member.ProviderModel)
+	}
+	if member.Color != "" {
+		line += fmt.Sprintf(" COLOR %s", member.Color)
 	}
 	if includeContext {
 		context := firstPromptLine(agent.SystemPrompt)
@@ -322,30 +352,27 @@ func agentCastLine(index int, agent types.AgentConfig, includeContext bool) stri
 	return line
 }
 
-func richAgentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
-	accent := agentAccent(agent.ID)
-	badge := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(fmt.Sprintf("● A%d %s", index+1, agent.ID))
+func richAgentCastLine(member types.CastMember, agent types.AgentConfig, includeContext bool) string {
+	accent := member.Color
+	if accent == "" {
+		accent = agentAccent(agent.ID)
+	}
+	badge := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render("● " + strings.Trim(castBadge(member), "[]"))
 	parts := []string{badge}
-	if agent.Identity != nil {
-		if agent.Identity.DisplayName != "" {
-			parts = append(parts, lipgloss.NewStyle().Bold(true).Render(agent.Identity.DisplayName))
-		}
-		details := make([]string, 0, 2)
-		if agent.Identity.Role != "" {
-			details = append(details, agent.Identity.Role)
-		}
-		if agent.Identity.Affiliation != "" {
-			details = append(details, agent.Identity.Affiliation)
-		}
-		if len(details) > 0 {
-			parts = append(parts, mutedStyle().Render(strings.Join(details, " · ")))
-		}
+	if member.Name != "" {
+		parts = append(parts, lipgloss.NewStyle().Bold(true).Render(member.Name))
+	}
+	if member.Persona != "" {
+		parts = append(parts, mutedStyle().Render(member.Persona))
 	}
 
 	lines := []string{strings.Join(parts, "  ")}
-	metadata := make([]string, 0, 2)
-	if agent.Model != "" {
-		metadata = append(metadata, "model "+agent.Model)
+	metadata := make([]string, 0, 3)
+	if member.ProviderModel != "" {
+		metadata = append(metadata, "model "+member.ProviderModel)
+	}
+	if member.Color != "" {
+		metadata = append(metadata, "color "+member.Color)
 	}
 	if includeContext {
 		context := firstPromptLine(agent.SystemPrompt)
@@ -367,15 +394,30 @@ func firstPromptLine(prompt string) string {
 }
 
 func (o *OutputManager) registerCast(cfg *types.DeliberationConfig) {
-	if cfg == nil || len(cfg.Agents) == 0 {
+	o.registerCastMembers(types.BuildCast(cfg), cfg)
+}
+
+func (o *OutputManager) registerCastMembers(cast []types.CastMember, cfg *types.DeliberationConfig) {
+	if len(cast) == 0 {
 		return
 	}
-	o.agentBadges = make(map[string]string, len(cfg.Agents))
-	o.agentIdentities = make(map[string]*types.AgentIdentity, len(cfg.Agents))
-	for i, agent := range cfg.Agents {
-		o.agentBadges[agent.ID] = agentBadge(i, agent.ID)
+	o.agentBadges = make(map[string]string, len(cast))
+	o.agentIdentities = make(map[string]*types.AgentIdentity, len(cast))
+	o.castMembers = make(map[string]types.CastMember, len(cast))
+	for _, member := range cast {
+		o.agentBadges[member.Persona] = castBadge(member)
+		o.castMembers[member.Persona] = member
+	}
+	if cfg == nil {
+		return
+	}
+	for _, agent := range cfg.Agents {
 		o.agentIdentities[agent.ID] = agent.Identity
 	}
+}
+
+func castBadge(member types.CastMember) string {
+	return fmt.Sprintf("[A%d %s]", member.ID, member.Persona)
 }
 
 func (o *OutputManager) agentBadgeFor(id string) string {
@@ -385,6 +427,24 @@ func (o *OutputManager) agentBadgeFor(id string) string {
 		}
 	}
 	return unknownAgentBadge(id)
+}
+
+func (o *OutputManager) agentDisplayFor(id string) string {
+	if o != nil && o.castMembers != nil {
+		if member, ok := o.castMembers[id]; ok {
+			return castDisplay(o.agentBadgeFor(id), member)
+		}
+	}
+	return agentDisplay(o.agentBadgeFor(id), o.agentIdentityFor(id))
+}
+
+func (o *OutputManager) agentColorFor(id string) string {
+	if o != nil && o.castMembers != nil {
+		if member, ok := o.castMembers[id]; ok && member.Color != "" {
+			return member.Color
+		}
+	}
+	return agentAccent(id)
 }
 
 func (o *OutputManager) agentIdentityFor(id string) *types.AgentIdentity {
@@ -531,6 +591,10 @@ func boundedCostMetricValue(value, bound float64) string {
 
 // TurnProgress prints progress for a single turn.
 func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns int) {
+	o.renderTurnProgress(os.Stdout, record, turn, maxTurns)
+}
+
+func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord, turn int, maxTurns int) {
 	elapsed := fmt.Sprintf("%.1fs", record.Elapsed)
 	tokensTotal := "?"
 	if record.Tokens.Total != nil {
@@ -552,9 +616,9 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 		o.consensusStreak = 0
 	}
 
-	agentDisplay := labelValue("AGENT", agentDisplay(o.agentBadgeFor(record.AgentID), o.agentIdentityFor(record.AgentID)))
+	agentDisplay := labelValue("AGENT", o.agentDisplayFor(record.AgentID))
 	if !plainOutput() {
-		agentDisplay = lipgloss.NewStyle().Foreground(lipgloss.Color(agentAccent(record.AgentID))).Bold(true).Render(agentDisplay)
+		agentDisplay = lipgloss.NewStyle().Foreground(lipgloss.Color(o.agentColorFor(record.AgentID))).Bold(true).Render(agentDisplay)
 	}
 	modelDisplay := labelValue("MODEL", "?")
 	if record.Model != nil {
@@ -580,32 +644,237 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 		turnValue = boundedIntMetricValue(turn+1, maxTurns)
 	}
 	if !plainOutput() {
-		fmt.Println(o.renderTurnCard(record, turn, maxTurns, elapsed, tokensTotal, costValue))
-		if o.verbose && record.Content != "" {
-			fmt.Println()
-			fmt.Print(renderVerboseBody(record.Content, outputWidth(), agentAccent(record.AgentID)))
+		writeLine(w, o.renderTurnCard(record, turn, maxTurns, elapsed, tokensTotal, costValue))
+		if o.mode == OutputVerbose {
+			writeText(w, o.renderTurnDiagnostics(record, costValue))
+		}
+		if o.mode != OutputQuiet && record.Content != "" {
+			writeLine(w)
+			writeText(w, renderVerboseBody(record.Content, outputWidth(), o.agentColorFor(record.AgentID)))
 		}
 		return
 	}
-	fmt.Printf("TURN %s | %s\n", turnValue, metadata)
+	writeFormat(w, "TURN %s | %s\n", turnValue, metadata)
 
 	if record.Consensus {
 		label := "[CONSENSUS]"
 		if !plainOutput() {
 			label = statusStyle("2").Render("✓ CONSENSUS")
 		}
-		fmt.Printf("  %s %s\n", label, record.ConsensusStatement)
+		writeFormat(w, "  %s %s\n", label, record.ConsensusStatement)
 	}
 
-	if o.verbose && record.Content != "" {
-		fmt.Println()
-		fmt.Print(renderVerboseBody(record.Content, outputWidth(), agentAccent(record.AgentID)))
+	if o.mode == OutputVerbose {
+		writeText(w, o.renderTurnDiagnostics(record, costValue))
 	}
+
+	if o.mode != OutputQuiet && record.Content != "" {
+		writeLine(w)
+		writeText(w, renderVerboseBody(record.Content, outputWidth(), o.agentColorFor(record.AgentID)))
+	}
+}
+
+// RenderTranscript displays a stored transcript with the same turn styling used
+// while a deliberation is running.
+func RenderTranscript(w io.Writer, records []types.TurnRecord) {
+	NewOutputManagerWithMode(OutputNormal).RenderTranscript(w, records)
+}
+
+// RenderTranscript displays a stored transcript with this output manager's mode.
+func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord) {
+	if metadata := transcriptMetadata(records); metadata != nil {
+		o.registerCastMembers(metadata.Cast, metadata.Config)
+	}
+	maxTurns := transcriptMaxTurn(records)
+	fallbackTurn := 0
+	for i, record := range records {
+		if i > 0 {
+			writeLine(w)
+		}
+
+		record.AgentID = transcriptAgentID(record.AgentID)
+		if transcriptEventRecord(record) {
+			writeLine(w, renderTranscriptEvent(record, i+1))
+			continue
+		}
+
+		displayTurn := record.Turn
+		if displayTurn < 0 {
+			displayTurn = fallbackTurn
+		}
+		o.renderTurnProgress(w, record, displayTurn, maxTurns)
+		fallbackTurn++
+		if record.Evidence != nil {
+			writeLine(w)
+			writeLine(w, renderTranscriptEvidence(record.Evidence, o.agentColorFor(record.AgentID)))
+		}
+	}
+}
+
+func writeText(w io.Writer, text string) {
+	_, _ = fmt.Fprint(w, text)
+}
+
+func writeLine(w io.Writer, args ...any) {
+	_, _ = fmt.Fprintln(w, args...)
+}
+
+func writeFormat(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+func transcriptMetadata(records []types.TurnRecord) *types.TranscriptMetadata {
+	for _, record := range records {
+		if record.Transcript != nil {
+			return record.Transcript
+		}
+	}
+	return nil
+}
+
+func transcriptMaxTurn(records []types.TurnRecord) int {
+	maxTurn := -1
+	count := 0
+	for _, record := range records {
+		if transcriptEventRecord(record) {
+			continue
+		}
+		count++
+		if record.Turn > maxTurn {
+			maxTurn = record.Turn
+		}
+	}
+	if maxTurn >= 0 {
+		return maxTurn + 1
+	}
+	return count
+}
+
+func transcriptAgentID(agentID string) string {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return "unknown"
+	}
+	return agentID
+}
+
+func transcriptEventRecord(record types.TurnRecord) bool {
+	return strings.TrimSpace(record.AgentID) == "orchestrator" && record.Turn < 0
+}
+
+func renderTranscriptEvent(record types.TurnRecord, index int) string {
+	width := outputWidth()
+	contentWidth := width - 4
+	var sb strings.Builder
+	writeSection := sectionWriter(&sb, contentWidth)
+
+	metadata := []string{
+		fmt.Sprintf("RECORD %d", index),
+		fmt.Sprintf("TURN %d", record.Turn),
+		fmt.Sprintf("AGENT %s", transcriptAgentID(record.AgentID)),
+	}
+	if record.Model != nil && strings.TrimSpace(*record.Model) != "" {
+		metadata = append(metadata, fmt.Sprintf("MODEL %s", strings.TrimSpace(*record.Model)))
+	}
+	writeSection("Record", metadata)
+
+	if content := strings.TrimSpace(record.Content); content != "" {
+		writeSection("Content", strings.Split(content, "\n"))
+	}
+	if record.Evidence != nil {
+		writeTranscriptEvidenceSections(writeSection, record.Evidence)
+	}
+	if record.Consensus {
+		statement := strings.TrimSpace(record.ConsensusStatement)
+		if statement == "" {
+			statement = "This turn agrees with the emerging decision."
+		}
+		writeSection("Consensus", []string{statement})
+	}
+
+	title := "Transcript Event"
+	if record.Evidence != nil {
+		title = "Transcript Evidence"
+	}
+	return theaterPanel(title, sb.String(), width, agentAccent(record.AgentID))
+}
+
+func renderTranscriptEvidence(evidence *types.EvidenceBundle, color string) string {
+	width := outputWidth()
+	contentWidth := width - 4
+	var sb strings.Builder
+	writeSection := sectionWriter(&sb, contentWidth)
+	writeTranscriptEvidenceSections(writeSection, evidence)
+	return theaterPanel("Transcript Evidence", sb.String(), width, color)
+}
+
+func writeTranscriptEvidenceSections(writeSection func(string, []string), evidence *types.EvidenceBundle) {
+	if evidence == nil {
+		return
+	}
+	if summary := strings.TrimSpace(evidence.Summary); summary != "" {
+		writeSection("Evidence Summary", strings.Split(summary, "\n"))
+	}
+	if len(evidence.SourceReferences) == 0 {
+		return
+	}
+	sources := make([]string, 0, len(evidence.SourceReferences))
+	for i, source := range evidence.SourceReferences {
+		sources = append(sources, transcriptEvidenceSourceLine(i+1, source))
+	}
+	writeSection("Evidence Sources", sources)
+}
+
+func transcriptEvidenceSourceLine(index int, source types.SourceReference) string {
+	label := strings.TrimSpace(source.Title)
+	if label == "" {
+		label = strings.TrimSpace(source.URL)
+	}
+	if label == "" {
+		label = strings.TrimSpace(source.Path)
+	}
+	if label == "" {
+		label = "source"
+	}
+
+	var refs []string
+	if source.URL != "" {
+		refs = append(refs, source.URL)
+	}
+	if source.Path != "" {
+		refs = append(refs, source.Path)
+	}
+	if source.Query != "" {
+		refs = append(refs, "query: "+source.Query)
+	}
+	line := fmt.Sprintf("%d. %s", index, label)
+	if len(refs) > 0 {
+		line += " (" + strings.Join(refs, "; ") + ")"
+	}
+	return line
+}
+
+func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue string) string {
+	parts := []string{"DIAGNOSTICS"}
+	if record.Tokens.Input != nil {
+		parts = append(parts, labelValue("INPUT_TOKENS", fmt.Sprintf("%d", *record.Tokens.Input)))
+	}
+	if record.Tokens.Output != nil {
+		parts = append(parts, labelValue("OUTPUT_TOKENS", fmt.Sprintf("%d", *record.Tokens.Output)))
+	}
+	if record.Tokens.Reasoning != nil {
+		parts = append(parts, labelValue("REASONING_TOKENS", fmt.Sprintf("%d", *record.Tokens.Reasoning)))
+	}
+	parts = append(parts, labelValue("CUMULATIVE_COST", costValue))
+	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
+		parts = append(parts, labelValue("CONSENSUS_STREAK", boundedIntMetricValue(o.consensusStreak, o.state.Config.ConsensusThreshold)))
+	}
+	return "  " + strings.Join(parts, " | ") + "\n"
 }
 
 func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTurns int, elapsed, tokensTotal, costValue string) string {
 	width := outputWidth()
-	accent := agentAccent(record.AgentID)
+	accent := o.agentColorFor(record.AgentID)
 	title := fmt.Sprintf("Turn %d", turn+1)
 	if maxTurns > 0 {
 		title = fmt.Sprintf("Turn %d of %d", turn+1, maxTurns)
@@ -617,7 +886,7 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 	}
 
 	var lines []string
-	agent := statusStyle(accent).Render(agentDisplay(o.agentBadgeFor(record.AgentID), o.agentIdentityFor(record.AgentID)))
+	agent := statusStyle(accent).Render(o.agentDisplayFor(record.AgentID))
 	lines = append(lines, richMetricLine("Agent", agent, accent))
 	lines = append(lines, richMetricLine("Model", model, "7"))
 	lines = append(lines, "")
@@ -1046,7 +1315,8 @@ func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.Deliber
 	if cfg != nil {
 		for i, agent := range cfg.Agents {
 			if s, ok := perAgent[agent.ID]; ok {
-				rows = append(rows, agentStatsRow(agentDisplay(agentBadge(i, agent.ID), agent.Identity), s))
+				member := types.CastMemberForAgent(i, agent)
+				rows = append(rows, agentStatsRow(castDisplay(castBadge(member), member), s))
 				seen[agent.ID] = true
 			}
 		}

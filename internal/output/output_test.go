@@ -109,7 +109,7 @@ func TestConfigPreviewPrintsGeneratedConfigPanel(t *testing.T) {
 	}
 }
 
-func TestConfigPreviewRendersOptionalIdentityWithoutReplacingAgentID(t *testing.T) {
+func TestConfigPreviewRendersGeneratedCastIdentityWithoutReplacingAgentID(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	cfg := &types.DeliberationConfig{
@@ -131,8 +131,9 @@ func TestConfigPreviewRendersOptionalIdentityWithoutReplacingAgentID(t *testing.
 		NewOutputManager(false).ConfigPreview(cfg, types.AutoQuick, types.LevelCaps{})
 	})
 
-	assertContains(t, got, "AGENT [A1 strategist] NAME Mina ROLE Planner AFFILIATION Core Team")
-	assertContains(t, got, "MODEL opencode/test")
+	assertContains(t, got, "AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertContains(t, got, "opencode/test")
+	assertContains(t, got, "COLOR 6")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)
 }
@@ -162,7 +163,8 @@ func TestDeliberationHeaderPlainModeHasNoAnsi(t *testing.T) {
 	assertContains(t, got, "Deliberation Start")
 	assertContains(t, got, "Topic")
 	assertContains(t, got, "Cast")
-	assertContains(t, got, "AGENT [A1 optimist] MODEL opencode/test")
+	assertContains(t, got, "AGENT [A1 optimist] NAME Solon PERSONA optimist MODEL opencode/test")
+	assertContains(t, got, "COLOR 6")
 	assertContains(t, got, "Run Settings")
 	assertContains(t, got, "Consensus threshold: 2")
 	assertNoANSI(t, got)
@@ -257,7 +259,7 @@ func TestTurnProgressRendersRegisteredIdentityAsPlainLabels(t *testing.T) {
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "AGENT [A1 strategist] NAME Mina ROLE Planner")
+	assertContains(t, got, "AGENT [A1 strategist] NAME Solon PERSONA strategist")
 	assertContains(t, got, "ELAPSED 0.2s")
 	assertNoANSI(t, got)
 }
@@ -304,7 +306,7 @@ func TestTurnProgressRichModeUsesPanelBubblesAndReadableMetrics(t *testing.T) {
 	assertContains(t, got, "●")
 	assertContains(t, got, "○")
 	assertContains(t, got, "Agent")
-	assertContains(t, got, "NAME Mina ROLE Planner")
+	assertContains(t, got, "NAME Solon PERSONA strategist")
 	assertContains(t, got, "Agreement")
 	assertContains(t, got, "Agent Response")
 	assertContains(t, got, "Keep metadata")
@@ -356,7 +358,7 @@ func TestCastIdentityConsistentAcrossPreviewHeaderAndTurns(t *testing.T) {
 	turn := captureOutput(t, func() { manager.TurnProgress(record, 0, 2) })
 	fallback := captureOutput(t, func() { manager.TurnProgress(unknown, 1, 2) })
 
-	identity := "AGENT [A1 strategist] NAME Mina ROLE Planner AFFILIATION Core Team"
+	identity := "AGENT [A1 strategist] NAME Solon PERSONA strategist"
 	for name, output := range map[string]string{"preview": preview, "header": header, "turn": turn} {
 		assertContains(t, output, identity)
 		assertContains(t, output, "MODEL opencode/test")
@@ -377,25 +379,116 @@ func TestCastIdentityConsistentAcrossPreviewHeaderAndTurns(t *testing.T) {
 func TestVerboseTurnContentSeparatesMetadataFromBody(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	model := "opencode/test"
+	inputTokens := 10
+	outputTokens := 20
+	reasoningTokens := 3
+	cost := 0.01
 	record := types.TurnRecord{
 		AgentID: "strategist",
 		Model:   &model,
 		Elapsed: 1.2,
+		Tokens:  types.TokenUsage{Input: &inputTokens, Output: &outputTokens, Reasoning: &reasoningTokens},
+		Cost:    &cost,
 		Content: "# Decision\n\nThis is a long agent response with prose that should remain readable and separate from metadata.",
 	}
 
 	got := captureOutput(t, func() {
-		manager := NewOutputManager(true)
+		manager := NewOutputManagerWithMode(OutputVerbose)
 		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist"}}})
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] | MODEL opencode/test | ELAPSED 1.2s")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist | MODEL opencode/test | ELAPSED 1.2s")
+	assertContains(t, got, "DIAGNOSTICS | INPUT_TOKENS 10 | OUTPUT_TOKENS 20 | REASONING_TOKENS 3 | CUMULATIVE_COST $0.010000")
 	assertContains(t, got, "AGENT CONTENT")
 	assertContains(t, got, "  | # Decision")
 	assertContains(t, got, "  | This is a long agent response")
 	if strings.Contains(got, "AGENT CONTENT |") {
 		t.Fatal("verbose prose should start after a metadata/body separator")
+	}
+}
+
+func TestNormalTurnProgressIncludesResponseBodyWithoutVerboseDiagnostics(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	record := types.TurnRecord{AgentID: "strategist", Elapsed: 0.2, Content: "Default output shows the response."}
+
+	got := captureOutput(t, func() {
+		manager := NewOutputManagerWithMode(OutputNormal)
+		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist"}}})
+		manager.TurnProgress(record, 0, 1)
+	})
+
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertContains(t, got, "AGENT CONTENT")
+	assertContains(t, got, "Default output shows the response.")
+	assertNotContains(t, got, "DIAGNOSTICS")
+}
+
+func TestQuietTurnProgressSuppressesResponseBody(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	record := types.TurnRecord{AgentID: "strategist", Elapsed: 0.2, Content: "Quiet output hides this response."}
+
+	got := captureOutput(t, func() {
+		manager := NewOutputManagerWithMode(OutputQuiet)
+		manager.registerCast(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist"}}})
+		manager.TurnProgress(record, 0, 1)
+	})
+
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertNotContains(t, got, "AGENT CONTENT")
+	assertNotContains(t, got, "Quiet output hides this response.")
+}
+
+func TestRenderTranscriptUsesRunStylePlainOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	model := "opencode/test"
+	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: model}}})
+	records := []types.TurnRecord{
+		{
+			Turn:       -2,
+			AgentID:    "orchestrator",
+			Content:    "Evidence gathered.",
+			Transcript: metadata,
+			Evidence: &types.EvidenceBundle{
+				Summary:          "Two sources found",
+				SourceReferences: []types.SourceReference{{Title: "Spec", URL: "https://example.test/spec"}},
+			},
+		},
+		{Turn: 0, AgentID: "strategist", Model: &model, Content: "Stored response."},
+	}
+
+	var out bytes.Buffer
+	RenderTranscript(&out, records)
+	got := out.String()
+
+	assertContains(t, got, "Transcript Evidence")
+	assertContains(t, got, "RECORD 1")
+	assertContains(t, got, "Evidence Summary")
+	assertContains(t, got, "1. Spec (https://example.test/spec)")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist | MODEL opencode/test")
+	assertContains(t, got, "AGENT CONTENT")
+	assertContains(t, got, "Stored response.")
+	assertNoANSI(t, got)
+	assertNoUnicodeBox(t, got)
+}
+
+func TestRenderTranscriptUsesRunStyleRichOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CI", "")
+	t.Setenv("TERM", "xterm-256color")
+	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: "test/model"}}})
+	records := []types.TurnRecord{{Turn: 0, AgentID: "strategist", Transcript: metadata, Content: "Stored rich response."}}
+
+	var out bytes.Buffer
+	RenderTranscript(&out, records)
+	got := out.String()
+
+	assertContains(t, got, "Turn 1 of 1")
+	assertContains(t, got, "Agent Response")
+	assertContains(t, got, "Stored rich response.")
+	if !strings.Contains(got, "╭") || !strings.Contains(got, "╰") {
+		t.Fatalf("rich transcript output should use run-style rounded panels:\n%s", got)
 	}
 }
 
