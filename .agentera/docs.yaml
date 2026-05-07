@@ -1,0 +1,74 @@
+last_audit: 2026-05-07 (vision naming refresh)
+conventions:
+  doc_root: .
+  style: technical, concise, evidence-backed; README uses command examples and tables
+  auto_gen:
+    - none
+  version_files:
+    - CHANGELOG.md
+  semver_policy:
+    feat: minor
+    fix: patch
+    docs_chore_test: no bump
+mapping:
+  - artifact: DOCS.md
+    path: .agentera/docs.yaml
+    producers: [dokumentera]
+  - artifact: VISION.md
+    path: .agentera/vision.yaml
+    producers: [visionera]
+  - artifact: PROGRESS.md
+    path: .agentera/progress.yaml
+    producers: [realisera, orkestrera]
+  - artifact: DECISIONS.md
+    path: .agentera/decisions.yaml
+    producers: [resonera, planera]
+  - artifact: HEALTH.md
+    path: .agentera/health.yaml
+    producers: [inspektera]
+  - artifact: PLAN.md
+    path: .agentera/plan.yaml
+    producers: [planera]
+  - artifact: TODO.md
+    path: TODO.md
+    producers: [planera, realisera, inspektera, dokumentera]
+  - artifact: CHANGELOG.md
+    path: CHANGELOG.md
+    producers: [realisera, dokumentera]
+  - artifact: DESIGN.md
+    path: DESIGN.md
+    producers: [visualisera]
+index:
+  - document: README
+    path: README.md
+    last_updated: 2026-05-06
+    status: current
+  - document: Changelog
+    path: CHANGELOG.md
+    last_updated: 2026-05-06
+    status: current
+  - document: TODO
+    path: TODO.md
+    last_updated: 2026-05-06
+    status: current
+  - document: Vision
+    path: .agentera/vision.yaml
+    last_updated: 2026-05-07
+    status: current
+  - document: Output Inventory
+    path: .agentera/output-inventory.yaml
+    last_updated: 2026-05-06
+    status: current
+coverage:
+  documented: 5/5 discovered documentation artifacts indexed
+  undocumented: docs/ is empty; AGENTS.md, CONTRIBUTING.md, and DESIGN.md are absent
+  stale: none found during 2026-05-07 audit
+  tests: 11 Go test files; CI runs go test ./... -race -coverprofile=coverage.out
+audit_log:
+  - date: 2026-05-07
+    label: first-run survey
+    findings:
+      - type: freshness
+        severity: warning
+        description: Vision naming was stale against README.md and go.mod.
+        resolution: fixed
