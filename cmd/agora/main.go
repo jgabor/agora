@@ -66,6 +66,7 @@ var runCmd = &cobra.Command{
 	Short: "Run a multi-agent deliberation",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var cfg *types.DeliberationConfig
+		var autoLevel types.AutoLevel
 		var levelCaps types.LevelCaps
 		autoMode := runAuto != ""
 		outputPath, err := resolveTranscriptOutput(cmd, runOutput, runTopic)
@@ -78,6 +79,7 @@ var runCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+			autoLevel = level
 			levelCaps = types.CapsForLevel(level)
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
 
@@ -121,7 +123,8 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		evidenceRequest := config.ResolveEvidenceRequest(cfg, settings, researchOverrides(cmd))
+		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
+		evidenceRequest := config.ResolveEvidenceRequest(cfg, settings, evidenceOverrides)
 
 		state := &types.DeliberationState{
 			Config:      cfg,
@@ -251,6 +254,14 @@ func researchOverrides(cmd *cobra.Command) config.ResearchOverrides {
 		ContextSet:   cmd.Flags().Changed("context"),
 		ContextPaths: append([]string(nil), runContext...),
 	}
+}
+
+func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLevel) config.ResearchOverrides {
+	overrides := researchOverrides(cmd)
+	if autoMode {
+		overrides.Defaults = config.EvidenceDefaultsForAutoLevel(level)
+	}
+	return overrides
 }
 
 func resumeEvidenceRequestChanged(cmd *cobra.Command) bool {

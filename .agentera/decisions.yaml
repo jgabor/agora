@@ -277,4 +277,34 @@ decisions:
     code depends on them.
   confidence: provisional
   feeds_into: PLAN.md, TODO.md, internal/output, visual prototype
+- number: 9
+  date: '2026-05-10'
+  question: How should Agora scale research and local context caps across auto levels?
+  context: Auto levels already scale agents, turns, and time, but evidence caps stayed fixed at the base settings defaults. Deep
+    runs that passed a directory as `--context` could halt before turn 0 with `research_error` after only 20 local text files,
+    even when the user intentionally chose `--auto deep` and larger runtime limits. The fix must preserve explicit user settings
+    and avoid making context unbounded by default.
+  alternatives:
+  - name: Keep fixed evidence caps
+    status: rejected
+    description: 'Leave `research_max_sources`, `context_max_bytes`, and `context_max_depth` at base defaults for every auto
+      level. Win: simplest behavior. Lose: contradicts user expectations that broader auto modes can ingest broader evidence.'
+  - name: Make YOLO evidence unlimited
+    status: rejected
+    description: 'Treat `--auto yolo` as unlimited for evidence too. Win: matches the spirit of uncapped turns/time. Lose: unsafe
+      for large directories, noisy repos, and accidental cost/token growth.'
+  - name: Auto-level-aware fallback caps
+    status: chosen
+    description: 'Raise evidence fallback defaults by auto level only when the user has not set explicit caps in `settings.yaml`.
+      Win: deep/yolo runs get broader bounded context while settings remain authoritative.'
+  choice: 'Auto mode scales evidence fallback caps by level: quick keeps `research_max_sources=20`, `context_max_bytes=1048576`,
+    and `context_max_depth=5`; normal uses `40`, `4194304`, and `6`; deep uses `120`, `16777216`, and `8`; yolo uses `250`,
+    `67108864`, and `12`. Explicit `settings.yaml` values for `research_max_sources`, `context_max_bytes`, and `context_max_depth`
+    continue to override these auto-level fallbacks.'
+  reasoning: Evidence breadth is part of the auto-level contract because broader deliberation is undermined if the pre-deliberation
+    research/context phase remains at quick-run limits. Keeping caps finite preserves bounded-context safety and prevents accidental
+    whole-repo ingestion. Treating the auto values as fallbacks, not overrides, preserves the established explicit settings precedence
+    and lets power users choose tighter or looser policies globally.
+  confidence: firm
+  feeds_into: README.md, internal/config/research_policy.go, cmd/agora/main.go, cmd/agora/main_test.go, internal/config/config_test.go
 archive: []

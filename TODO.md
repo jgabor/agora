@@ -4,12 +4,16 @@
 
 ## ⇉ Degraded
 
+- [ ] Tighten non-TTY `--auto` preview boundary: require `--yes` or `--dry-run` instead of implicit approval when stdin is not a terminal
 - [x] Orkestrera Task 3 blocked: config preview/header implementation dispatch returned empty twice, leaving `.agentera/plan.yaml` pending and no progress evidence — resolved by recovery inspection in Cycle 30
 - [x] go.mod module path says kumbaja, should be agora (Decision 3 renamed project) — fixed in 8b729a4
 - [x] Orchestrator core loop at 0% coverage (partial: termination + turn execution tested in Cycle 5; Synthesize tested in Cycle 16; Run loop: consensus/max_turns/unlimited tested, time+budget halts tested at checkTerminationConditions level)
 
 ## → Normal
 
+- [ ] Add machine-readable `agora agent-context --json` with schema version, commands, flags, defaults, enum values, settings keys, and transcript schema metadata
+- [ ] Add `--json` output to inspection commands: `list`, `stats`, `show`, `validate`, and `config get --all`
+- [ ] Add a command-contract test/static metadata check for canonical verbs, canonical flags, and enum-exposing errors
 - [x] Fix `--context` delivery: agents must receive bounded safe text content once, while transcripts keep source references only
 - [x] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
 - [x] CI workflow (Go build, test, lint) for main branch
@@ -24,6 +28,7 @@
 - [ ] Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence
 - [ ] Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety
 - [ ] Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
+- [ ] Evaluate named profiles after `agent-context` exists; current `settings.yaml` covers defaults but not reusable identities
 - [x] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText (covered in d956003; package coverage 67.3%)
 
 ## Resolved

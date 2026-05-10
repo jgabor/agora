@@ -344,6 +344,21 @@ func TestResearchOverridesNoResearchDisablesConfigResearch(t *testing.T) {
 	}
 }
 
+func TestRunEvidenceOverridesAddsAutoDefaults(t *testing.T) {
+	cmd := &cobra.Command{}
+	runContext = nil
+	cmd.Flags().Bool("research", false, "Research")
+	cmd.Flags().Bool("no-research", false, "No research")
+	cmd.Flags().StringArrayVar(&runContext, "context", nil, "Context")
+
+	overrides := runEvidenceOverrides(cmd, true, types.AutoNormal)
+
+	want := config.EvidenceDefaultsForAutoLevel(types.AutoNormal)
+	if overrides.Defaults != want {
+		t.Fatalf("Defaults: got %+v, want %+v", overrides.Defaults, want)
+	}
+}
+
 func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
 	tests := []struct {
 		name string

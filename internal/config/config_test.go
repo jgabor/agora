@@ -305,6 +305,56 @@ func TestResolveEvidenceRequestPrecedence(t *testing.T) {
 	}
 }
 
+func TestResolveEvidenceRequestUsesAutoEvidenceDefaultsWhenSettingsUnset(t *testing.T) {
+	cfg := &types.DeliberationConfig{ContextPaths: []string{"README.md"}}
+	request := ResolveEvidenceRequest(cfg, Settings{}, ResearchOverrides{
+		Defaults: EvidenceDefaultsForAutoLevel(types.AutoDeep),
+	})
+
+	if request.MaxSources != 120 {
+		t.Fatalf("MaxSources: got %d, want deep default 120", request.MaxSources)
+	}
+	if request.MaxBytes != 16<<20 {
+		t.Fatalf("MaxBytes: got %d, want deep default %d", request.MaxBytes, int64(16<<20))
+	}
+	if request.MaxDepth != 8 {
+		t.Fatalf("MaxDepth: got %d, want deep default 8", request.MaxDepth)
+	}
+}
+
+func TestResolveEvidenceRequestSettingsOverrideAutoEvidenceDefaults(t *testing.T) {
+	cfg := &types.DeliberationConfig{ContextPaths: []string{"README.md"}}
+	request := ResolveEvidenceRequest(cfg, Settings{ResearchMaxSources: 7, ContextMaxBytes: 512, ContextMaxDepth: 2}, ResearchOverrides{
+		Defaults: EvidenceDefaultsForAutoLevel(types.AutoYOLO),
+	})
+
+	if request.MaxSources != 7 || request.MaxBytes != 512 || request.MaxDepth != 2 {
+		t.Fatalf("evidence caps: got sources=%d bytes=%d depth=%d, want explicit settings 7/512/2", request.MaxSources, request.MaxBytes, request.MaxDepth)
+	}
+}
+
+func TestEvidenceDefaultsForAutoLevel(t *testing.T) {
+	tests := []struct {
+		level types.AutoLevel
+		want  EvidenceDefaults
+	}{
+		{types.AutoQuick, EvidenceDefaults{MaxSources: 20, MaxBytes: 1 << 20, MaxDepth: 5}},
+		{types.AutoNormal, EvidenceDefaults{MaxSources: 40, MaxBytes: 4 << 20, MaxDepth: 6}},
+		{types.AutoDeep, EvidenceDefaults{MaxSources: 120, MaxBytes: 16 << 20, MaxDepth: 8}},
+		{types.AutoYOLO, EvidenceDefaults{MaxSources: 250, MaxBytes: 64 << 20, MaxDepth: 12}},
+		{types.AutoOff, EvidenceDefaults{MaxSources: 20, MaxBytes: 1 << 20, MaxDepth: 5}},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.level), func(t *testing.T) {
+			got := EvidenceDefaultsForAutoLevel(tt.level)
+			if got != tt.want {
+				t.Fatalf("EvidenceDefaultsForAutoLevel(%q): got %+v, want %+v", tt.level, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveEvidenceRequestUsesConfigResearchWithoutCLI(t *testing.T) {
 	cfg := &types.DeliberationConfig{ResearchEnabled: true, ContextPaths: []string{"config.md"}}
 	request := ResolveEvidenceRequest(cfg, Settings{}, ResearchOverrides{})

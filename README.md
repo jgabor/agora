@@ -198,6 +198,15 @@ Global `settings.yaml` can be managed with `agora config`. It may set CLI defaul
 | `context_max_bytes` | `1048576` | Maximum total bytes of local context |
 | `context_max_depth` | `5` | Maximum directory traversal depth for local context |
 
+When these evidence caps are unset in `settings.yaml`, auto mode raises their fallback defaults for broader runs:
+
+| Auto level | `research_max_sources` | `context_max_bytes` | `context_max_depth` |
+|---|---:|---:|---:|
+| `quick` | `20` | `1048576` | `5` |
+| `normal` | `40` | `4194304` | `6` |
+| `deep` | `120` | `16777216` | `8` |
+| `yolo` | `250` | `67108864` | `12` |
+
 ### Research and Local Context
 
 Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal skips hidden VCS directories, binary files, and secret-looking files such as `.env` and private key names.
