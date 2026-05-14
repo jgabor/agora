@@ -45,7 +45,7 @@ func GenerateDryRunConfig(topic string, level types.AutoLevel, model string) (*t
 		agents[i] = types.AgentConfig{
 			ID:           roles[i].id,
 			Model:        model,
-			SystemPrompt: agent.WithReadOnlySystemPrompt(roles[i].prompt),
+			SystemPrompt: agent.ReadOnlyHint + "\n\n" + roles[i].prompt,
 		}
 	}
 

@@ -116,6 +116,12 @@ var runCmd = &cobra.Command{
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
 
+		// Enforce read-only at the tool-execution layer by writing a minimal
+		// opencode.json with permission denies. Falls back gracefully if the
+		// directory already contains a config or the write fails.
+		readOnlyCleanup, _ := agent.WriteReadOnlyConfig(".")
+		defer readOnlyCleanup()
+
 		var budget *float64
 		if runBudgetFlag {
 			budget = &runBudget
@@ -544,6 +550,10 @@ var resumeCmd = &cobra.Command{
 			}
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
+
+		// Enforce read-only at the tool-execution layer (see run command).
+		readOnlyCleanup, _ := agent.WriteReadOnlyConfig(".")
+		defer readOnlyCleanup()
 
 		sourceRecords, err := loadTranscriptFile(sourcePath)
 		if err != nil {

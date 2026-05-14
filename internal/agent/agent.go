@@ -5,14 +5,53 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/jgabor/agora/internal/types"
 )
 
-const ReadOnlyFilesystemInstruction = "CRITICAL: DO NOT MODIFY OR WRITE TO ANY FILES! You are only permitted to read and explore files."
+// ReadOnlyOpenCodeConfig is a minimal opencode.json fragment that denies
+// write and execute tools while allowing read/search tools. It enforces
+// read-only operation at the tool-execution layer rather than relying
+// solely on the system prompt.
+const ReadOnlyOpenCodeConfig = `{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "edit": "deny",
+    "bash": "deny",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "todowrite": "deny",
+    "task": "deny",
+    "external_directory": "deny",
+    "question": "deny"
+  }
+}
+`
+
+// WriteReadOnlyConfig writes a minimal opencode.json to dir that denies
+// write/execute tools. Returns a cleanup function that removes the file.
+func WriteReadOnlyConfig(dir string) (cleanup func(), err error) {
+	configPath := filepath.Join(dir, "opencode.json")
+	// Do not overwrite an existing config.
+	if _, statErr := os.Stat(configPath); statErr == nil {
+		return func() {}, nil
+	}
+	if err := os.WriteFile(configPath, []byte(ReadOnlyOpenCodeConfig), 0o644); err != nil {
+		return func() {}, fmt.Errorf("writing read-only opencode config: %w", err)
+	}
+	return func() {
+		_ = os.Remove(configPath)
+	}, nil
+}
 
 // Runner is the interface for executing agent turns.
 type Runner interface {
@@ -81,15 +120,20 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 	return content, metadata, nil
 }
 
+// ReadOnlyHint is a brief, natural-language instruction reminding the model
+// that it operates in a read-only sandbox. It is only a hint; actual
+// enforcement happens through opencode's permission config.
+const ReadOnlyHint = "You are operating in a read-only sandbox. Your tools are limited to reading, searching, and exploring files."
+
 func WithReadOnlySystemPrompt(prompt string) string {
 	prompt = strings.TrimSpace(prompt)
-	if strings.Contains(prompt, ReadOnlyFilesystemInstruction) {
+	if strings.Contains(prompt, ReadOnlyHint) {
 		return prompt
 	}
 	if prompt == "" {
-		return ReadOnlyFilesystemInstruction
+		return ReadOnlyHint
 	}
-	return ReadOnlyFilesystemInstruction + "\n\n" + prompt
+	return ReadOnlyHint + "\n\n" + prompt
 }
 
 func WithReadOnlyAgentPrompt(agent types.AgentConfig) types.AgentConfig {

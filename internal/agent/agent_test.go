@@ -2,6 +2,8 @@ package agent
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -345,12 +347,12 @@ func TestAgentRunnerDryRunResearchAgentsReturnStructuredJSON(t *testing.T) {
 
 func TestWithReadOnlySystemPromptAddsGuardOnce(t *testing.T) {
 	prompt := WithReadOnlySystemPrompt("You are a test agent.")
-	if !strings.HasPrefix(prompt, ReadOnlyFilesystemInstruction) {
-		t.Fatalf("prompt = %q, want read-only instruction prefix", prompt)
+	if !strings.HasPrefix(prompt, ReadOnlyHint) {
+		t.Fatalf("prompt = %q, want read-only hint prefix", prompt)
 	}
 	guarded := WithReadOnlySystemPrompt(prompt)
-	if strings.Count(guarded, ReadOnlyFilesystemInstruction) != 1 {
-		t.Fatalf("guarded prompt contains read-only instruction %d times, want 1", strings.Count(guarded, ReadOnlyFilesystemInstruction))
+	if strings.Count(guarded, ReadOnlyHint) != 1 {
+		t.Fatalf("guarded prompt contains read-only hint %d times, want 1", strings.Count(guarded, ReadOnlyHint))
 	}
 }
 
@@ -359,8 +361,8 @@ func TestPayloadForAgentIncludesReadOnlyGuard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("payloadForAgent: %v", err)
 	}
-	if !strings.HasPrefix(payload, ReadOnlyFilesystemInstruction) {
-		t.Fatalf("payload = %q, want read-only instruction prefix", payload)
+	if !strings.HasPrefix(payload, ReadOnlyHint) {
+		t.Fatalf("payload = %q, want read-only hint prefix", payload)
 	}
 	if !strings.Contains(payload, `"topic":"test"`) {
 		t.Fatalf("payload = %q, want marshaled envelope", payload)
@@ -378,8 +380,8 @@ func TestApplyReadOnlyPromptGuardUpdatesConfiguredCast(t *testing.T) {
 	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "a", SystemPrompt: "Role A"}, {ID: "b"}}}
 	ApplyReadOnlyPromptGuard(cfg)
 	for _, ag := range cfg.Agents {
-		if !strings.HasPrefix(ag.SystemPrompt, ReadOnlyFilesystemInstruction) {
-			t.Fatalf("agent %s prompt = %q, want read-only instruction", ag.ID, ag.SystemPrompt)
+		if !strings.HasPrefix(ag.SystemPrompt, ReadOnlyHint) {
+			t.Fatalf("agent %s prompt = %q, want read-only hint", ag.ID, ag.SystemPrompt)
 		}
 	}
 }
@@ -689,5 +691,58 @@ func TestExtractConsensusMultilineWhitespace(t *testing.T) {
 	want := "multi  \n  line"
 	if statement != want {
 		t.Errorf("statement: got %q, want %q", statement, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WriteReadOnlyConfig
+// ---------------------------------------------------------------------------
+
+func TestWriteReadOnlyConfigWritesAndCleansUp(t *testing.T) {
+	dir := t.TempDir()
+
+	cleanup, err := WriteReadOnlyConfig(dir)
+	if err != nil {
+		t.Fatalf("WriteReadOnlyConfig: %v", err)
+	}
+
+	configPath := filepath.Join(dir, "opencode.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+	if !strings.Contains(string(data), `"edit": "deny"`) {
+		t.Errorf("config should deny edit, got: %s", string(data))
+	}
+	if !strings.Contains(string(data), `"read": "allow"`) {
+		t.Errorf("config should allow read, got: %s", string(data))
+	}
+
+	cleanup()
+
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Errorf("config should be removed after cleanup, got stat err: %v", err)
+	}
+}
+
+func TestWriteReadOnlyConfigRespectsExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "opencode.json"), []byte(`{"existing": true}`), 0o644); err != nil {
+		t.Fatalf("writing existing config: %v", err)
+	}
+
+	cleanup, err := WriteReadOnlyConfig(dir)
+	if err != nil {
+		t.Fatalf("WriteReadOnlyConfig: %v", err)
+	}
+	cleanup()
+
+	data, err := os.ReadFile(filepath.Join(dir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+	if !strings.Contains(string(data), `"existing": true`) {
+		t.Errorf("existing config should be preserved, got: %s", string(data))
 	}
 }

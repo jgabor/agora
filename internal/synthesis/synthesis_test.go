@@ -134,8 +134,8 @@ func TestSynthesize(t *testing.T) {
 		if result["recommended_decision"] != "go with option A" {
 			t.Errorf("expected recommended_decision, got %v", result["recommended_decision"])
 		}
-		if !strings.HasPrefix(mock.agent.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
-			t.Fatalf("synthesis prompt = %q, want read-only guard", mock.agent.SystemPrompt)
+		if !strings.HasPrefix(mock.agent.SystemPrompt, agent.ReadOnlyHint) {
+			t.Fatalf("synthesis prompt = %q, want read-only hint", mock.agent.SystemPrompt)
 		}
 	})
 

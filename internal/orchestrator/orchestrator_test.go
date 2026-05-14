@@ -550,8 +550,8 @@ func TestExecuteTurn(t *testing.T) {
 	if record.Elapsed <= 0 {
 		t.Error("expected positive elapsed time")
 	}
-	if !strings.HasPrefix(mock.agent.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
-		t.Fatalf("runner prompt = %q, want read-only guard", mock.agent.SystemPrompt)
+	if !strings.HasPrefix(mock.agent.SystemPrompt, agent.ReadOnlyHint) {
+		t.Fatalf("runner prompt = %q, want read-only hint", mock.agent.SystemPrompt)
 	}
 }
 

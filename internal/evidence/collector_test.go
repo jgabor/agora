@@ -293,8 +293,8 @@ func TestPolicyCollectorCollectsWebEvidenceReferences(t *testing.T) {
 		t.Fatalf("runner agents: got %#v, want query planner then web collector", runner.agents)
 	}
 	for _, ag := range runner.agents {
-		if !strings.HasPrefix(ag.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
-			t.Fatalf("agent %s prompt = %q, want read-only guard", ag.ID, ag.SystemPrompt)
+		if !strings.HasPrefix(ag.SystemPrompt, agent.ReadOnlyHint) {
+			t.Fatalf("agent %s prompt = %q, want read-only hint", ag.ID, ag.SystemPrompt)
 		}
 	}
 	if got := runner.envelopes[1]["queries"]; !reflect.DeepEqual(got, []string{"agora web evidence", "agora source audit"}) {
