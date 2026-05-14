@@ -715,6 +715,11 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 	o.renderTurnProgress(os.Stdout, record, turn, maxTurns)
 }
 
+// EvidenceSummary prints the pre-deliberation evidence summary and source list.
+func (o *OutputManager) EvidenceSummary(evidence types.EvidenceBundle) {
+	writeLine(os.Stdout, renderTranscriptEvidence(&evidence, "6"))
+}
+
 func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord, turn int, maxTurns int) {
 	elapsed := fmt.Sprintf("%.1fs", record.Elapsed)
 	tokensTotal := "?"

@@ -204,14 +204,16 @@ When these evidence caps are unset in `settings.yaml`, auto mode raises their fa
 |---|---:|---:|---:|
 | `quick` | `20` | `1048576` | `5` |
 | `normal` | `40` | `4194304` | `6` |
-| `deep` | `120` | `16777216` | `8` |
-| `yolo` | `250` | `67108864` | `12` |
+| `deep` | `300` | `16777216` | `8` |
+| `yolo` | `1000` | `67108864` | `12` |
 
 ### Research and Local Context
 
-Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal skips hidden VCS directories, binary files, and secret-looking files such as `.env` and private key names.
+Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal respects `.gitignore`, skips VCS directories, binary files, and secret-looking files such as `.env` and private key names, but does not blanket-skip hidden project directories.
 
-Agora halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if local context exceeds file, byte, or depth caps. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths and caps without model cost.
+All model calls are given this read-only filesystem guard: `CRITICAL: DO NOT MODIFY OR WRITE TO ANY FILES! You are only permitted to read and explore files.` Agora also avoids OpenCode's dangerous auto-approval flag when launching agents.
+
+Agora prints a pre-deliberation evidence summary before agent turns. Web query/source limits and local file, byte, and depth limits are soft caps: Agora includes what fits, truncates local text at the byte cap, skips paths beyond caps, and warns in the evidence summary when a cap is hit. Agora still halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if explicit local context paths cannot be resolved. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths without model cost.
 
 Current limitations: local context is text-only; PDF, DOCX, binary parsing, browser rendering, source/domain allowlists, persistent source caching, and replay-perfect research refresh are not implemented.
 

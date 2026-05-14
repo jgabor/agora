@@ -298,13 +298,17 @@ decisions:
     description: 'Raise evidence fallback defaults by auto level only when the user has not set explicit caps in `settings.yaml`.
       Win: deep/yolo runs get broader bounded context while settings remain authoritative.'
   choice: 'Auto mode scales evidence fallback caps by level: quick keeps `research_max_sources=20`, `context_max_bytes=1048576`,
-    and `context_max_depth=5`; normal uses `40`, `4194304`, and `6`; deep uses `120`, `16777216`, and `8`; yolo uses `250`,
+    and `context_max_depth=5`; normal uses `40`, `4194304`, and `6`; deep uses `300`, `16777216`, and `8`; yolo uses `1000`,
     `67108864`, and `12`. Explicit `settings.yaml` values for `research_max_sources`, `context_max_bytes`, and `context_max_depth`
-    continue to override these auto-level fallbacks.'
+    continue to override these auto-level fallbacks. Local context caps are soft: traversal includes what fits, truncates text at
+    the byte cap, skips files or deeper paths beyond caps, and reports included counts plus warnings in the evidence summary.
+    Directory context traversal respects `.gitignore` and VCS/secret safety skips without blanket-skipping hidden project directories.'
   reasoning: Evidence breadth is part of the auto-level contract because broader deliberation is undermined if the pre-deliberation
-    research/context phase remains at quick-run limits. Keeping caps finite preserves bounded-context safety and prevents accidental
-    whole-repo ingestion. Treating the auto values as fallbacks, not overrides, preserves the established explicit settings precedence
-    and lets power users choose tighter or looser policies globally.
+    research/context phase remains at quick-run limits. Keeping caps finite preserves bounded-context safety, while soft caps prevent
+    oversized directory context from aborting before deliberation starts. Respecting `.gitignore` lets project-owned ignore policy
+    exclude generated dependency/tooling trees such as `node_modules` without hiding intentional state directories like `.agentera`.
+    Treating the auto values as fallbacks, not overrides, preserves the established explicit settings precedence and lets power users
+    choose tighter or looser policies globally.
   confidence: firm
-  feeds_into: README.md, internal/config/research_policy.go, cmd/agora/main.go, cmd/agora/main_test.go, internal/config/config_test.go
+  feeds_into: README.md, internal/config/research_policy.go, internal/orchestrator/evidence.go, cmd/agora/main.go, cmd/agora/main_test.go, internal/config/config_test.go, internal/orchestrator/evidence_test.go
 archive: []

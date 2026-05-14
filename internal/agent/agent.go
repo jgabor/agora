@@ -12,6 +12,8 @@ import (
 	"github.com/jgabor/agora/internal/types"
 )
 
+const ReadOnlyFilesystemInstruction = "CRITICAL: DO NOT MODIFY OR WRITE TO ANY FILES! You are only permitted to read and explore files."
+
 // Runner is the interface for executing agent turns.
 type Runner interface {
 	Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error)
@@ -34,22 +36,16 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 		return r.dryRunResponse(agent, envelope)
 	}
 
-	envJSON, err := json.Marshal(envelope)
+	payload, err := payloadForAgent(agent, envelope)
 	if err != nil {
-		return "", nil, fmt.Errorf("marshaling envelope: %w", err)
+		return "", nil, err
 	}
-	payload := agent.SystemPrompt + "\n\n" + string(envJSON)
 
 	if _, err := exec.LookPath("opencode"); err != nil {
 		return "", nil, fmt.Errorf("opencode not found in PATH: %w", err)
 	}
 
-	cmd := exec.Command(
-		"opencode", "run",
-		"--model", agent.Model,
-		"--format", "json",
-		"--dangerously-skip-permissions",
-	)
+	cmd := exec.Command("opencode", opencodeRunArgs(agent.Model)...)
 	cmd.Stdin = strings.NewReader(payload)
 
 	var stdout, stderr bytes.Buffer
@@ -83,6 +79,43 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 	}
 
 	return content, metadata, nil
+}
+
+func WithReadOnlySystemPrompt(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if strings.Contains(prompt, ReadOnlyFilesystemInstruction) {
+		return prompt
+	}
+	if prompt == "" {
+		return ReadOnlyFilesystemInstruction
+	}
+	return ReadOnlyFilesystemInstruction + "\n\n" + prompt
+}
+
+func WithReadOnlyAgentPrompt(agent types.AgentConfig) types.AgentConfig {
+	agent.SystemPrompt = WithReadOnlySystemPrompt(agent.SystemPrompt)
+	return agent
+}
+
+func ApplyReadOnlyPromptGuard(cfg *types.DeliberationConfig) {
+	if cfg == nil {
+		return
+	}
+	for i := range cfg.Agents {
+		cfg.Agents[i] = WithReadOnlyAgentPrompt(cfg.Agents[i])
+	}
+}
+
+func payloadForAgent(agent types.AgentConfig, envelope map[string]any) (string, error) {
+	envJSON, err := json.Marshal(envelope)
+	if err != nil {
+		return "", fmt.Errorf("marshaling envelope: %w", err)
+	}
+	return WithReadOnlySystemPrompt(agent.SystemPrompt) + "\n\n" + string(envJSON), nil
+}
+
+func opencodeRunArgs(model string) []string {
+	return []string{"run", "--model", model, "--format", "json"}
 }
 
 func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {

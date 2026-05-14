@@ -311,8 +311,8 @@ func TestResolveEvidenceRequestUsesAutoEvidenceDefaultsWhenSettingsUnset(t *test
 		Defaults: EvidenceDefaultsForAutoLevel(types.AutoDeep),
 	})
 
-	if request.MaxSources != 120 {
-		t.Fatalf("MaxSources: got %d, want deep default 120", request.MaxSources)
+	if request.MaxSources != 300 {
+		t.Fatalf("MaxSources: got %d, want deep default 300", request.MaxSources)
 	}
 	if request.MaxBytes != 16<<20 {
 		t.Fatalf("MaxBytes: got %d, want deep default %d", request.MaxBytes, int64(16<<20))
@@ -340,8 +340,8 @@ func TestEvidenceDefaultsForAutoLevel(t *testing.T) {
 	}{
 		{types.AutoQuick, EvidenceDefaults{MaxSources: 20, MaxBytes: 1 << 20, MaxDepth: 5}},
 		{types.AutoNormal, EvidenceDefaults{MaxSources: 40, MaxBytes: 4 << 20, MaxDepth: 6}},
-		{types.AutoDeep, EvidenceDefaults{MaxSources: 120, MaxBytes: 16 << 20, MaxDepth: 8}},
-		{types.AutoYOLO, EvidenceDefaults{MaxSources: 250, MaxBytes: 64 << 20, MaxDepth: 12}},
+		{types.AutoDeep, EvidenceDefaults{MaxSources: 300, MaxBytes: 16 << 20, MaxDepth: 8}},
+		{types.AutoYOLO, EvidenceDefaults{MaxSources: 1000, MaxBytes: 64 << 20, MaxDepth: 12}},
 		{types.AutoOff, EvidenceDefaults{MaxSources: 20, MaxBytes: 1 << 20, MaxDepth: 5}},
 	}
 

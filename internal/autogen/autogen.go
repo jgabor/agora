@@ -45,7 +45,7 @@ func GenerateDryRunConfig(topic string, level types.AutoLevel, model string) (*t
 		agents[i] = types.AgentConfig{
 			ID:           roles[i].id,
 			Model:        model,
-			SystemPrompt: roles[i].prompt,
+			SystemPrompt: agent.WithReadOnlySystemPrompt(roles[i].prompt),
 		}
 	}
 
@@ -62,7 +62,7 @@ func GenerateDryRunConfig(topic string, level types.AutoLevel, model string) (*t
 // panel of agents for the given topic, constrained by the level's caps.
 func GenerateConfig(topic string, level types.AutoLevel, model string, runner agent.Runner) (*types.DeliberationConfig, error) {
 	caps := types.CapsForLevel(level)
-	systemPrompt := buildSystemPrompt(topic, level, model, caps)
+	systemPrompt := agent.WithReadOnlySystemPrompt(buildSystemPrompt(topic, level, model, caps))
 
 	designer := types.AgentConfig{
 		ID:           "config_designer",
@@ -90,6 +90,7 @@ func GenerateConfig(topic string, level types.AutoLevel, model string, runner ag
 	if err := validateCaps(cfg, caps); err != nil {
 		return nil, fmt.Errorf("auto config generation failed: %w", err)
 	}
+	agent.ApplyReadOnlyPromptGuard(cfg)
 
 	return cfg, nil
 }

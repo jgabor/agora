@@ -29,9 +29,9 @@ func EvidenceDefaultsForAutoLevel(level types.AutoLevel) EvidenceDefaults {
 	case types.AutoNormal:
 		return EvidenceDefaults{MaxSources: 40, MaxBytes: 4 << 20, MaxDepth: 6}
 	case types.AutoDeep:
-		return EvidenceDefaults{MaxSources: 120, MaxBytes: 16 << 20, MaxDepth: 8}
+		return EvidenceDefaults{MaxSources: 300, MaxBytes: 16 << 20, MaxDepth: 8}
 	case types.AutoYOLO:
-		return EvidenceDefaults{MaxSources: 250, MaxBytes: 64 << 20, MaxDepth: 12}
+		return EvidenceDefaults{MaxSources: 1000, MaxBytes: 64 << 20, MaxDepth: 12}
 	default:
 		return defaultEvidenceDefaults()
 	}

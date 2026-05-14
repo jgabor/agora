@@ -113,6 +113,7 @@ var runCmd = &cobra.Command{
 				return fmt.Errorf("loading config: %w", err)
 			}
 		}
+		agent.ApplyReadOnlyPromptGuard(cfg)
 
 		var budget *float64
 		if runBudgetFlag {
@@ -148,6 +149,7 @@ var runCmd = &cobra.Command{
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.SetEvidenceCollector(orchestrator.NewPolicyEvidenceCollector(runner))
+		orch.OnEvidence(outMgr.EvidenceSummary)
 		orch.OnTurn(outMgr.TurnProgress)
 		orch.OnActivity(outMgr.Activity)
 
@@ -540,6 +542,7 @@ var resumeCmd = &cobra.Command{
 				return fmt.Errorf("loading config: %w", err)
 			}
 		}
+		agent.ApplyReadOnlyPromptGuard(cfg)
 
 		sourceRecords, err := loadTranscriptFile(sourcePath)
 		if err != nil {
@@ -592,6 +595,7 @@ var resumeCmd = &cobra.Command{
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeQuiet, resumeVerbose))
 		runner := agent.NewAgentRunner(resumeDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
+		orch.OnEvidence(outMgr.EvidenceSummary)
 		orch.OnTurn(outMgr.TurnProgress)
 		orch.OnActivity(outMgr.Activity)
 

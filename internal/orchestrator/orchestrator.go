@@ -34,6 +34,9 @@ Be concise but thorough. Capture the essential insights from the deliberation.
 // TurnFunc is called after each agent turn completes.
 type TurnFunc func(record types.TurnRecord, turn int, maxTurns int)
 
+// EvidenceFunc is called after shared evidence is collected.
+type EvidenceFunc func(evidence types.EvidenceBundle)
+
 // ActivityFunc is called when a long-running phase starts and returns cleanup.
 type ActivityFunc func(phase string) func()
 
@@ -44,6 +47,7 @@ type Orchestrator struct {
 	runner     agent.Runner
 	evidence   EvidenceCollector
 	onTurn     TurnFunc
+	onEvidence EvidenceFunc
 	onActivity ActivityFunc
 
 	numAgents       int
@@ -76,6 +80,11 @@ func (o *Orchestrator) SetEvidenceCollector(collector EvidenceCollector) {
 // OnTurn registers a callback invoked after each agent turn.
 func (o *Orchestrator) OnTurn(fn TurnFunc) {
 	o.onTurn = fn
+}
+
+// OnEvidence registers a callback invoked after pre-deliberation evidence collection.
+func (o *Orchestrator) OnEvidence(fn EvidenceFunc) {
+	o.onEvidence = fn
 }
 
 // OnActivity registers a callback invoked around long-running phases.
@@ -177,6 +186,9 @@ func (o *Orchestrator) collectEvidence() bool {
 		Content:   bundle.Summary,
 		Evidence:  &auditEvidence,
 	})
+	if o.onEvidence != nil {
+		o.onEvidence(auditEvidence)
+	}
 	return true
 }
 
@@ -273,7 +285,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	}
 
 	stop := o.activity(fmt.Sprintf("Generation: %s", ag.ID))
-	content, metadata, err := o.runner.Run(ag, envelope)
+	content, metadata, err := o.runner.Run(agent.WithReadOnlyAgentPrompt(ag), envelope)
 	stop()
 	if err != nil {
 		return types.TurnRecord{}, false
@@ -380,7 +392,7 @@ func (se *SynthesisEngine) Synthesize(
 		SystemPrompt: SYNTHESIS_SYSTEM_PROMPT,
 	}
 
-	content, _, err := se.runner.Run(synthAgent, envelope)
+	content, _, err := se.runner.Run(agent.WithReadOnlyAgentPrompt(synthAgent), envelope)
 	if err != nil {
 		return map[string]any{
 			"key_arguments":        []any{},

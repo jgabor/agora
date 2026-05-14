@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 )
@@ -546,6 +547,9 @@ func TestExecuteTurn(t *testing.T) {
 	if record.Elapsed <= 0 {
 		t.Error("expected positive elapsed time")
 	}
+	if !strings.HasPrefix(mock.agent.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
+		t.Fatalf("runner prompt = %q, want read-only guard", mock.agent.SystemPrompt)
+	}
 }
 
 func TestExecuteTurnRunnerError(t *testing.T) {
@@ -956,6 +960,9 @@ func TestSynthesisEngineSynthesize(t *testing.T) {
 		}
 		if result["recommended_decision"] != "go with option A" {
 			t.Errorf("expected recommended_decision, got %v", result["recommended_decision"])
+		}
+		if !strings.HasPrefix(mock.agent.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
+			t.Fatalf("synthesis prompt = %q, want read-only guard", mock.agent.SystemPrompt)
 		}
 	})
 

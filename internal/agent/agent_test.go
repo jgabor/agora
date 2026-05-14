@@ -343,6 +343,47 @@ func TestAgentRunnerDryRunResearchAgentsReturnStructuredJSON(t *testing.T) {
 	}
 }
 
+func TestWithReadOnlySystemPromptAddsGuardOnce(t *testing.T) {
+	prompt := WithReadOnlySystemPrompt("You are a test agent.")
+	if !strings.HasPrefix(prompt, ReadOnlyFilesystemInstruction) {
+		t.Fatalf("prompt = %q, want read-only instruction prefix", prompt)
+	}
+	guarded := WithReadOnlySystemPrompt(prompt)
+	if strings.Count(guarded, ReadOnlyFilesystemInstruction) != 1 {
+		t.Fatalf("guarded prompt contains read-only instruction %d times, want 1", strings.Count(guarded, ReadOnlyFilesystemInstruction))
+	}
+}
+
+func TestPayloadForAgentIncludesReadOnlyGuard(t *testing.T) {
+	payload, err := payloadForAgent(types.AgentConfig{ID: "test", Model: "m", SystemPrompt: "Role prompt."}, map[string]any{"topic": "test"})
+	if err != nil {
+		t.Fatalf("payloadForAgent: %v", err)
+	}
+	if !strings.HasPrefix(payload, ReadOnlyFilesystemInstruction) {
+		t.Fatalf("payload = %q, want read-only instruction prefix", payload)
+	}
+	if !strings.Contains(payload, `"topic":"test"`) {
+		t.Fatalf("payload = %q, want marshaled envelope", payload)
+	}
+}
+
+func TestOpencodeRunArgsDoNotAutoApprovePermissions(t *testing.T) {
+	args := strings.Join(opencodeRunArgs("model"), " ")
+	if strings.Contains(args, "dangerously-skip-permissions") {
+		t.Fatalf("opencode args %q must not auto-approve permissions", args)
+	}
+}
+
+func TestApplyReadOnlyPromptGuardUpdatesConfiguredCast(t *testing.T) {
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "a", SystemPrompt: "Role A"}, {ID: "b"}}}
+	ApplyReadOnlyPromptGuard(cfg)
+	for _, ag := range cfg.Agents {
+		if !strings.HasPrefix(ag.SystemPrompt, ReadOnlyFilesystemInstruction) {
+			t.Fatalf("agent %s prompt = %q, want read-only instruction", ag.ID, ag.SystemPrompt)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Agent runner — error propagation: missing binary
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -60,27 +61,105 @@ func TestPolicyEvidenceCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *test
 	assertNotContainsSubstring(t, docs, "api-token.txt")
 }
 
-func TestPolicyEvidenceCollectorReportsBoundedContextErrors(t *testing.T) {
+func TestPolicyEvidenceCollectorRespectsGitignoreWithoutSkippingHiddenDirs(t *testing.T) {
+	dir := t.TempDir()
+	keep := writeContextFile(t, dir, "README.md", "readme\n")
+	hiddenAgentera := writeContextFile(t, dir, ".agentera/archive/old-plan.md", "old plan\n")
+	hiddenOpenCode := writeContextFile(t, dir, ".opencode/settings.md", "settings\n")
+	vocabulary := writeContextFile(t, dir, "docs/vocabulary.md", "vocabulary\n")
+	writeContextFile(t, dir, ".gitignore", "node_modules\ndocs/*\n!docs/vocabulary.md\n*.pyc\n")
+	writeContextFile(t, dir, "docs/ignored.md", "ignored\n")
+	writeContextFile(t, dir, ".opencode/node_modules/@opencode-ai/plugin/dist/shell.d.ts", "types\n")
+	writeContextFile(t, dir, "node_modules/pkg/index.d.ts", "types\n")
+	writeContextFile(t, dir, "cached.pyc", "bytecode\n")
+
+	bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{
+		ContextPaths: []string{dir},
+		MaxSources:   10,
+		MaxBytes:     1024,
+		MaxDepth:     8,
+	})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	got := referencePaths(bundle.SourceReferences)
+	assertContainsPath(t, got, keep)
+	assertContainsPath(t, got, hiddenAgentera)
+	assertContainsPath(t, got, hiddenOpenCode)
+	assertContainsPath(t, got, vocabulary)
+	assertNotContainsSubstring(t, got, "node_modules")
+	assertNotContainsSubstring(t, got, "ignored.md")
+	assertNotContainsSubstring(t, got, "cached.pyc")
+	if !strings.Contains(bundle.Summary, "Ignored") || !strings.Contains(bundle.Summary, ".gitignore") {
+		t.Fatalf("Summary: got %q, want .gitignore ignored-path summary", bundle.Summary)
+	}
+}
+
+func TestPolicyEvidenceCollectorAllowsExplicitHiddenContextRoot(t *testing.T) {
+	dir := t.TempDir()
+	hiddenRoot := filepath.Join(dir, ".agentera")
+	path := writeContextFile(t, hiddenRoot, "plan.yaml", "plan\n")
+
+	bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{
+		ContextPaths: []string{hiddenRoot},
+		MaxSources:   1,
+		MaxBytes:     1024,
+		MaxDepth:     2,
+	})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(bundle.SourceReferences) != 1 || bundle.SourceReferences[0].Path != path {
+		t.Fatalf("SourceReferences: got %#v, want explicit hidden context root file", bundle.SourceReferences)
+	}
+}
+
+func TestPolicyEvidenceCollectorSoftCapsContextLimits(t *testing.T) {
 	t.Run("file cap", func(t *testing.T) {
 		dir := t.TempDir()
-		writeContextFile(t, dir, "one.txt", "one")
+		one := writeContextFile(t, dir, "one.txt", "one")
 		writeContextFile(t, dir, "two.txt", "two")
-		_, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 1, MaxBytes: 1024, MaxDepth: 3})
-		assertBoundedContextError(t, err, "max files 1")
+		bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 1, MaxBytes: 1024, MaxDepth: 3})
+		if err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+		if len(bundle.SourceReferences) != 1 || bundle.SourceReferences[0].Path != one {
+			t.Fatalf("SourceReferences: got %#v, want only first file", bundle.SourceReferences)
+		}
+		if !strings.Contains(bundle.Summary, "WARNING: local context file cap reached") {
+			t.Fatalf("Summary: got %q, want file cap warning", bundle.Summary)
+		}
 	})
 
 	t.Run("byte cap", func(t *testing.T) {
 		dir := t.TempDir()
-		writeContextFile(t, dir, "large.txt", "1234567890")
-		_, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 5, MaxDepth: 3})
-		assertBoundedContextError(t, err, "max bytes 5")
+		large := writeContextFile(t, dir, "large.txt", "1234567890")
+		bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 5, MaxDepth: 3})
+		if err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+		if len(bundle.ContextDocuments) != 1 || bundle.ContextDocuments[0].Path != large || bundle.ContextDocuments[0].Content != "12345" {
+			t.Fatalf("ContextDocuments: got %#v, want truncated large file", bundle.ContextDocuments)
+		}
+		if !strings.Contains(bundle.Summary, "WARNING: local context byte cap reached") {
+			t.Fatalf("Summary: got %q, want byte cap warning", bundle.Summary)
+		}
 	})
 
 	t.Run("depth cap", func(t *testing.T) {
 		dir := t.TempDir()
+		shallow := writeContextFile(t, dir, "root.txt", "root")
 		writeContextFile(t, dir, "a/b/deep.txt", "deep")
-		_, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 1024, MaxDepth: 1})
-		assertBoundedContextError(t, err, "max depth 1")
+		bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 1024, MaxDepth: 1})
+		if err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+		got := referencePaths(bundle.SourceReferences)
+		assertContainsPath(t, got, shallow)
+		assertNotContainsSubstring(t, got, "deep.txt")
+		if !strings.Contains(bundle.Summary, "WARNING: local context depth cap reached") {
+			t.Fatalf("Summary: got %q, want depth cap warning", bundle.Summary)
+		}
 	})
 }
 
@@ -108,6 +187,19 @@ func TestPolicyEvidenceCollectorDerivesBoundedResearchQueries(t *testing.T) {
 	}
 	if runner.envelope["max_queries"] != 2 {
 		t.Fatalf("max_queries envelope: got %#v, want 2", runner.envelope["max_queries"])
+	}
+}
+
+func TestParseResearchQueriesAcceptsEmbeddedJSONWithTrailingText(t *testing.T) {
+	queries, err := parseResearchQueries(`Here are the queries:
+{"queries":["agentera finite state machine", "agentera transition table"]}
+
+queries complete`, 3)
+	if err != nil {
+		t.Fatalf("parseResearchQueries: %v", err)
+	}
+	if !reflect.DeepEqual(queries, []string{"agentera finite state machine", "agentera transition table"}) {
+		t.Fatalf("queries: got %#v", queries)
 	}
 }
 
@@ -182,6 +274,11 @@ func TestPolicyEvidenceCollectorCollectsWebEvidenceReferences(t *testing.T) {
 	if len(runner.agents) != 2 || runner.agents[0].ID != "research-query-planner" || runner.agents[1].ID != "web-research-collector" {
 		t.Fatalf("runner agents: got %#v, want query planner then web collector", runner.agents)
 	}
+	for _, ag := range runner.agents {
+		if !strings.HasPrefix(ag.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
+			t.Fatalf("agent %s prompt = %q, want read-only guard", ag.ID, ag.SystemPrompt)
+		}
+	}
 	if got := runner.envelopes[1]["queries"]; !reflect.DeepEqual(got, []string{"agora web evidence", "agora source audit"}) {
 		t.Fatalf("web queries envelope: got %#v", got)
 	}
@@ -232,6 +329,19 @@ func TestParseWebEvidenceRequiresAuditableSources(t *testing.T) {
 	}
 	if len(bundle.SourceReferences) != 1 || bundle.SourceReferences[0].Query != "allowed" || bundle.SourceReferences[0].RetrievedAt == "" {
 		t.Fatalf("SourceReferences: got %#v, want one auditable allowed-query reference", bundle.SourceReferences)
+	}
+}
+
+func TestParseWebEvidenceAcceptsEmbeddedJSONWithTrailingText(t *testing.T) {
+	bundle, err := parseWebEvidence(`Evidence JSON:
+{"summary":"summary","sources":[{"title":"kept","url":"https://example.com","query":"allowed"}]}
+
+sources complete`, []string{"allowed"}, 1, "2026-05-05T00:00:00Z")
+	if err != nil {
+		t.Fatalf("parseWebEvidence: %v", err)
+	}
+	if len(bundle.SourceReferences) != 1 || bundle.SourceReferences[0].URL != "https://example.com" {
+		t.Fatalf("SourceReferences: got %#v", bundle.SourceReferences)
 	}
 }
 
@@ -378,15 +488,5 @@ func assertNotContainsSubstring(t *testing.T, paths []string, substring string) 
 		if strings.Contains(path, substring) {
 			t.Fatalf("paths %v contain unsafe substring %q", paths, substring)
 		}
-	}
-}
-
-func assertBoundedContextError(t *testing.T, err error, detail string) {
-	t.Helper()
-	if err == nil {
-		t.Fatal("expected bounded-context error")
-	}
-	if !strings.Contains(err.Error(), "bounded-context error") || !strings.Contains(err.Error(), detail) {
-		t.Fatalf("error: got %q, want bounded-context error containing %q", err, detail)
 	}
 }

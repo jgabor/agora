@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -69,6 +70,23 @@ agents:
 	}
 	if cfg.Topology != types.TopologyMesh {
 		t.Errorf("topology: got %q, want %q", cfg.Topology, types.TopologyMesh)
+	}
+	for _, ag := range cfg.Agents {
+		if !strings.HasPrefix(ag.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
+			t.Fatalf("agent %s prompt = %q, want read-only guard", ag.ID, ag.SystemPrompt)
+		}
+	}
+}
+
+func TestGenerateDryRunConfigIncludesReadOnlyGuard(t *testing.T) {
+	cfg, err := GenerateDryRunConfig("topic", types.AutoQuick, "model")
+	if err != nil {
+		t.Fatalf("GenerateDryRunConfig: %v", err)
+	}
+	for _, ag := range cfg.Agents {
+		if !strings.HasPrefix(ag.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
+			t.Fatalf("agent %s prompt = %q, want read-only guard", ag.ID, ag.SystemPrompt)
+		}
 	}
 }
 
@@ -164,6 +182,9 @@ agents:
 	}
 	if strings.Contains(runner.lastAgent.SystemPrompt, "Maximum 0 agents") {
 		t.Errorf("YOLO system prompt should not contain 'Maximum 0 agents', got:\n%s", runner.lastAgent.SystemPrompt)
+	}
+	if !strings.HasPrefix(runner.lastAgent.SystemPrompt, agent.ReadOnlyFilesystemInstruction) {
+		t.Errorf("config designer prompt should start with read-only guard, got:\n%s", runner.lastAgent.SystemPrompt)
 	}
 }
 
