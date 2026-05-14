@@ -2,34 +2,17 @@
 package orchestrator
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
-	"regexp"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/synthesis"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 )
-
-const SYNTHESIS_SYSTEM_PROMPT = `You are a deliberation synthesis agent. Your job is to read the full transcript
-of a multi-agent deliberation and produce a structured summary.
-
-Your output must be valid JSON with this exact structure:
-{
-  "key_arguments": ["argument 1", "argument 2", ...],
-  "points_of_agreement": ["agreement 1", ...],
-  "unresolved_tensions": ["tension 1", ...],
-  "recommended_decision": "...",
-  "confidence": "high|medium|low"
-}
-
-Be concise but thorough. Capture the essential insights from the deliberation.
-`
 
 // TurnFunc is called after each agent turn completes.
 type TurnFunc func(record types.TurnRecord, turn int, maxTurns int)
@@ -197,11 +180,17 @@ func (o *Orchestrator) Synthesize() map[string]any {
 	if len(o.transcript.Records()) <= 1 {
 		return nil
 	}
-
-	engine := NewSynthesisEngine(o.runner)
 	stop := o.activity("Synthesis")
 	defer stop()
-	return engine.Synthesize(o.transcript.Records(), o.state.Topic, o.state.Config)
+	return synthesis.Synthesize(o.runner, o.transcript.Records(), o.state.Topic, o.synthesizeModel())
+}
+
+// synthesizeModel returns the model to use for synthesis (explicit override or first agent's model).
+func (o *Orchestrator) synthesizeModel() string {
+	if o.state.Config.SynthesisModel != nil {
+		return *o.state.Config.SynthesisModel
+	}
+	return o.state.Config.Agents[0].Model
 }
 
 func (o *Orchestrator) activity(phase string) func() {
@@ -347,101 +336,4 @@ func (o *Orchestrator) setupSignalHandler() {
 		o.state.HaltedBy = "user_interrupt"
 		_ = o.transcript.WriteAll()
 	}()
-}
-
-// SynthesisEngine generates a final synthesis from a deliberation transcript.
-type SynthesisEngine struct {
-	runner agent.Runner
-}
-
-// NewSynthesisEngine creates a new SynthesisEngine.
-func NewSynthesisEngine(runner agent.Runner) *SynthesisEngine {
-	return &SynthesisEngine{runner: runner}
-}
-
-// Synthesize runs a synthesis agent to summarize the deliberation.
-func (se *SynthesisEngine) Synthesize(
-	records []types.TurnRecord,
-	topic string,
-	config *types.DeliberationConfig,
-) map[string]any {
-	transcriptText := se.formatTranscript(records)
-
-	totalTurns := 0
-	for _, r := range records {
-		if r.AgentID != "orchestrator" {
-			totalTurns++
-		}
-	}
-
-	envelope := map[string]any{
-		"topic":       topic,
-		"transcript":  transcriptText,
-		"num_agents":  len(config.Agents),
-		"total_turns": totalTurns,
-	}
-
-	model := config.Agents[0].Model
-	if config.SynthesisModel != nil {
-		model = *config.SynthesisModel
-	}
-
-	synthAgent := types.AgentConfig{
-		ID:           "synthesizer",
-		Model:        model,
-		SystemPrompt: SYNTHESIS_SYSTEM_PROMPT,
-	}
-
-	content, _, err := se.runner.Run(agent.WithReadOnlyAgentPrompt(synthAgent), envelope)
-	if err != nil {
-		return map[string]any{
-			"key_arguments":        []any{},
-			"points_of_agreement":  []any{},
-			"unresolved_tensions":  []any{},
-			"recommended_decision": fmt.Sprintf("Synthesis failed: %v", err),
-			"confidence":           "low",
-		}
-	}
-
-	parsed, err := se.extractJSON(content)
-	if err != nil {
-		return map[string]any{
-			"key_arguments":        []any{},
-			"points_of_agreement":  []any{},
-			"unresolved_tensions":  []any{},
-			"recommended_decision": fmt.Sprintf("Synthesis failed: %v", err),
-			"confidence":           "low",
-		}
-	}
-
-	return parsed
-}
-
-func (se *SynthesisEngine) formatTranscript(records []types.TurnRecord) string {
-	var lines []string
-	for _, r := range records {
-		lines = append(lines, fmt.Sprintf("[Turn %d] %s: %s", r.Turn, r.AgentID, r.Content))
-	}
-	return strings.Join(lines, "\n")
-}
-
-var jsonBlockPattern = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*?\\})\\s*```")
-
-func (se *SynthesisEngine) extractJSON(content string) (map[string]any, error) {
-	if m := jsonBlockPattern.FindStringSubmatch(content); m != nil {
-		content = m[1]
-	}
-
-	start := strings.Index(content, "{")
-	end := strings.LastIndex(content, "}")
-	if start < 0 || end <= start {
-		return nil, fmt.Errorf("no JSON object found in synthesis response")
-	}
-	content = content[start : end+1]
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("parsing synthesis JSON: %w", err)
-	}
-	return result, nil
 }
