@@ -179,15 +179,13 @@ func TestLoadFileStrictRejectsMalformedNonBlankRecord(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHistoryRingTopology(t *testing.T) {
-	tm := newTestTranscript(t)
+	records := []types.TurnRecord{
+		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(0, "a", "msg from a", false, ""),
+		mkRecord(1, "b", "msg from b", false, ""),
+	}
 
-	// Setup: orchestrator seed + 2 agents (a, b) in a 2-agent ring.
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, ""))
-	_ = tm.Append(mkRecord(0, "a", "msg from a", false, ""))
-	_ = tm.Append(mkRecord(1, "b", "msg from b", false, ""))
-
-	// Turn 0: predecessor is orchestrator (seed).
-	history := tm.HistoryForAgent("a", 5, types.TopologyRing, 2, 0)
+	history := HistoryForAgent(records, "a", 5, types.TopologyRing, 2, 0)
 	if len(history) != 1 {
 		t.Fatalf("turn 0 history: got %d, want 1", len(history))
 	}
@@ -195,8 +193,7 @@ func TestHistoryRingTopology(t *testing.T) {
 		t.Errorf("turn 0: expected orchestrator, got %q", history[0]["agent_id"])
 	}
 
-	// Turn 1: predecessor should be 'a' (index (1-1)%2 = 0).
-	history = tm.HistoryForAgent("b", 5, types.TopologyRing, 2, 1)
+	history = HistoryForAgent(records, "b", 5, types.TopologyRing, 2, 1)
 	if len(history) != 1 {
 		t.Fatalf("turn 1 history: got %d, want 1", len(history))
 	}
@@ -204,8 +201,7 @@ func TestHistoryRingTopology(t *testing.T) {
 		t.Errorf("turn 1: expected a, got %q", history[0]["agent_id"])
 	}
 
-	// Turn 2: predecessor should be 'b' (index (2-1)%2 = 1).
-	history = tm.HistoryForAgent("a", 5, types.TopologyRing, 2, 2)
+	history = HistoryForAgent(records, "a", 5, types.TopologyRing, 2, 2)
 	if len(history) != 1 {
 		t.Fatalf("turn 2 history: got %d, want 1", len(history))
 	}
@@ -215,20 +211,17 @@ func TestHistoryRingTopology(t *testing.T) {
 }
 
 func TestHistoryRingTopologyWindow(t *testing.T) {
-	tm := newTestTranscript(t)
+	records := []types.TurnRecord{
+		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(0, "a", "a-0", false, ""),
+		mkRecord(1, "b", "b-0", false, ""),
+		mkRecord(2, "c", "c-0", false, ""),
+		mkRecord(3, "a", "a-1", false, ""),
+		mkRecord(4, "b", "b-1", false, ""),
+		mkRecord(5, "c", "c-1", false, ""),
+	}
 
-	// 3-agent ring: a, b, c.
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, ""))
-	_ = tm.Append(mkRecord(0, "a", "a-0", false, ""))
-	_ = tm.Append(mkRecord(1, "b", "b-0", false, ""))
-	_ = tm.Append(mkRecord(2, "c", "c-0", false, ""))
-	_ = tm.Append(mkRecord(3, "a", "a-1", false, ""))
-	_ = tm.Append(mkRecord(4, "b", "b-1", false, ""))
-	_ = tm.Append(mkRecord(5, "c", "c-1", false, ""))
-
-	// Turn 6: predecessor should be 'c' (index (6-1)%3 = 2).
-	// With window=2, should get last 2 messages from 'c'.
-	history := tm.HistoryForAgent("a", 2, types.TopologyRing, 3, 6)
+	history := HistoryForAgent(records, "a", 2, types.TopologyRing, 3, 6)
 	if len(history) != 2 {
 		t.Fatalf("history len: got %d, want 2", len(history))
 	}
@@ -240,23 +233,17 @@ func TestHistoryRingTopologyWindow(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// HistoryForAgent — star topology (any agent)
-// ---------------------------------------------------------------------------
-
 func TestHistoryStarTopology(t *testing.T) {
-	tm := newTestTranscript(t)
+	records := []types.TurnRecord{
+		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(0, "a", "msg a", false, ""),
+		mkRecord(1, "b", "msg b", false, ""),
+	}
 
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, ""))
-	_ = tm.Append(mkRecord(0, "a", "msg a", false, ""))
-	_ = tm.Append(mkRecord(1, "b", "msg b", false, ""))
-
-	// Star: last K messages from ANY agent.
-	history := tm.HistoryForAgent("c", 3, types.TopologyStar, 2, 2)
+	history := HistoryForAgent(records, "c", 3, types.TopologyStar, 2, 2)
 	if len(history) != 3 {
 		t.Fatalf("star history: got %d, want 3", len(history))
 	}
-	// Should include orchestrator, a, and b.
 	agents := map[string]bool{}
 	for _, h := range history {
 		agents[h["agent_id"]] = true
@@ -267,108 +254,83 @@ func TestHistoryStarTopology(t *testing.T) {
 }
 
 func TestHistoryMeshTopology(t *testing.T) {
-	tm := newTestTranscript(t)
+	records := []types.TurnRecord{
+		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(0, "x", "x-msg", false, ""),
+		mkRecord(1, "y", "y-msg", false, ""),
+	}
 
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, ""))
-	_ = tm.Append(mkRecord(0, "x", "x-msg", false, ""))
-	_ = tm.Append(mkRecord(1, "y", "y-msg", false, ""))
-
-	// Mesh: same as star — last K from any agent.
-	history := tm.HistoryForAgent("z", 2, types.TopologyMesh, 2, 2)
+	history := HistoryForAgent(records, "z", 2, types.TopologyMesh, 2, 2)
 	if len(history) != 2 {
 		t.Fatalf("mesh history: got %d, want 2", len(history))
 	}
 }
 
-// ---------------------------------------------------------------------------
-// HistoryForAgent — window size boundary
-// ---------------------------------------------------------------------------
-
 func TestHistoryWindowLargerThanRecords(t *testing.T) {
-	tm := newTestTranscript(t)
+	records := []types.TurnRecord{
+		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(0, "a", "msg a", false, ""),
+	}
 
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, ""))
-	_ = tm.Append(mkRecord(0, "a", "msg a", false, ""))
-
-	// Window=10 but only 2 records exist.
-	history := tm.HistoryForAgent("b", 10, types.TopologyStar, 2, 1)
+	history := HistoryForAgent(records, "b", 10, types.TopologyStar, 2, 1)
 	if len(history) != 2 {
 		t.Errorf("window overflow: got %d, want 2", len(history))
 	}
 }
 
 func TestHistoryRingEmptyTurn0(t *testing.T) {
-	tm := newTestTranscript(t)
+	var records []types.TurnRecord
 
-	// No records at all — empty transcript.
-	// Turn 0: predecessor is "orchestrator" but no orchestrator records exist.
-	history := tm.HistoryForAgent("a", 5, types.TopologyRing, 2, 0)
+	history := HistoryForAgent(records, "a", 5, types.TopologyRing, 2, 0)
 	if len(history) != 0 {
 		t.Errorf("empty history for no records: got %d, want 0", len(history))
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Consecutive consensus count
-// ---------------------------------------------------------------------------
-
 func TestConsecutiveConsensusCount(t *testing.T) {
-	tm := newTestTranscript(t)
-
-	// No records yet.
-	if n := tm.ConsecutiveConsensusCount(); n != 0 {
+	var records []types.TurnRecord
+	if n := ConsecutiveConsensusCount(records); n != 0 {
 		t.Errorf("empty: got %d, want 0", n)
 	}
 
-	_ = tm.Append(mkRecord(0, "a", "x", true, "ok"))
-	_ = tm.Append(mkRecord(1, "b", "x", true, "ok"))
-
-	if n := tm.ConsecutiveConsensusCount(); n != 2 {
+	records = append(records, mkRecord(0, "a", "x", true, "ok"))
+	records = append(records, mkRecord(1, "b", "x", true, "ok"))
+	if n := ConsecutiveConsensusCount(records); n != 2 {
 		t.Errorf("two cons: got %d, want 2", n)
 	}
 
-	// Add a non-consensus record.
-	_ = tm.Append(mkRecord(2, "c", "x", false, ""))
-
-	if n := tm.ConsecutiveConsensusCount(); n != 0 {
+	records = append(records, mkRecord(2, "c", "x", false, ""))
+	if n := ConsecutiveConsensusCount(records); n != 0 {
 		t.Errorf("after non-cons: got %d, want 0", n)
 	}
 
-	// Add consensus again.
-	_ = tm.Append(mkRecord(3, "a", "x", true, "ok"))
-
-	if n := tm.ConsecutiveConsensusCount(); n != 1 {
+	records = append(records, mkRecord(3, "a", "x", true, "ok"))
+	if n := ConsecutiveConsensusCount(records); n != 1 {
 		t.Errorf("single cons: got %d, want 1", n)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Total cost / tokens
-// ---------------------------------------------------------------------------
-
 func TestTotalCost(t *testing.T) {
-	tm := newTestTranscript(t)
-
-	_ = tm.Append(mkRecordWithCost(0, "a", "x", 0.001, 100))
-	_ = tm.Append(mkRecordWithCost(1, "b", "x", 0.002, 200))
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, "")) // no cost
-
-	if c := tm.TotalCost(); c != 0.003 {
-		t.Errorf("total cost: got %f, want 0.003", c)
+	records := []types.TurnRecord{
+		mkRecordWithCost(0, "a", "x", 0.001, 100),
+		mkRecordWithCost(1, "b", "x", 0.002, 200),
+		mkRecord(-1, "orchestrator", "seed", false, ""),
 	}
 
-	if tok := tm.TotalTokens(); tok != 300 {
+	if c := TotalCost(records); c != 0.003 {
+		t.Errorf("total cost: got %f, want 0.003", c)
+	}
+	if tok := TotalTokens(records); tok != 300 {
 		t.Errorf("total tokens: got %d, want 300", tok)
 	}
 }
 
 func TestTotalTokensWithNil(t *testing.T) {
-	tm := newTestTranscript(t)
+	records := []types.TurnRecord{
+		mkRecord(0, "a", "x", false, ""),
+	}
 
-	// A record with nil tokens.
-	_ = tm.Append(mkRecord(0, "a", "x", false, ""))
-
-	if tok := tm.TotalTokens(); tok != 0 {
+	if tok := TotalTokens(records); tok != 0 {
 		t.Errorf("total tokens with nil: got %d, want 0", tok)
 	}
 }

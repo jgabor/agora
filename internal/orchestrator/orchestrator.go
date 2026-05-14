@@ -105,7 +105,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			o.state.HaltedBy = fmt.Sprintf("error: %v", err)
 			break
 		}
-		o.consensusStreak = o.transcript.ConsecutiveConsensusCount()
+		o.consensusStreak = transcript.ConsecutiveConsensusCount(o.transcript.Records())
 
 		if o.onTurn != nil {
 			o.onTurn(turnRecord, o.state.Turn, o.state.MaxTurns)
@@ -226,7 +226,7 @@ func (o *Orchestrator) checkTerminationConditions() {
 		return
 	}
 
-	if o.state.Budget != nil && o.transcript.TotalCost() >= *o.state.Budget {
+	if o.state.Budget != nil && transcript.TotalCost(o.transcript.Records()) >= *o.state.Budget {
 		o.state.Running = false
 		o.state.HaltedBy = fmt.Sprintf("budget_exceeded ($%.2f)", *o.state.Budget)
 		return
@@ -236,7 +236,8 @@ func (o *Orchestrator) checkTerminationConditions() {
 func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool) {
 	turnStart := float64(time.Now().UnixNano()) / 1e9
 
-	history := o.transcript.HistoryForAgent(
+	history := transcript.HistoryForAgent(
+		o.transcript.Records(),
 		ag.ID,
 		o.state.Window,
 		o.state.Config.Topology,
