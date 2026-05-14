@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/synthesis"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
@@ -28,7 +29,7 @@ type Orchestrator struct {
 	state      *types.DeliberationState
 	transcript *transcript.TranscriptManager
 	runner     agent.Runner
-	evidence   EvidenceCollector
+	evidence   evidence.Collector
 	onTurn     TurnFunc
 	onEvidence EvidenceFunc
 	onActivity ActivityFunc
@@ -37,11 +38,6 @@ type Orchestrator struct {
 	consensusStreak int
 	sharedEvidence  *types.EvidenceBundle
 	evidenceSent    map[string]bool
-}
-
-// EvidenceCollector gathers shared evidence before the first deliberation turn.
-type EvidenceCollector interface {
-	Collect(request types.EvidenceRequest) (*types.EvidenceBundle, error)
 }
 
 // NewOrchestrator creates a new Orchestrator.
@@ -56,7 +52,7 @@ func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptMa
 }
 
 // SetEvidenceCollector registers a pre-deliberation evidence collector.
-func (o *Orchestrator) SetEvidenceCollector(collector EvidenceCollector) {
+func (o *Orchestrator) SetEvidenceCollector(collector evidence.Collector) {
 	o.evidence = collector
 }
 

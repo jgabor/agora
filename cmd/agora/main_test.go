@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/output"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
@@ -353,7 +354,7 @@ func TestRunEvidenceOverridesAddsAutoDefaults(t *testing.T) {
 
 	overrides := runEvidenceOverrides(cmd, true, types.AutoNormal)
 
-	want := config.EvidenceDefaultsForAutoLevel(types.AutoNormal)
+	want := evidence.DefaultsForAutoLevel(types.AutoNormal)
 	if overrides.Defaults != want {
 		t.Fatalf("Defaults: got %+v, want %+v", overrides.Defaults, want)
 	}

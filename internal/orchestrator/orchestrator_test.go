@@ -3,12 +3,15 @@ package orchestrator
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 )
@@ -272,7 +275,7 @@ func TestRunTranscriptEvidenceExcludesFullSourceContent(t *testing.T) {
 	runner := &mockRunner{content: "agent response"}
 
 	o := NewOrchestrator(state, tm, runner)
-	o.SetEvidenceCollector(NewPolicyEvidenceCollector(runner))
+	o.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 	o.Run()
 
 	evidence, ok := runner.envelope["evidence"].(*types.EvidenceBundle)
@@ -328,7 +331,7 @@ func TestRunHaltsWhenResearchQueryGenerationProducesNoQueries(t *testing.T) {
 	}
 
 	o := NewOrchestrator(state, tm, runner)
-	o.SetEvidenceCollector(NewPolicyEvidenceCollector(runner))
+	o.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 	stats := o.Run()
 
 	if len(calls) != 1 || calls[0] != "research-query-planner" {
@@ -848,6 +851,41 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 
 func floatPtr(f float64) *float64 {
 	return &f
+}
+
+// recordingRunner records agents and envelopes across calls.
+type recordingRunner struct {
+	responses []mockResponse
+	callCount int
+	agents    []types.AgentConfig
+	envelopes []map[string]any
+}
+
+func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+	r.agents = append(r.agents, agent)
+	r.envelopes = append(r.envelopes, envelope)
+	idx := r.callCount
+	if idx >= len(r.responses) {
+		idx = len(r.responses) - 1
+	}
+	r.callCount++
+	response := r.responses[idx]
+	if response.err != nil {
+		return "", nil, response.err
+	}
+	return response.content, response.metadata, nil
+}
+
+func writeContextFile(t *testing.T, root, rel, content string) string {
+	t.Helper()
+	path := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	return path
 }
 
 func TestOrchestratorSynthesize(t *testing.T) {

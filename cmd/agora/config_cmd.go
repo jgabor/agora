@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/output"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
@@ -96,7 +97,7 @@ var settingKeyDefs = []settingKeyDef{
 		Group:        "evidence",
 		Key:          "research_max_sources",
 		Description:  "maximum web and local context source references",
-		DefaultValue: strconv.Itoa(config.DefaultContextMaxSources),
+		DefaultValue: strconv.Itoa(evidence.DefaultMaxSources),
 		Get: func(settings config.Settings) (string, bool) {
 			if settings.ResearchMaxSources <= 0 {
 				return "", false
@@ -116,7 +117,7 @@ var settingKeyDefs = []settingKeyDef{
 		Group:        "evidence",
 		Key:          "context_max_bytes",
 		Description:  "maximum total bytes of local context",
-		DefaultValue: strconv.FormatInt(config.DefaultContextMaxBytes, 10),
+		DefaultValue: strconv.FormatInt(evidence.DefaultMaxBytes, 10),
 		Get: func(settings config.Settings) (string, bool) {
 			if settings.ContextMaxBytes <= 0 {
 				return "", false
@@ -136,7 +137,7 @@ var settingKeyDefs = []settingKeyDef{
 		Group:        "evidence",
 		Key:          "context_max_depth",
 		Description:  "maximum directory traversal depth for local context",
-		DefaultValue: strconv.Itoa(config.DefaultContextMaxDepth),
+		DefaultValue: strconv.Itoa(evidence.DefaultMaxDepth),
 		Get: func(settings config.Settings) (string, bool) {
 			if settings.ContextMaxDepth <= 0 {
 				return "", false
@@ -278,9 +279,9 @@ func defaultGlobalSettings() (config.Settings, error) {
 		DefaultModel:       defaultModel,
 		DefaultTopology:    string(types.TopologyRing),
 		DefaultOutputDir:   outputDir,
-		ResearchMaxSources: config.DefaultContextMaxSources,
-		ContextMaxBytes:    config.DefaultContextMaxBytes,
-		ContextMaxDepth:    config.DefaultContextMaxDepth,
+		ResearchMaxSources: evidence.DefaultMaxSources,
+		ContextMaxBytes:    evidence.DefaultMaxBytes,
+		ContextMaxDepth:    evidence.DefaultMaxDepth,
 	}, nil
 }
 

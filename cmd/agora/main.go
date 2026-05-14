@@ -12,6 +12,7 @@ import (
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/autogen"
 	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/orchestrator"
 	"github.com/jgabor/agora/internal/output"
 	"github.com/jgabor/agora/internal/transcript"
@@ -125,7 +126,7 @@ var runCmd = &cobra.Command{
 			return err
 		}
 		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
-		evidenceRequest := config.ResolveEvidenceRequest(cfg, settings, evidenceOverrides)
+		evidenceRequest := evidence.ResolveRequest(cfg, settings, evidenceOverrides)
 
 		state := &types.DeliberationState{
 			Config:      cfg,
@@ -148,7 +149,7 @@ var runCmd = &cobra.Command{
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
-		orch.SetEvidenceCollector(orchestrator.NewPolicyEvidenceCollector(runner))
+		orch.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 		orch.OnEvidence(outMgr.EvidenceSummary)
 		orch.OnTurn(outMgr.TurnProgress)
 		orch.OnActivity(outMgr.Activity)
@@ -240,7 +241,7 @@ func init() {
 	}
 }
 
-func researchOverrides(cmd *cobra.Command) config.ResearchOverrides {
+func researchOverrides(cmd *cobra.Command) evidence.Overrides {
 	var research *bool
 	if cmd.Flags().Changed("research") {
 		enabled := true
@@ -251,17 +252,17 @@ func researchOverrides(cmd *cobra.Command) config.ResearchOverrides {
 		research = &enabled
 	}
 
-	return config.ResearchOverrides{
+	return evidence.Overrides{
 		Research:     research,
 		ContextSet:   cmd.Flags().Changed("context"),
 		ContextPaths: append([]string(nil), runContext...),
 	}
 }
 
-func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLevel) config.ResearchOverrides {
+func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLevel) evidence.Overrides {
 	overrides := researchOverrides(cmd)
 	if autoMode {
-		overrides.Defaults = config.EvidenceDefaultsForAutoLevel(level)
+		overrides.Defaults = evidence.DefaultsForAutoLevel(level)
 	}
 	return overrides
 }

@@ -1,4 +1,4 @@
-package orchestrator
+package evidence
 
 import (
 	"fmt"
@@ -12,10 +12,28 @@ import (
 	"github.com/jgabor/agora/internal/types"
 )
 
-func TestPolicyEvidenceCollectorReferencesReadableTextFile(t *testing.T) {
+// mockRunner is a Runner whose Run method returns canned responses.
+type mockRunner struct {
+	content  string
+	metadata map[string]any
+	err      error
+	agent    types.AgentConfig
+	envelope map[string]any
+}
+
+func (m *mockRunner) Run(ag types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+	m.agent = ag
+	m.envelope = envelope
+	if m.err != nil {
+		return "", nil, m.err
+	}
+	return m.content, m.metadata, nil
+}
+
+func TestPolicyCollectorReferencesReadableTextFile(t *testing.T) {
 	path := writeContextFile(t, t.TempDir(), "notes.md", "useful context\n")
 
-	bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{path}})
+	bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{path}})
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -27,7 +45,7 @@ func TestPolicyEvidenceCollectorReferencesReadableTextFile(t *testing.T) {
 	}
 }
 
-func TestPolicyEvidenceCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *testing.T) {
+func TestPolicyCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *testing.T) {
 	dir := t.TempDir()
 	keep := writeContextFile(t, dir, "docs/keep.txt", "safe text\n")
 	alsoKeep := writeContextFile(t, dir, "notes.md", "safe note\n")
@@ -36,7 +54,7 @@ func TestPolicyEvidenceCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *test
 	writeContextFile(t, dir, ".env", "TOKEN=secret\n")
 	writeContextFile(t, dir, "api-token.txt", "secret\n")
 
-	bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{
+	bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{
 		ContextPaths: []string{dir},
 		MaxSources:   10,
 		MaxBytes:     1024,
@@ -61,7 +79,7 @@ func TestPolicyEvidenceCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *test
 	assertNotContainsSubstring(t, docs, "api-token.txt")
 }
 
-func TestPolicyEvidenceCollectorRespectsGitignoreWithoutSkippingHiddenDirs(t *testing.T) {
+func TestPolicyCollectorRespectsGitignoreWithoutSkippingHiddenDirs(t *testing.T) {
 	dir := t.TempDir()
 	keep := writeContextFile(t, dir, "README.md", "readme\n")
 	hiddenAgentera := writeContextFile(t, dir, ".agentera/archive/old-plan.md", "old plan\n")
@@ -73,7 +91,7 @@ func TestPolicyEvidenceCollectorRespectsGitignoreWithoutSkippingHiddenDirs(t *te
 	writeContextFile(t, dir, "node_modules/pkg/index.d.ts", "types\n")
 	writeContextFile(t, dir, "cached.pyc", "bytecode\n")
 
-	bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{
+	bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{
 		ContextPaths: []string{dir},
 		MaxSources:   10,
 		MaxBytes:     1024,
@@ -95,12 +113,12 @@ func TestPolicyEvidenceCollectorRespectsGitignoreWithoutSkippingHiddenDirs(t *te
 	}
 }
 
-func TestPolicyEvidenceCollectorAllowsExplicitHiddenContextRoot(t *testing.T) {
+func TestPolicyCollectorAllowsExplicitHiddenContextRoot(t *testing.T) {
 	dir := t.TempDir()
 	hiddenRoot := filepath.Join(dir, ".agentera")
 	path := writeContextFile(t, hiddenRoot, "plan.yaml", "plan\n")
 
-	bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{
+	bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{
 		ContextPaths: []string{hiddenRoot},
 		MaxSources:   1,
 		MaxBytes:     1024,
@@ -114,12 +132,12 @@ func TestPolicyEvidenceCollectorAllowsExplicitHiddenContextRoot(t *testing.T) {
 	}
 }
 
-func TestPolicyEvidenceCollectorSoftCapsContextLimits(t *testing.T) {
+func TestPolicyCollectorSoftCapsContextLimits(t *testing.T) {
 	t.Run("file cap", func(t *testing.T) {
 		dir := t.TempDir()
 		one := writeContextFile(t, dir, "one.txt", "one")
 		writeContextFile(t, dir, "two.txt", "two")
-		bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 1, MaxBytes: 1024, MaxDepth: 3})
+		bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 1, MaxBytes: 1024, MaxDepth: 3})
 		if err != nil {
 			t.Fatalf("Collect: %v", err)
 		}
@@ -134,7 +152,7 @@ func TestPolicyEvidenceCollectorSoftCapsContextLimits(t *testing.T) {
 	t.Run("byte cap", func(t *testing.T) {
 		dir := t.TempDir()
 		large := writeContextFile(t, dir, "large.txt", "1234567890")
-		bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 5, MaxDepth: 3})
+		bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 5, MaxDepth: 3})
 		if err != nil {
 			t.Fatalf("Collect: %v", err)
 		}
@@ -150,7 +168,7 @@ func TestPolicyEvidenceCollectorSoftCapsContextLimits(t *testing.T) {
 		dir := t.TempDir()
 		shallow := writeContextFile(t, dir, "root.txt", "root")
 		writeContextFile(t, dir, "a/b/deep.txt", "deep")
-		bundle, err := (PolicyEvidenceCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 1024, MaxDepth: 1})
+		bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{dir}, MaxSources: 10, MaxBytes: 1024, MaxDepth: 1})
 		if err != nil {
 			t.Fatalf("Collect: %v", err)
 		}
@@ -163,9 +181,9 @@ func TestPolicyEvidenceCollectorSoftCapsContextLimits(t *testing.T) {
 	})
 }
 
-func TestPolicyEvidenceCollectorDerivesBoundedResearchQueries(t *testing.T) {
+func TestPolicyCollectorDerivesBoundedResearchQueries(t *testing.T) {
 	runner := &mockRunner{content: `{"queries":["agora deliberation research", "agora evidence contract", "agora query caps"]}`}
-	collector := NewPolicyEvidenceCollector(runner)
+	collector := NewPolicyCollector(runner)
 
 	queries, err := collector.deriveResearchQueries(types.EvidenceRequest{
 		ResearchEnabled: true,
@@ -203,7 +221,7 @@ queries complete`, 3)
 	}
 }
 
-func TestPolicyEvidenceCollectorRejectsResearchQueryFailures(t *testing.T) {
+func TestPolicyCollectorRejectsResearchQueryFailures(t *testing.T) {
 	tests := []struct {
 		name    string
 		request types.EvidenceRequest
@@ -232,7 +250,7 @@ func TestPolicyEvidenceCollectorRejectsResearchQueryFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			collector := NewPolicyEvidenceCollector(tt.runner)
+			collector := NewPolicyCollector(tt.runner)
 			_, err := collector.deriveResearchQueries(tt.request)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error: got %v, want containing %q", err, tt.want)
@@ -241,8 +259,8 @@ func TestPolicyEvidenceCollectorRejectsResearchQueryFailures(t *testing.T) {
 	}
 }
 
-func TestPolicyEvidenceCollectorHaltsResearchBeforeWebCollectionWhenQueriesFail(t *testing.T) {
-	collector := NewPolicyEvidenceCollector(&mockRunner{content: `{"queries":[]}`})
+func TestPolicyCollectorHaltsResearchBeforeWebCollectionWhenQueriesFail(t *testing.T) {
+	collector := NewPolicyCollector(&mockRunner{content: `{"queries":[]}`})
 
 	_, err := collector.Collect(types.EvidenceRequest{
 		ResearchEnabled: true,
@@ -255,12 +273,12 @@ func TestPolicyEvidenceCollectorHaltsResearchBeforeWebCollectionWhenQueriesFail(
 	}
 }
 
-func TestPolicyEvidenceCollectorCollectsWebEvidenceReferences(t *testing.T) {
+func TestPolicyCollectorCollectsWebEvidenceReferences(t *testing.T) {
 	runner := &recordingRunner{responses: []mockResponse{
 		{content: `{"queries":["agora web evidence","agora source audit"]}`},
 		{content: `{"summary":"web evidence summary","sources":[{"title":"Agora evidence","url":"https://example.com/evidence","query":"agora web evidence"},{"title":"Audit trail","url":"https://example.com/audit","query":"agora source audit"}]}`},
 	}}
-	collector := NewPolicyEvidenceCollector(runner)
+	collector := NewPolicyCollector(runner)
 
 	bundle, err := collector.Collect(types.EvidenceRequest{
 		ResearchEnabled: true,
@@ -291,7 +309,7 @@ func TestPolicyEvidenceCollectorCollectsWebEvidenceReferences(t *testing.T) {
 	}
 }
 
-func TestPolicyEvidenceCollectorRejectsWebCollectionFailures(t *testing.T) {
+func TestPolicyCollectorRejectsWebCollectionFailures(t *testing.T) {
 	tests := []struct {
 		name        string
 		second      mockResponse
@@ -309,7 +327,7 @@ func TestPolicyEvidenceCollectorRejectsWebCollectionFailures(t *testing.T) {
 				{content: `{"queries":["agora evidence"]}`},
 				tt.second,
 			}}
-			collector := NewPolicyEvidenceCollector(runner)
+			collector := NewPolicyCollector(runner)
 
 			_, err := collector.Collect(types.EvidenceRequest{ResearchEnabled: true, Topic: "topic", ResearchModel: "model", MaxSources: 2})
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -345,7 +363,7 @@ sources complete`, []string{"allowed"}, 1, "2026-05-05T00:00:00Z")
 	}
 }
 
-func TestPolicyEvidenceCollectorDeterministicSmokeVariations(t *testing.T) {
+func TestPolicyCollectorDeterministicSmokeVariations(t *testing.T) {
 	const topic = "What would the best programming language be to implement this tool?"
 	const model = "opencode/nemotron-3-super-free"
 
@@ -354,7 +372,7 @@ func TestPolicyEvidenceCollectorDeterministicSmokeVariations(t *testing.T) {
 			{content: `{"queries":["best programming language implement CLI tool"]}`},
 			{content: `{"summary":"web summary","sources":[{"title":"Language comparison","url":"https://example.com/languages","query":"best programming language implement CLI tool"}]}`},
 		}}
-		bundle, err := NewPolicyEvidenceCollector(runner).Collect(types.EvidenceRequest{
+		bundle, err := NewPolicyCollector(runner).Collect(types.EvidenceRequest{
 			ResearchEnabled: true,
 			Topic:           topic,
 			ResearchModel:   model,
@@ -377,7 +395,7 @@ func TestPolicyEvidenceCollectorDeterministicSmokeVariations(t *testing.T) {
 	t.Run("local file only", func(t *testing.T) {
 		path := writeContextFile(t, t.TempDir(), "README.md", "local context for language choice\n")
 		runner := &recordingRunner{}
-		bundle, err := NewPolicyEvidenceCollector(runner).Collect(types.EvidenceRequest{
+		bundle, err := NewPolicyCollector(runner).Collect(types.EvidenceRequest{
 			Topic:         topic,
 			ResearchModel: model,
 			ContextPaths:  []string{path},
@@ -400,7 +418,7 @@ func TestPolicyEvidenceCollectorDeterministicSmokeVariations(t *testing.T) {
 			{content: `{"queries":["best programming language implement CLI tool"]}`},
 			{content: `{"summary":"web summary","sources":[{"title":"Language comparison","url":"https://example.com/languages","query":"best programming language implement CLI tool"}]}`},
 		}}
-		bundle, err := NewPolicyEvidenceCollector(runner).Collect(types.EvidenceRequest{
+		bundle, err := NewPolicyCollector(runner).Collect(types.EvidenceRequest{
 			ResearchEnabled: true,
 			Topic:           topic,
 			ResearchModel:   model,
@@ -442,6 +460,12 @@ func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) 
 		return "", nil, response.err
 	}
 	return response.content, response.metadata, nil
+}
+
+type mockResponse struct {
+	content  string
+	metadata map[string]any
+	err      error
 }
 
 func writeContextFile(t *testing.T, root, rel, content string) string {
