@@ -11,9 +11,9 @@
 
 ## → Normal
 
-- [ ] Add machine-readable `agora agent-context --json` with schema version, commands, flags, defaults, enum values, settings keys, and transcript schema metadata
-- [ ] Add `--json` output to inspection commands: `list`, `stats`, `show`, `validate`, and `config get --all`
-- [ ] Add a command-contract test/static metadata check for canonical verbs, canonical flags, and enum-exposing errors
+- [x] Add `agora prime --format json|markdown` with schema version, commands, flags, defaults, enum values, settings keys, transcript schema metadata, and an agent-readable startup briefing
+- [x] Add `--format text|json|markdown` output to inspection commands: `prime`, `metadata`, `list`, `stats`, `show`, `validate`, and `config get --all`
+- [x] Add a command-contract test/static metadata check for canonical verbs, canonical flags, and enum-exposing errors
 - [x] Fix `--context` delivery: agents must receive bounded safe text content once, while transcripts keep source references only
 - [x] Cross-version parity test: run identical deliberation in Python and Go, diff transcripts
 - [x] CI workflow (Go build, test, lint) for main branch
@@ -23,12 +23,12 @@
 - [x] Auto mode for `resume` command
 - [x] `--yes` flag to skip preview in auto mode
 - [ ] Tune auto mode level caps based on usage — Decision 4 caps are provisional
-- [ ] Decompose executeTurn (106 lines) — extract token/cost parsing helpers
+- [x] Decompose executeTurn (106 lines) — extract token/cost parsing helpers
 - [ ] Add source/domain allowlists for web research evidence when users need stricter provenance controls
 - [ ] Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence
 - [ ] Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety
 - [ ] Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
-- [ ] Evaluate named profiles after `agent-context` exists; current `settings.yaml` covers defaults but not reusable identities
+- [ ] Evaluate named profiles after `prime` exists; current `settings.yaml` covers defaults but not reusable identities
 - [x] OutputManager at 0% coverage — snapshot-test drawPanel/drawTable/wrapText (covered in d956003; package coverage 67.3%)
 
 ## Resolved

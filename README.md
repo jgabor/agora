@@ -8,6 +8,10 @@ Written in Go. Compiles to a single static binary.
 
 ## Quick Start
 
+<!-- agora-contract: ./agora list -->
+<!-- agora-contract: ./agora show is-ai-alignment-a-solvable-problem -->
+<!-- agora-contract: ./agora stats is-ai-alignment-a-solvable-problem -->
+
 ```bash
 # Clone and build
 git clone https://github.com/jgabor/agora && cd agora
@@ -41,6 +45,9 @@ go build -o agora ./cmd/agora
 ./agora list
 ./agora show is-ai-alignment-a-solvable-problem
 ./agora stats is-ai-alignment-a-solvable-problem
+
+# Give an external agent Agora's CLI operating context
+./agora prime --format markdown
 ```
 
 ### With your own config and real LLMs
@@ -52,6 +59,9 @@ go build -o agora ./cmd/agora
 ```
 
 ### Install globally
+
+<!-- agora-contract: agora validate examples/example-default.yaml -->
+<!-- agora-contract: agora config init -->
 
 ```bash
 go install ./cmd/agora
@@ -108,6 +118,38 @@ With `--auto`, the level supplies default time and max-turn caps. Explicit `--ti
 
 By default, live output includes agent response bodies as turns complete. Use `--quiet` for the lower-noise metadata/progress-only stream, or `--verbose` to keep response bodies and add diagnostics such as token, cost, timing, and consensus metrics when available.
 
+### `agora prime` — Inspect agent-operating context
+
+<!-- agora-contract: agora prime -->
+
+```
+agora prime [--format text|json|markdown]
+```
+
+Prints Agora-provided operating context for agents and tools: command surface, flags, defaults, enum values, settings keys, effective settings with secret-like values redacted, transcript metadata, and output-format contracts. `text` is the default; `json` and `markdown` are non-ANSI and intended for machine or agent startup use.
+
+`agora prime` is not deliberation evidence. Use it before operating the CLI. Use `agora run --context PATH` only when you want local text files or directories delivered to deliberation agents as bounded user-provided evidence.
+
+### Formatted Inspection Output
+
+Supported inspection commands accept one shared output selector:
+
+```
+--format text|json|markdown
+```
+
+`text` is the default and preserves the human CLI presentation. `json` emits schema-versioned, non-ANSI data. `markdown` emits non-ANSI prose/tables for agents and humans. Invalid format values are rejected with the valid values named.
+
+| Command | Formats |
+|---|---|
+| `agora prime` | `--format text|json|markdown` |
+| `agora metadata` | `--format text|json|markdown` |
+| `agora list` | `--format text|json|markdown` |
+| `agora show TRANSCRIPT|SLUG` | `--format text|json|markdown` |
+| `agora stats TRANSCRIPT|SLUG` | `--format text|json|markdown` |
+| `agora validate CONFIG|SLUG` | `--format text|json|markdown` |
+| `agora config get --all` | `--format text|json|markdown` |
+
 ### Transcript slugs and paths
 
 Agora writes managed transcripts under the configured transcript store with filenames like `20260507-143022-is-ai-alignment-a-solvable-problem.jsonl`. `agora list` shows the human-readable `Slug` column from those filenames.
@@ -124,19 +166,23 @@ Path-like inputs stay paths: if you pass a missing `*.jsonl`, `./file`, `../file
 
 ### `agora list` — List managed transcripts
 
+<!-- agora-contract: agora list -->
+
 ```
-agora list
+agora list [--format text|json|markdown]
 ```
 
-Lists managed transcripts from the configured transcript store, newest first, with date, slug, turn count, and filename. Use the slug with `show`, `stats`, or `resume`; use the filename/path when you need an exact file.
+Lists managed transcripts from the configured transcript store, newest first, with date, slug, turn count, and filename. Use the slug with `show`, `stats`, or `resume`; use the filename/path when you need an exact file. Formatted output reports the transcript store path, transcript count, empty-state status, and transcript rows.
 
 ### `agora show` — Show a transcript
 
+<!-- agora-contract: agora show TRANSCRIPT|SLUG -->
+
 ```
-agora show TRANSCRIPT|SLUG
+agora show TRANSCRIPT|SLUG [--format text|json|markdown]
 ```
 
-Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references and consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped.
+Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references and consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage.
 
 ### `agora resume` — Continue from an existing transcript
 
@@ -148,30 +194,45 @@ Same optional flags as run, except evidence flags are rejected on resume. Loads 
 
 ### `agora stats` — Show transcript statistics
 
+<!-- agora-contract: agora stats TRANSCRIPT|SLUG -->
+
 ```
-agora stats TRANSCRIPT|SLUG
+agora stats TRANSCRIPT|SLUG [--format text|json|markdown]
 ```
 
 Displays total turns, tokens, cost, per-agent breakdown, and consensus events for a transcript slug or explicit path. Malformed non-blank JSONL records fail instead of being skipped.
 
 ### `agora validate` — Validate a config file
 
+<!-- agora-contract: agora validate CONFIG|SLUG -->
+
 ```
-agora validate CONFIG|SLUG
+agora validate CONFIG|SLUG [--format text|json|markdown]
 ```
 
 Checks config for errors without starting a deliberation. Explicit paths are read directly. Non-path slugs resolve by config file stem in the current directory and `examples/`; ambiguous slug matches report candidate files instead of guessing.
+
+### `agora metadata` — Inspect command metadata
+
+<!-- agora-contract: agora metadata -->
+
+```
+agora metadata [--format text|json|markdown]
+```
+
+Reports the live command metadata used by contract verification, including commands, flags, defaults, enum values, settings keys, transcript metadata, and supported output formats.
 
 ### `agora config` — Manage global settings
 
 ```
 agora config init
 agora config get --all
+agora config get --all [--format text|json|markdown]
 agora config get KEY
 agora config set KEY VALUE
 ```
 
-Reads and writes the global `settings.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
+Reads and writes the global `settings.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. `agora config get --all --format json|markdown` reports every supported setting with value, source, type, default/effective-value policy, allowed values, and redaction behavior. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
 
 ## Configuration
 

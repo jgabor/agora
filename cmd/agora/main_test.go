@@ -195,6 +195,366 @@ func TestConfigGetAllShowsDefaults(t *testing.T) {
 	}
 }
 
+func TestConfigGetAllFormattedOutputsIncludeMetadata(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
+	}
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	secret := "sk-test-secret-token-123"
+	writeSettings(t, `default_model: "`+secret+`"
+default_auto_level: "quick"
+`)
+
+	jsonOut, err := executeConfigCommand(t, "get", "--all", "--format", "json")
+	if err != nil {
+		t.Fatalf("config get --all json: %v", err)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	for _, want := range []string{"\"settings\"", "\"default_model\"", "\"type\"", "\"source\"", "\"effective_value_policy\"", "\"allowed_values\"", "[redacted]", "quick"} {
+		assertStringContains(t, jsonOut, want)
+	}
+	assertStringNotContains(t, jsonOut, secret)
+
+	markdownOut, err := executeConfigCommand(t, "get", "--all", "--format", "markdown")
+	if err != nil {
+		t.Fatalf("config get --all markdown: %v", err)
+	}
+	for _, want := range []string{"# Global Settings", "## Effective Settings", "`default_auto_level`", "source `set`", "type `enum`", "allowed `quick`, `normal`, `deep`, `yolo`", "[redacted]"} {
+		assertStringContains(t, markdownOut, want)
+	}
+	assertStringNotContains(t, markdownOut, secret)
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
+func TestConfigGetAllFormattedRejectsInvalidFormat(t *testing.T) {
+	_, err := executeConfigCommand(t, "get", "--all", "--format", "xml")
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	for _, want := range []string{"text", "json", "markdown"} {
+		assertStringContains(t, err.Error(), want)
+	}
+}
+
+func TestFormatContractAcceptedFormats(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+dir+"\"")
+	configPath := filepath.Join(dir, "config.yaml")
+	writeValidConfig(t, configPath)
+	transcriptPath := filepath.Join(dir, "20260504-143022-topic.jsonl")
+	model := "test/model"
+	if err := os.WriteFile(transcriptPath, []byte(transcriptContent(t,
+		types.TurnRecord{Turn: 0, AgentID: "analyst", Model: &model, Timestamp: 1, Content: "answer", Tokens: types.TokenUsage{Total: intPtr(3)}},
+		types.TurnRecord{Turn: 1, AgentID: "critic", Model: &model, Timestamp: 2, Content: "second answer", Tokens: types.TokenUsage{Total: intPtr(7)}, Consensus: true, ConsensusStatement: "We agree"},
+	)), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		format  string
+		run     func(*cobra.Command) error
+		assert  func(string)
+		cleanup func()
+	}{
+		{
+			name:   "list json",
+			format: formatJSON,
+			run: func(cmd *cobra.Command) error {
+				old := listFormat
+				listFormat = formatJSON
+				t.Cleanup(func() { listFormat = old })
+				return listCmd.RunE(cmd, nil)
+			},
+			assert: func(out string) { assertJSONNoANSI(t, out) },
+		},
+		{
+			name:   "stats json",
+			format: formatJSON,
+			run: func(cmd *cobra.Command) error {
+				old := statsFormat
+				statsFormat = formatJSON
+				t.Cleanup(func() { statsFormat = old })
+				return statsCmd.RunE(cmd, []string{transcriptPath})
+			},
+			assert: func(out string) { assertJSONNoANSI(t, out) },
+		},
+		{
+			name:   "show markdown",
+			format: formatMarkdown,
+			run: func(cmd *cobra.Command) error {
+				old := showFormat
+				showFormat = formatMarkdown
+				t.Cleanup(func() { showFormat = old })
+				return showCmd.RunE(cmd, []string{transcriptPath})
+			},
+			assert: func(out string) {
+				assertStringContains(t, out, "# Transcript")
+				assertStringContains(t, out, "Records")
+				assertStringContains(t, out, "answer")
+				assertStringContains(t, out, "critic")
+				assertStringContains(t, out, "We agree")
+				assertStringNotContains(t, out, "\x1b[")
+			},
+		},
+		{
+			name:   "stats markdown",
+			format: formatMarkdown,
+			run: func(cmd *cobra.Command) error {
+				old := statsFormat
+				statsFormat = formatMarkdown
+				t.Cleanup(func() { statsFormat = old })
+				return statsCmd.RunE(cmd, []string{transcriptPath})
+			},
+			assert: func(out string) {
+				assertStringContains(t, out, "# Transcript Statistics")
+				assertStringContains(t, out, "Total turns")
+				assertStringContains(t, out, "Agent analyst")
+				assertStringContains(t, out, "Agent critic")
+				assertStringContains(t, out, "Consensus 1")
+				assertStringContains(t, out, "We agree")
+				assertStringNotContains(t, out, "\x1b[")
+			},
+		},
+		{
+			name:   "validate json",
+			format: formatJSON,
+			run: func(cmd *cobra.Command) error {
+				old := validateFormatValue
+				validateFormatValue = formatJSON
+				t.Cleanup(func() { validateFormatValue = old })
+				return validateCmd.RunE(cmd, []string{configPath})
+			},
+			assert: func(out string) { assertJSONNoANSI(t, out) },
+		},
+		{
+			name:   "config all markdown",
+			format: formatMarkdown,
+			run: func(cmd *cobra.Command) error {
+				out, err := executeConfigCommand(t, "get", "--all", "--format", "markdown")
+				_, _ = cmd.OutOrStdout().Write([]byte(out))
+				return err
+			},
+			assert: func(out string) {
+				assertStringContains(t, out, "# Global Settings")
+				assertStringContains(t, out, "default_model")
+				assertStringNotContains(t, out, "\x1b[")
+			},
+		},
+		{
+			name:   "metadata json",
+			format: formatJSON,
+			run: func(cmd *cobra.Command) error {
+				old := metadataFormat
+				metadataFormat = formatJSON
+				t.Cleanup(func() { metadataFormat = old })
+				return metadataCmd.RunE(cmd, nil)
+			},
+			assert: func(out string) { assertJSONNoANSI(t, out) },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			if err := tt.run(cmd); err != nil {
+				t.Fatalf("run %s: %v", tt.name, err)
+			}
+			tt.assert(out.String())
+		})
+	}
+}
+
+func TestFormatContractDefaultMatchesTextOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+dir+"\"")
+	transcriptPath := filepath.Join(dir, "20260504-143022-topic.jsonl")
+	if err := os.WriteFile(transcriptPath, []byte(transcriptLine("analyst", "default text answer", 3)), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	runShow := func(format string) string {
+		old := showFormat
+		showFormat = format
+		defer func() { showFormat = old }()
+		cmd := &cobra.Command{}
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		if err := showCmd.RunE(cmd, []string{transcriptPath}); err != nil {
+			t.Fatalf("show command: %v", err)
+		}
+		return out.String()
+	}
+	if defaultOut, textOut := runShow(formatText), runShow(formatText); defaultOut != textOut {
+		t.Fatalf("show default output differs from --format text\ndefault:\n%s\ntext:\n%s", defaultOut, textOut)
+	}
+
+	defaultConfig, err := executeConfigCommand(t, "get", "--all")
+	if err != nil {
+		t.Fatalf("config get --all default: %v", err)
+	}
+	textConfig, err := executeConfigCommand(t, "get", "--all", "--format", "text")
+	if err != nil {
+		t.Fatalf("config get --all text: %v", err)
+	}
+	if defaultConfig != textConfig {
+		t.Fatalf("config default output differs from --format text\ndefault:\n%s\ntext:\n%s", defaultConfig, textConfig)
+	}
+}
+
+func TestPrimeCommandDefaultAndTextOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	writeSettings(t, `default_model: "test-secret-safe-model"`)
+
+	defaultOut := runPrimeCommand(t, formatText)
+	textOut := runPrimeCommand(t, formatText)
+	if defaultOut != textOut {
+		t.Fatalf("prime default output differs from --format text\ndefault:\n%s\ntext:\n%s", defaultOut, textOut)
+	}
+	for _, want := range []string{"Agora Prime", "CLI operating context", "not deliberation evidence", "--context PATH", "agora run", "default_model", "Transcript metadata"} {
+		assertStringContains(t, defaultOut, want)
+	}
+}
+
+func TestPrimeCommandJSONOutputIncludesContractSections(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	writeSettings(t, `default_auto_level: "quick"`)
+
+	out := runPrimeCommand(t, formatJSON)
+	assertJSONNoANSI(t, out)
+	var envelope struct {
+		SchemaVersion int            `json:"schema_version"`
+		Command       string         `json:"command"`
+		Data          map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("decode prime json: %v", err)
+	}
+	if envelope.Command != "prime" || envelope.SchemaVersion != schemaVersion {
+		t.Fatalf("prime envelope: %#v", envelope)
+	}
+	for _, key := range []string{"commands", "flags", "defaults", "enum_values", "settings_keys", "settings", "transcript_metadata", "context_boundary"} {
+		if _, ok := envelope.Data[key]; !ok {
+			t.Fatalf("prime json missing %q: %#v", key, envelope.Data)
+		}
+	}
+	assertStringContains(t, out, "agora prime")
+	assertStringContains(t, out, "--context PATH")
+	assertStringContains(t, out, "[redacted]")
+}
+
+func TestPrimeCommandMarkdownOutputIncludesAgentBriefing(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	writeSettings(t, "")
+
+	out := runPrimeCommand(t, formatMarkdown)
+	assertStringContains(t, out, "# Agora Prime")
+	assertStringContains(t, out, "## Commands")
+	assertStringContains(t, out, "## Flags, Defaults, And Enum Values")
+	assertStringContains(t, out, "## Settings")
+	assertStringContains(t, out, "## Transcript Metadata")
+	assertStringContains(t, out, "`agora prime`")
+	assertStringContains(t, out, "`--context PATH`")
+	assertStringContains(t, out, "`text`, `json`, `markdown`")
+	assertStringNotContains(t, out, "\x1b[")
+}
+
+func TestPrimeCommandRedactsSecretLookingSettingsValues(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	secret := "sk-test-secret-token-123"
+	writeSettings(t, `default_model: "`+secret+`"`)
+
+	for _, format := range []string{formatText, formatJSON, formatMarkdown} {
+		out := runPrimeCommand(t, format)
+		assertStringNotContains(t, out, secret)
+		assertStringContains(t, out, "[redacted]")
+	}
+}
+
+func TestPrimeCommandRejectsInvalidFormat(t *testing.T) {
+	old := primeFormat
+	primeFormat = "xml"
+	defer func() { primeFormat = old }()
+
+	err := primeCmd.RunE(&cobra.Command{}, nil)
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	for _, want := range []string{"text", "json", "markdown"} {
+		assertStringContains(t, err.Error(), want)
+	}
+}
+
+func TestFormatContractInvalidFormats(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "list", run: func() error {
+			old := listFormat
+			listFormat = "xml"
+			defer func() { listFormat = old }()
+			return listCmd.RunE(&cobra.Command{}, nil)
+		}},
+		{name: "stats", run: func() error {
+			old := statsFormat
+			statsFormat = "xml"
+			defer func() { statsFormat = old }()
+			return statsCmd.RunE(&cobra.Command{}, []string{"missing"})
+		}},
+		{name: "show", run: func() error {
+			old := showFormat
+			showFormat = "xml"
+			defer func() { showFormat = old }()
+			return showCmd.RunE(&cobra.Command{}, []string{"missing"})
+		}},
+		{name: "validate", run: func() error {
+			old := validateFormatValue
+			validateFormatValue = "xml"
+			defer func() { validateFormatValue = old }()
+			return validateCmd.RunE(&cobra.Command{}, []string{"missing"})
+		}},
+		{name: "config get all", run: func() error { _, err := executeConfigCommand(t, "get", "--all", "--format", "xml"); return err }},
+		{name: "metadata", run: func() error {
+			old := metadataFormat
+			metadataFormat = "xml"
+			defer func() { metadataFormat = old }()
+			return metadataCmd.RunE(&cobra.Command{}, nil)
+		}},
+		{name: "prime", run: func() error {
+			old := primeFormat
+			primeFormat = "xml"
+			defer func() { primeFormat = old }()
+			return primeCmd.RunE(&cobra.Command{}, nil)
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run()
+			if err == nil {
+				t.Fatal("expected invalid format error")
+			}
+			for _, want := range []string{"text", "json", "markdown"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("invalid format error missing %q: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
 func TestConfigSetRejectsInvalidAutoLevel(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
@@ -514,6 +874,64 @@ func TestListCommandShowsFilenameOnlyWhenVerbose(t *testing.T) {
 	assertStringContains(t, verbose, filename)
 }
 
+func TestListCommandFormattedOutputReportsStoreFacts(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	store := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+store+"\"")
+	filename := "20260504-143022-my-topic.jsonl"
+	if err := os.WriteFile(filepath.Join(store, filename), []byte(transcriptLine("a", "listed", 5)+transcriptLine("b", "again", 7)), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	jsonOut := executeListCommand(t, formatJSON)
+	assertJSONNoANSI(t, jsonOut)
+	var doc struct {
+		Data transcriptListOutput `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &doc); err != nil {
+		t.Fatalf("decode list json: %v", err)
+	}
+	if doc.Data.StorePath != store || doc.Data.TranscriptCount != 1 || doc.Data.Empty || len(doc.Data.Transcripts) != 1 {
+		t.Fatalf("list json data: got %#v", doc.Data)
+	}
+	if got := doc.Data.Transcripts[0]; got.Slug != "my-topic" || got.Turns != 2 || got.Filename != filename {
+		t.Fatalf("list transcript: got %#v", got)
+	}
+
+	markdownOut := executeListCommand(t, formatMarkdown)
+	assertStringContains(t, markdownOut, "# Managed Transcripts")
+	assertStringContains(t, markdownOut, "Transcript count:** 1")
+	assertStringContains(t, markdownOut, "my-topic")
+	assertStringContains(t, markdownOut, filename)
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
+func TestListCommandFormattedOutputReportsEmptyStore(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	store := t.TempDir()
+	writeSettings(t, "default_output_dir: \""+store+"\"")
+
+	jsonOut := executeListCommand(t, formatJSON)
+	assertJSONNoANSI(t, jsonOut)
+	var doc struct {
+		Data transcriptListOutput `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &doc); err != nil {
+		t.Fatalf("decode list json: %v", err)
+	}
+	if doc.Data.StorePath != store || doc.Data.TranscriptCount != 0 || !doc.Data.Empty || len(doc.Data.Transcripts) != 0 {
+		t.Fatalf("empty list json data: got %#v", doc.Data)
+	}
+
+	markdownOut := executeListCommand(t, formatMarkdown)
+	assertStringContains(t, markdownOut, "Transcript count:** 0")
+	assertStringContains(t, markdownOut, "Empty:** true")
+	assertStringContains(t, markdownOut, "No transcripts found.")
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
 func TestResolveResumeSourceFileFlag(t *testing.T) {
 	got, err := resolveResumeSource("./my.jsonl", nil)
 	if err != nil {
@@ -830,6 +1248,60 @@ func TestValidateCommandKeepsExplicitPathCompatibility(t *testing.T) {
 	}
 }
 
+func TestValidateFormattedOutputsReportSummary(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeSettings(t, "")
+	path := filepath.Join(dir, "valid.yaml")
+	writeValidConfig(t, path)
+
+	jsonOut, err := runValidateCommand(t, formatJSON, path)
+	if err != nil {
+		t.Fatalf("validate json: %v", err)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	for _, want := range []string{"\"valid\": true", "\"summary\"", "\"topology\": \"ring\"", "\"agent_count\": 1"} {
+		assertStringContains(t, jsonOut, want)
+	}
+
+	markdownOut, err := runValidateCommand(t, formatMarkdown, path)
+	if err != nil {
+		t.Fatalf("validate markdown: %v", err)
+	}
+	for _, want := range []string{"# Configuration Valid", "**Valid:** true", "**Topology:** ring", "**Agents:** 1"} {
+		assertStringContains(t, markdownOut, want)
+	}
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
+func TestValidateFormattedOutputsReportStructuredFailure(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeSettings(t, "")
+	path := filepath.Join(dir, "invalid.yaml")
+	writeInvalidConfig(t, path)
+
+	jsonOut, err := runValidateCommand(t, formatJSON, path)
+	if err == nil {
+		t.Fatal("expected validate json failure")
+	}
+	assertJSONNoANSI(t, jsonOut)
+	for _, want := range []string{"\"valid\": false", "\"stage\": \"validate\"", "configuration must contain at least one agent", "\"corrections\""} {
+		assertStringContains(t, jsonOut, want)
+	}
+
+	markdownOut, err := runValidateCommand(t, formatMarkdown, path)
+	if err == nil {
+		t.Fatal("expected validate markdown failure")
+	}
+	for _, want := range []string{"# Configuration Invalid", "**Valid:** false", "**Stage:** `validate`", "configuration must contain at least one agent", "## Self-Correction"} {
+		assertStringContains(t, markdownOut, want)
+	}
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
 func TestValidateCommandReportsAmbiguousConfigSlug(t *testing.T) {
 	dir := t.TempDir()
 	writeSettings(t, "")
@@ -969,6 +1441,86 @@ func TestStatsCommandReportsMalformedTranscriptRecord(t *testing.T) {
 	}
 }
 
+func TestStatsCommandFormattedOutputReportsTranscriptFacts(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeSettings(t, "")
+	path := filepath.Join(dir, "stats.jsonl")
+	model := "test/model"
+	if err := os.WriteFile(path, []byte(transcriptContent(t,
+		types.TurnRecord{Turn: 0, AgentID: "analyst", Model: &model, Timestamp: 1, Content: "answer", Tokens: types.TokenUsage{Total: intPtr(3)}},
+		types.TurnRecord{Turn: 1, AgentID: "critic", Model: &model, Timestamp: 2, Content: "second", Tokens: types.TokenUsage{Total: intPtr(7)}, Consensus: true, ConsensusStatement: "We agree"},
+	)), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	jsonOut, err := executeStatsCommand(t, formatJSON, path)
+	if err != nil {
+		t.Fatalf("stats json: %v", err)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	var doc struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &doc); err != nil {
+		t.Fatalf("decode stats json: %v", err)
+	}
+	if doc.Data["total_turns"] != float64(2) || doc.Data["total_tokens"] != float64(10) {
+		t.Fatalf("stats json data: got %#v", doc.Data)
+	}
+	perAgent, ok := doc.Data["per_agent"].(map[string]any)
+	if !ok || len(perAgent) != 2 || perAgent["analyst"] == nil || perAgent["critic"] == nil {
+		t.Fatalf("stats per-agent data: got %#v", doc.Data["per_agent"])
+	}
+
+	markdownOut, err := executeStatsCommand(t, formatMarkdown, path)
+	if err != nil {
+		t.Fatalf("stats markdown: %v", err)
+	}
+	assertStringContains(t, markdownOut, "# Transcript Statistics")
+	assertStringContains(t, markdownOut, "Total turns")
+	assertStringContains(t, markdownOut, "Agent analyst")
+	assertStringContains(t, markdownOut, "Agent critic")
+	assertStringContains(t, markdownOut, "We agree")
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
+func TestStatsCommandFormattedOutputReportsMachineUsableErrors(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeSettings(t, "")
+	path := filepath.Join(dir, "bad.jsonl")
+	if err := os.WriteFile(path, []byte("not-json\n"), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	jsonOut, err := executeStatsCommand(t, formatJSON, path)
+	if err == nil || !strings.Contains(err.Error(), "malformed transcript record") {
+		t.Fatalf("stats json error: got %v, want malformed transcript record", err)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	var doc struct {
+		Data commandErrorOutput `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &doc); err != nil {
+		t.Fatalf("decode stats error json: %v", err)
+	}
+	if doc.Data.OK || doc.Data.Code != "transcript_load_failed" || !strings.Contains(doc.Data.Message, "malformed transcript record") {
+		t.Fatalf("stats error json data: got %#v", doc.Data)
+	}
+
+	markdownOut, err := executeStatsCommand(t, formatMarkdown, filepath.Join(dir, "missing.jsonl"))
+	if err == nil || !strings.Contains(err.Error(), "loading transcript") {
+		t.Fatalf("stats markdown error: got %v, want loading transcript", err)
+	}
+	assertStringContains(t, markdownOut, "# Transcript Statistics Error")
+	assertStringContains(t, markdownOut, "transcript_load_failed")
+	assertStringContains(t, markdownOut, "loading transcript")
+	assertStringNotContains(t, markdownOut, "\x1b[")
+}
+
 func TestShowCommandResolvesTranscriptSlug(t *testing.T) {
 	store := t.TempDir()
 	writeSettings(t, "default_output_dir: \""+store+"\"")
@@ -1085,6 +1637,129 @@ func TestShowCommandReportsEmptyTranscript(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "transcript empty") {
 		t.Fatalf("error: got %v, want transcript empty", err)
 	}
+}
+
+func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
+	dir := t.TempDir()
+	writeSettings(t, "")
+	path := filepath.Join(dir, "show.jsonl")
+	model := "test/model"
+	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{
+		Topology:           types.TopologyRing,
+		ConsensusThreshold: 2,
+		Agents: []types.AgentConfig{
+			{ID: "analyst", Model: model},
+			{ID: "critic", Model: model},
+		},
+		ContextPaths: []string{"secret-notes.md"},
+	})
+	content := transcriptContent(t,
+		types.TurnRecord{Turn: -1, AgentID: "orchestrator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{
+			Summary:          "Two sources found",
+			SourceReferences: []types.SourceReference{{Title: "Spec", URL: "https://example.test/spec"}, {Path: "README.md"}},
+			ContextDocuments: []types.ContextDocument{{Path: "secret-notes.md", Content: "full source text must not be exported"}},
+		}},
+		types.TurnRecord{Turn: 0, AgentID: "analyst", Model: &model, Timestamp: 2, Content: "First answer"},
+		types.TurnRecord{Turn: 1, AgentID: "critic", Model: &model, Timestamp: 3, Content: "Second answer", Consensus: true, ConsensusStatement: "We agree"},
+	)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	jsonOut, err := executeShowCommandFormat(t, formatJSON, path)
+	if err != nil {
+		t.Fatalf("show json: %v", err)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	assertStringNotContains(t, jsonOut, "full source text must not be exported")
+	assertStringNotContains(t, jsonOut, "context_documents")
+	assertStringNotContains(t, jsonOut, "\"tokens\"")
+	assertStringNotContains(t, jsonOut, "\"elapsed\"")
+	var doc struct {
+		SchemaVersion int                  `json:"schema_version"`
+		Command       string               `json:"command"`
+		Data          transcriptShowOutput `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &doc); err != nil {
+		t.Fatalf("decode show json: %v", err)
+	}
+	if doc.SchemaVersion != schemaVersion || doc.Command != "show" || doc.Data.DocumentType != "agora.transcript.show" || doc.Data.DocumentSchemaVersion != 1 {
+		t.Fatalf("show json document metadata: got %#v", doc)
+	}
+	if doc.Data.RecordCount != 3 || len(doc.Data.Records) != 3 || doc.Data.Records[0].AgentID != "orchestrator" || doc.Data.Records[1].AgentID != "analyst" || doc.Data.Records[2].AgentID != "critic" {
+		t.Fatalf("show json record order: got %#v", doc.Data.Records)
+	}
+	if !doc.Data.Metadata.Available || len(doc.Data.Metadata.Cast) != 2 || doc.Data.Records[1].CastMember == nil || doc.Data.Records[1].CastMember.Name != "Solon" {
+		t.Fatalf("show json cast metadata: got %#v", doc.Data)
+	}
+	if doc.Data.Records[0].Evidence == nil || !doc.Data.Records[0].Evidence.FullSourceContentOmitted || len(doc.Data.Records[0].Evidence.SourceReferences) != 2 || len(doc.Data.Records[0].Evidence.ContextDocumentRefs) != 1 {
+		t.Fatalf("show json evidence boundary: got %#v", doc.Data.Records[0].Evidence)
+	}
+	if !doc.Data.Records[2].Consensus || doc.Data.Records[2].ConsensusStatement != "We agree" {
+		t.Fatalf("show json consensus: got %#v", doc.Data.Records[2])
+	}
+
+	markdownOut, err := executeShowCommandFormat(t, formatMarkdown, path)
+	if err != nil {
+		t.Fatalf("show markdown: %v", err)
+	}
+	assertStringContains(t, markdownOut, "# Transcript")
+	assertStringContains(t, markdownOut, "Document schema version")
+	assertStringContains(t, markdownOut, "Cast Metadata")
+	assertStringContains(t, markdownOut, "A1 Solon")
+	assertStringContains(t, markdownOut, "Evidence summary")
+	assertStringContains(t, markdownOut, "Spec (https://example.test/spec)")
+	assertStringContains(t, markdownOut, "Evidence full source content omitted")
+	assertStringContains(t, markdownOut, "Consensus statement")
+	assertStringContains(t, markdownOut, "We agree")
+	assertStringNotContains(t, markdownOut, "full source text must not be exported")
+	assertStringNotContains(t, markdownOut, "\x1b[")
+	if strings.Index(markdownOut, "Record 1") > strings.Index(markdownOut, "Record 2") || strings.Index(markdownOut, "Record 2") > strings.Index(markdownOut, "Record 3") {
+		t.Fatalf("show markdown changed record order:\n%s", markdownOut)
+	}
+}
+
+func TestShowCommandFormattedOutputReportsClearFailures(t *testing.T) {
+	dir := t.TempDir()
+	writeSettings(t, "")
+	badPath := filepath.Join(dir, "bad.jsonl")
+	if err := os.WriteFile(badPath, []byte(transcriptLine("a", "partial answer", 1)+"not-json\n"), 0o644); err != nil {
+		t.Fatalf("write malformed transcript: %v", err)
+	}
+	emptyPath := filepath.Join(dir, "empty.jsonl")
+	if err := os.WriteFile(emptyPath, []byte("\n"), 0o644); err != nil {
+		t.Fatalf("write empty transcript: %v", err)
+	}
+
+	jsonOut, err := executeShowCommandFormat(t, formatJSON, badPath)
+	if err == nil || !strings.Contains(err.Error(), "malformed transcript record") {
+		t.Fatalf("show json malformed error: got %v, want malformed transcript record", err)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	assertStringNotContains(t, jsonOut, "partial answer")
+	var doc struct {
+		Data commandErrorOutput `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &doc); err != nil {
+		t.Fatalf("decode show error json: %v", err)
+	}
+	if doc.Data.OK || doc.Data.Code != "transcript_load_failed" || !strings.Contains(doc.Data.Message, "malformed transcript record") {
+		t.Fatalf("show error json data: got %#v", doc.Data)
+	}
+
+	markdownOut, err := executeShowCommandFormat(t, formatMarkdown, filepath.Join(dir, "missing.jsonl"))
+	if err == nil || !strings.Contains(err.Error(), "loading transcript") {
+		t.Fatalf("show markdown missing error: got %v, want loading transcript", err)
+	}
+	assertStringContains(t, markdownOut, "# Transcript Error")
+	assertStringContains(t, markdownOut, "transcript_load_failed")
+	assertStringNotContains(t, markdownOut, "\x1b[")
+
+	emptyOut, err := executeShowCommandFormat(t, formatJSON, emptyPath)
+	if err == nil || !strings.Contains(err.Error(), "transcript empty") {
+		t.Fatalf("show json empty error: got %v, want transcript empty", err)
+	}
+	assertStringContains(t, emptyOut, "transcript_empty")
 }
 
 func TestResumeCommandResolvesTranscriptSlugToNewestMatch(t *testing.T) {
@@ -1246,6 +1921,10 @@ func transcriptLine(agentID, content string, tokens int) string {
 	return string(data) + "\n"
 }
 
+func intPtr(value int) *int {
+	return &value
+}
+
 func transcriptContent(t *testing.T, records ...types.TurnRecord) string {
 	t.Helper()
 	var b strings.Builder
@@ -1271,6 +1950,14 @@ func executeShowCommand(t *testing.T, arg string) (string, error) {
 	return out.String(), err
 }
 
+func executeShowCommandFormat(t *testing.T, format, arg string) (string, error) {
+	t.Helper()
+	old := showFormat
+	showFormat = format
+	t.Cleanup(func() { showFormat = old })
+	return executeShowCommand(t, arg)
+}
+
 func runListCommand(t *testing.T) string {
 	t.Helper()
 	cmd := &cobra.Command{}
@@ -1280,6 +1967,58 @@ func runListCommand(t *testing.T) string {
 		t.Fatalf("list command: %v", err)
 	}
 	return out.String()
+}
+
+func executeListCommand(t *testing.T, format string) string {
+	t.Helper()
+	old := listFormat
+	listFormat = format
+	t.Cleanup(func() { listFormat = old })
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := listCmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("list command: %v", err)
+	}
+	return out.String()
+}
+
+func executeStatsCommand(t *testing.T, format, arg string) (string, error) {
+	t.Helper()
+	old := statsFormat
+	statsFormat = format
+	t.Cleanup(func() { statsFormat = old })
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	err := statsCmd.RunE(cmd, []string{arg})
+	return out.String(), err
+}
+
+func runPrimeCommand(t *testing.T, format string) string {
+	t.Helper()
+	old := primeFormat
+	primeFormat = format
+	t.Cleanup(func() { primeFormat = old })
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := primeCmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("prime command: %v", err)
+	}
+	return out.String()
+}
+
+func runValidateCommand(t *testing.T, format, arg string) (string, error) {
+	t.Helper()
+	old := validateFormatValue
+	validateFormatValue = format
+	t.Cleanup(func() { validateFormatValue = old })
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	err := validateCmd.RunE(cmd, []string{arg})
+	return out.String(), err
 }
 
 func artifactCommand(t *testing.T, outputPath string) *cobra.Command {
@@ -1352,6 +2091,15 @@ func assertStringNotContains(t *testing.T, s, substr string) {
 	if strings.Contains(s, substr) {
 		t.Fatalf("expected output not to contain %q\noutput: %s", substr, s)
 	}
+}
+
+func assertJSONNoANSI(t *testing.T, out string) {
+	t.Helper()
+	if !json.Valid([]byte(out)) {
+		t.Fatalf("output is not valid JSON:\n%s", out)
+	}
+	assertStringContains(t, out, "\"schema_version\"")
+	assertStringNotContains(t, out, "\x1b[")
 }
 
 func configureRunGlobals(configPath, outputPath string) func() {

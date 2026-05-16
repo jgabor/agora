@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- `agora prime` provides read-only agent-operating context for the CLI, including commands, flags, defaults, enum values, settings keys, transcript metadata, and the boundary from deliberation `--context` evidence.
+- `--format text|json|markdown` is available on supported inspection surfaces: `prime`, `metadata`, `list`, `show`, `stats`, `validate`, and `config get --all`.
+- Command-contract verification now checks live Cobra commands, canonical flags, supported formats, settings keys, enum values, schema versions, and README contract markers against the documented CLI surface.
 - `agora show` displays transcript records by slug or path using the same turn cards and response styling as `run`, including plain-output fallback, evidence summaries/source references, and consensus statements.
 
 ### Changed

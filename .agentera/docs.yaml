@@ -41,15 +41,15 @@ mapping:
 index:
   - document: README
     path: README.md
-    last_updated: 2026-05-07
+    last_updated: 2026-05-16
     status: current
   - document: Changelog
     path: CHANGELOG.md
-    last_updated: 2026-05-07
+    last_updated: 2026-05-16
     status: current
   - document: TODO
     path: TODO.md
-    last_updated: 2026-05-07
+    last_updated: 2026-05-16
     status: current
   - document: Vision
     path: .agentera/vision.yaml

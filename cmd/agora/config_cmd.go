@@ -17,9 +17,11 @@ import (
 type settingKeyDef struct {
 	Group        string
 	Key          string
+	Type         string
 	Description  string
 	DefaultValue string
 	DefaultFunc  func() (string, error)
+	Allowed      []string
 	Get          func(config.Settings) (string, bool)
 	Set          func(*config.Settings, string) error
 }
@@ -28,6 +30,7 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:        "defaults",
 		Key:          "default_model",
+		Type:         "string",
 		Description:  "model for auto config generation and omitted agent models",
 		DefaultValue: defaultModel,
 		Get: func(settings config.Settings) (string, bool) {
@@ -44,7 +47,9 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:       "defaults",
 		Key:         "default_auto_level",
+		Type:        "enum",
 		Description: "auto level used when --auto and --config are omitted",
+		Allowed:     []string{"quick", "normal", "deep", "yolo"},
 		Get: func(settings config.Settings) (string, bool) {
 			return settings.DefaultAutoLevel, settings.DefaultAutoLevel != ""
 		},
@@ -63,8 +68,10 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:        "defaults",
 		Key:          "default_topology",
+		Type:         "enum",
 		Description:  "topology used when a YAML config omits topology",
 		DefaultValue: string(types.TopologyRing),
+		Allowed:      []string{"ring", "star", "mesh"},
 		Get: func(settings config.Settings) (string, bool) {
 			return settings.DefaultTopology, settings.DefaultTopology != ""
 		},
@@ -80,6 +87,7 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:       "defaults",
 		Key:         "default_output_dir",
+		Type:        "path",
 		Description: "directory for managed transcript output",
 		DefaultFunc: config.TranscriptStoreDir,
 		Get: func(settings config.Settings) (string, bool) {
@@ -96,6 +104,7 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:        "evidence",
 		Key:          "research_max_sources",
+		Type:         "positive integer",
 		Description:  "maximum web and local context source references",
 		DefaultValue: strconv.Itoa(evidence.DefaultMaxSources),
 		Get: func(settings config.Settings) (string, bool) {
@@ -116,6 +125,7 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:        "evidence",
 		Key:          "context_max_bytes",
+		Type:         "positive integer",
 		Description:  "maximum total bytes of local context",
 		DefaultValue: strconv.FormatInt(evidence.DefaultMaxBytes, 10),
 		Get: func(settings config.Settings) (string, bool) {
@@ -136,6 +146,7 @@ var settingKeyDefs = []settingKeyDef{
 	{
 		Group:        "evidence",
 		Key:          "context_max_depth",
+		Type:         "positive integer",
 		Description:  "maximum directory traversal depth for local context",
 		DefaultValue: strconv.Itoa(evidence.DefaultMaxDepth),
 		Get: func(settings config.Settings) (string, bool) {
@@ -204,6 +215,7 @@ func newConfigInitCommand() *cobra.Command {
 
 func newConfigGetCommand() *cobra.Command {
 	var all bool
+	format := formatText
 	cmd := &cobra.Command{
 		Use:   "get KEY",
 		Short: "Get a global setting",
@@ -218,12 +230,29 @@ func newConfigGetCommand() *cobra.Command {
 			return cobra.ExactArgs(1)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFormat(format); err != nil {
+				return err
+			}
 			settings, err := config.LoadDefaultSettings()
 			if err != nil {
 				return fmt.Errorf("loading settings: %w", err)
 			}
 
 			if all {
+				switch format {
+				case formatJSON:
+					data, err := configAllData(settings)
+					if err != nil {
+						return err
+					}
+					return writeJSON(cmd.OutOrStdout(), "config get --all", data)
+				case formatMarkdown:
+					data, err := configAllData(settings)
+					if err != nil {
+						return err
+					}
+					return writeSettingsMarkdown(cmd.OutOrStdout(), data)
+				}
 				return printAllSettings(cmd.OutOrStdout(), settings)
 			}
 
@@ -240,6 +269,7 @@ func newConfigGetCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "show all effective settings")
+	addFormatFlag(cmd, &format)
 	return cmd
 }
 
@@ -319,34 +349,15 @@ func unknownSettingKey(key string) error {
 }
 
 func printAllSettings(w io.Writer, settings config.Settings) error {
-	path, err := config.SettingsPath()
+	values, path, err := effectiveSettingsRows(settings)
 	if err != nil {
 		return err
 	}
 
-	currentGroup := ""
-	rows := [][]string{{"settings", "path", path, "resolved"}}
-	for _, def := range settingKeyDefs {
-		if def.Group != currentGroup {
-			currentGroup = def.Group
-		}
-
-		value, explicit, err := effectiveSettingValue(def, settings)
-		if err != nil {
-			return err
-		}
-		source := "set"
-		if !explicit {
-			if value == "" {
-				value = "(unset)"
-			} else {
-				source = "default"
-			}
-		}
-		if !explicit && value == "(unset)" {
-			source = "unset"
-		}
-		rows = append(rows, []string{def.Group, def.Key, value, source})
+	rows := make([][]string, 0, len(values)+1)
+	rows = append(rows, []string{"settings", "path", path, "resolved"})
+	for _, value := range values {
+		rows = append(rows, []string{value.Group, value.Key, value.Value, value.Source})
 	}
 	_, err = fmt.Fprintln(w, output.RenderTable("Global Settings", []string{"Group", "Key", "Value", "Source"}, rows, []string{"", "", "", ""}, "5"))
 	return err

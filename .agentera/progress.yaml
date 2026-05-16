@@ -1,4 +1,339 @@
 cycles:
+- number: 60
+  timestamp: "2026-05-16 09:18"
+  type: verification
+  phase: verify
+  what: >-
+    Completed Task 8 plan-level freshness checkpoint for the prime/formatted-inspection plan. Agentera CLI startup and plan state showed
+    Tasks 1-7 complete and Task 8 as the only pending task before closeout; `agentera progress --format json` still returned zero entries,
+    so raw `.agentera/progress.yaml` was used as the progress evidence fallback with that caveat preserved. TODO.md and CHANGELOG.md were
+    reviewed and already accurately reflected the completed `agora prime`, shared formatted inspection outputs, command-contract
+    verification, and remaining deferred work, so no human-facing artifact edits were needed for closeout.
+  commit: none
+  inspiration: >-
+    Task 8 is a freshness and handoff checkpoint only. It must close the plan after verification without changing `.agentera/vision.yaml`,
+    adding a `--json` alias, changing `--context` semantics, altering transcript JSONL storage, or committing changes.
+  discovered: >-
+    The Agentera app is fresh at 2.10.0 via `/home/jgabor/.local/share/agentera`. CLI decision state still carries satisfaction/context
+    review caveats, and retry attempt state is not recorded by the CLI; no final decision satisfaction was inferred. `agentera progress
+    --format json` reported an empty entries list despite raw progress cycles, matching the known progress CLI caveat.
+  verified: >-
+    Full repository verification passed with `go test -count=1 ./...`. Build verification passed with `go build ./...`. Focused
+    command-contract verification passed with `go test -count=1 ./cmd/agora -run 'TestCommandContract|TestEnumRejections|TestReadmeContract'`.
+    Diff hygiene passed with `git diff --check`. Formatted CLI sampling wrote outputs under `/tmp/opencode/agora-task8-samples` for
+    `agora prime`, `agora metadata`, `agora list`, `agora show /tmp/opencode/agora-format-contract.jsonl`, `agora stats
+    /tmp/opencode/agora-format-contract.jsonl`, `agora validate examples/quick-sanity-check.yaml`, and `agora config get --all`, each in
+    text, JSON, and Markdown. JSON samples parsed successfully and agreed with text/Markdown samples on checked command facts: schema
+    version 1, supported formats `text/json/markdown`, show record count 2 with agents `analyst/critic`, stats total turns 2 with one
+    consensus event, valid config status, seven config settings, and list transcript store facts.
+  next: >-
+    Plan is complete after final verification. Handoff report: verified build, tests, command-contract tests, diff hygiene, Agentera CLI
+    state, TODO/CHANGELOG freshness, and representative text/JSON/Markdown inspection outputs. Out of scope remain live `run`/`resume`
+    output formatting, a `--json` alias, named reusable profiles, output themes/palettes, evidence refresh/replay, source allowlists,
+    non-text context support, raw transcript export/schema changes, decision satisfaction review, and CLI retry-state recording. No commit
+    or push was performed.
+  context:
+    intent: implement only Task 8 plan-level freshness checkpoint and closeout
+    constraints: no `.agentera/vision.yaml` edits, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit, preserve unrelated worktree changes
+    scope: .agentera/plan.yaml, .agentera/progress.yaml
+    sampled_outputs: /tmp/opencode/agora-task8-samples
+- number: 59
+  timestamp: "2026-05-16 09:10"
+  type: documentation
+  phase: verify
+  what: >-
+    Completed Task 7 documentation and version update for the prime/formatted-inspection plan. README now documents `agora prime`
+    separately from deliberation `--context PATH`, lists the shared `--format text|json|markdown` selector for every supported
+    inspection surface including `prime`, `metadata`, `list`, `show`, `stats`, `validate`, and `config get --all`, and explains the
+    default text plus non-ANSI JSON/Markdown contract. CHANGELOG records `prime`, formatted inspection output, and command-contract
+    verification. CLI version now follows the feature/minor policy as `0.3.0`. TODO entries for implemented prime, formatted
+    inspection output, and command-contract verification are resolved.
+  commit: none
+  inspiration: >-
+    Task 7 is a documentation/version/TODO closeout for already-implemented Tasks 1-6. It must not implement Task 8 plan-level
+    freshness closeout or change runtime behavior beyond the feature-release version constant.
+  discovered: >-
+    The README CLI reference still omitted `agora prime`, `agora metadata`, and the shared `--format` contract, while TODO still listed
+    prime formatted output, inspection formats, and command-contract verification as open despite completed implementation evidence.
+    Adding README contract markers for the newly documented inspection surfaces required the existing command-contract marker count to
+    be updated from 9 to 11 so README verification stayed aligned with the documented command surface.
+  verified: >-
+    Focused command-contract verification passed with `go test -count=1 ./cmd/agora -run 'TestCommandContract|TestEnumRejections|TestReadmeContract'`.
+    Full repository verification passed with `go test -count=1 ./...`. Version smoke passed with `go run ./cmd/agora --version`, which
+    printed `agora version 0.3.0`. Diff hygiene passed with `git diff --check`. Task 7 was marked complete only after these checks
+    passed; Task 8 remains pending and no freshness closeout was performed.
+  next: >-
+    Task 7 is complete. Task 8 remains pending for a separate plan-level freshness checkpoint. No commit or push was performed.
+  context:
+    intent: implement only Task 7 documentation, version, TODO, and artifact updates
+    constraints: no Task 8 freshness closeout, no runtime behavior changes beyond version constant, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit
+    scope: README.md, CHANGELOG.md, TODO.md, cmd/agora/main.go, cmd/agora/command_contract_test.go, .agentera/docs.yaml, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 58
+  timestamp: "2026-05-16 09:05"
+  type: verification
+  phase: verify
+  what: >-
+    Retried only Task 6 after the AC3 evaluation failure. Command-contract verification now derives the supported command and
+    subcommand tree by walking the live Cobra `rootCmd`, and metadata/prime use the same live tree instead of a separate hand-listed
+    command metadata list.
+  commit: none
+  inspiration: >-
+    The evaluator found that new supported subcommands or flags could pass unless manually added to the old command-contract map or a
+    README marker. The retry keeps the scope limited to Task 6 command-contract verification and does not implement later docs/version
+    or freshness closeout work.
+  discovered: >-
+    `config init` and `config set` were live supported Cobra subcommands but were absent from the canonical contract and metadata
+    command list, so drift such as adding a new `config init` flag would not fail the contract verification.
+  verified: >-
+    AC3 is specifically covered by `go test -count=1 ./cmd/agora -run 'TestCommandContract|TestEnumRejections|TestReadmeContract'`,
+    which now fails if the recursively discovered live Cobra tree differs from the contract commands or if any live command flag differs
+    from the contract. The contract includes `agora config init --force`, `agora config get --all --format`, and `agora config set`;
+    metadata and prime are generated from the same live tree. Proportionality now includes expected-use and failure-path checks for
+    `config init`, `config get --all`, and `config set`. Broader verification passed with `go test -count=1 ./cmd/agora`,
+    `go test -count=1 ./...`, and `git diff --check`.
+  next: >-
+    Task 6 remains complete after the retry. Tasks 7-8 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: retry only Task 6 command-contract verification after AC3 evaluation failure
+    constraints: no later task scope, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit
+    scope: cmd/agora/main.go, cmd/agora/format.go, cmd/agora/command_contract_test.go, .agentera/progress.yaml
+- number: 57
+  timestamp: "2026-05-16 08:58"
+  type: verification
+  phase: verify
+  what: >-
+    Completed Task 6 command-contract verification by adding a focused contract test suite that compares the canonical command
+    contract with live Cobra command flags and metadata output. The check now covers canonical verbs, supported formats, canonical
+    flags, settings keys, enum values, schema versions, prime metadata sections, README contract markers, and expected-use/failure
+    path proportionality for the changed inspection surfaces.
+  commit: none
+  inspiration: >-
+    Task 6 was limited to verification of the Task 1-5 command surface. The implementation uses explicit contract data and hidden
+    README markers rather than fragile prose scraping, and does not add a `--json` alias, change `--context` semantics, alter
+    transcript JSONL storage, or implement Task 7 documentation/version closeout.
+  discovered: >-
+    Existing tests covered many formatted output success and rejection paths, but no single static contract failed when live commands,
+    flags, settings keys, enum values, schema versions, or prime metadata drifted from the intended command surface. README examples
+    also had no explicit contract-checked marker mechanism.
+  verified: >-
+    Focused verification passed with `go test ./cmd/agora -run 'TestCommandContract|TestEnumRejections'`, covering live command and
+    metadata alignment, valid enum exposure on rejection messages, README marker alignment against active command paths and flags, and
+    one expected-use plus one failure-path check for `list`, `stats`, `show`, `validate`, `config get --all`, `metadata`, and `prime`.
+    Broader verification passed with `go test ./...`. Diff hygiene passed with `git diff --check`.
+  next: >-
+    Task 6 is complete. Tasks 7-8 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: implement only Task 6 command-contract verification
+    constraints: no later task scope, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no Task 7 docs/version closeout beyond minimal README contract markers, no commit
+    scope: cmd/agora/command_contract_test.go, README.md, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 56
+  timestamp: "2026-05-16 08:50"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 5 transcript show formatted output. `agora show TRANSCRIPT --format json` now emits a schema-versioned
+    inspection document with document type/version, path, record count, agent list, available cast metadata, ordered presentation
+    records, evidence summaries/references, consensus fields, and an explicit evidence boundary instead of exposing raw JSONL
+    storage records. `agora show TRANSCRIPT --format markdown` now renders the same ordered transcript inspection facts in readable
+    non-ANSI Markdown while preserving the default text renderer and explicit `--format text` behavior.
+  commit: none
+  inspiration: >-
+    Task 5 was limited to transcript `show` formatted output and built on the existing Task 1 format envelope and Task 4 transcript
+    error handling pattern. Later command-contract verification, documentation/version closeout, plan-level freshness checkpoint,
+    `--json` aliases, `--context` semantics, and transcript JSONL storage changes were not implemented.
+  discovered: >-
+    The prior `show --format json` response placed raw `TurnRecord` values under `data.records`, making the output easy to confuse
+    with a JSONL storage replacement and exposing storage-only fields such as tokens/elapsed. Markdown already listed basic records,
+    but did not surface cast metadata or the evidence references-only boundary clearly enough for agents.
+  verified: >-
+    Focused verification passed with `go test ./cmd/agora -run 'TestShowCommand'`, covering default/path/slug text behavior,
+    ordered text transcript rendering, JSON and Markdown inspection success output, cast metadata, evidence summaries and source
+    references, consensus fields, omitted full source contents, and formatted failures for malformed, missing, and empty transcripts.
+    Relevant broader command verification passed with `go test ./cmd/agora`. Full repository verification passed with `go test ./...`.
+    The formatted success test asserts schema-versioned JSON without ANSI, document type `agora.transcript.show`, no raw storage-only
+    `tokens`/`elapsed` fields, no `context_documents` payload, no omitted context document content, ordered records, cast metadata,
+    evidence references, and consensus data. The malformed failure test asserts no partial transcript content is emitted before the
+    structured error document.
+  next: >-
+    Task 5 is complete. Tasks 6-8 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: implement only Task 5 transcript show formatted output
+    constraints: no later task scope, preserve default show text behavior and `--format text`, JSON and Markdown non-ANSI, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit
+    scope: cmd/agora/format.go, cmd/agora/main.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 55
+  timestamp: "2026-05-16 08:42"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 4 transcript list and stats formatted outputs. `agora list --format json|markdown` now reports the transcript
+    store path, transcript count, empty-state boolean, and transcript rows without terminal styling. `agora stats TRANSCRIPT --format
+    json|markdown` retains the aggregate, per-agent, and consensus facts from the text statistics surface, and formatted missing,
+    empty, or malformed transcript failures now write a clear structured error body before returning an unsuccessful command error.
+  commit: none
+  inspiration: >-
+    Task 4 builds on the shared Task 1 format contract while staying limited to transcript list and stats inspection behavior. Later
+    transcript show formatted output, command-contract verification, documentation/version closeout, freshness closeout, `--json` aliases,
+    `--context` semantics, and transcript JSONL storage changes were not implemented.
+  discovered: >-
+    Baseline list formatted output only returned transcript rows and did not expose store-level empty-state facts, while stats formatted
+    failures returned plain errors without a machine-usable JSON or Markdown body. The default text renderers already had the needed
+    success facts and were preserved unchanged.
+  verified: >-
+    Focused verification passed with `go test -count=1 ./cmd/agora -run 'Test(ListCommandFormattedOutputReports(StoreFacts|EmptyStore)|StatsCommandFormattedOutputReports(TranscriptFacts|MachineUsableErrors)|FormatContractAcceptedFormats)'`,
+    covering list JSON/Markdown success facts, list JSON/Markdown empty store output, stats JSON/Markdown aggregate and per-agent facts,
+    and stats JSON/Markdown failure output for malformed or missing transcripts. Broad verification passed with `go test -count=1 ./...`. These
+    tests assert schema-versioned JSON, no ANSI styling, transcript counts and row facts, per-agent statistics, consensus detail, and
+    machine-usable formatted error codes/messages.
+  next: >-
+    Task 4 is complete. Tasks 5-8 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: implement only Task 4 transcript list and stats formatted outputs
+    constraints: no later task scope, preserve default list/stats text behavior, JSON and Markdown non-ANSI, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit
+    scope: cmd/agora/format.go, cmd/agora/main.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 54
+  timestamp: "2026-05-16 08:34"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 3 config and validation formatted outputs. `agora validate CONFIG --format json|markdown` now emits a
+    non-ANSI validation envelope for valid configs and writes structured failure details before returning an unsuccessful exit for
+    invalid configs. `agora config get --all --format json|markdown` now reports every supported setting with redacted effective value,
+    source, type, default/effective-value policy, allowed values, and description.
+  commit: none
+  inspiration: >-
+    Task 3 builds on the shared Task 1 format contract and Task 2 redaction policy. The scope was limited to config and validation
+    surfaces; transcript list/stats/show, command-contract verification, docs/version closeout, `--json` aliases, `--context`
+    semantics, and transcript JSONL storage were left untouched.
+  discovered: >-
+    The baseline formatted validate path only reported success data and returned plain errors for failures, so agents could not parse
+    the failure stage or correction hints. Settings output also had value/source rows but did not expose each setting's type, default
+    policy, or enum values in the effective `config get --all` formatted surfaces.
+  verified: >-
+    Focused verification passed with `go test -count=1 ./cmd/agora -run 'Test(ConfigGetAllFormatted|ValidateFormatted|FormatContract)'`,
+    covering config JSON/Markdown success metadata, invalid config formatted validation failures, valid config formatted summaries,
+    and format rejection. Broad verification passed with `go test -count=1 ./...`. These tests assert JSON validity, absence of ANSI styling,
+    redaction of secret-looking setting values, allowed values for enum settings, and non-empty self-correction detail on validation
+    failure.
+  next: >-
+    Task 3 is complete. Tasks 4-7 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: implement only Task 3 config and validation formatted outputs
+    constraints: no later task scope, preserve default text behavior, JSON and Markdown non-ANSI, no `--json` alias, no `--context` semantic change, no transcript JSONL schema change, preserve conservative redaction, no commit
+    scope: cmd/agora/config_cmd.go, cmd/agora/format.go, cmd/agora/main.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 53
+  timestamp: "2026-05-16 08:27"
+  type: fix
+  phase: verify
+  what: >-
+    Retried only Task 2 after evaluation failure by adding value-based redaction for prime settings output. Prime now redacts
+    secret-looking setting values, including obvious token/key patterns such as `sk-test-secret-token-123`, in the shared settings
+    data used by text, JSON, and Markdown renderers, while preserving ordinary model names and default paths.
+  commit: none
+  inspiration: >-
+    The evaluator found AC5 was only protected by setting-key redaction, so an explicit secret-looking value assigned to
+    `default_model` leaked through every prime format. The retry scope was limited to Task 2 prime redaction and regression coverage;
+    later formatted-output tasks and `--context` semantics were not changed.
+  discovered: >-
+    `redactedSettingValue` only inspected the setting key name. Because `default_model` is not a secret-like key, any token-shaped
+    configured value was emitted unchanged through the single prime data model and therefore leaked consistently across text, JSON,
+    and Markdown.
+  verified: >-
+    AC5 regression coverage now writes `default_model: "sk-test-secret-token-123"` and runs prime in `text`, `json`, and `markdown`,
+    asserting the secret value is absent and `[redacted]` is present in every format. Focused verification passed with
+    `go test -count=1 ./cmd/agora -run 'TestPrime'` and `go test -count=1 ./cmd/agora -run 'TestFormatContract'`. Broad verification
+    passed with `go test -count=1 ./...`.
+  next: >-
+    Task 2 remains complete after retry verification. Tasks 3-7 remain pending and were not implemented or expanded. No commit or
+    push was performed.
+  context:
+    intent: retry only Task 2 prime startup briefing after AC5 redaction failure
+    constraints: no later task behavior, no `--json` alias, no `--context` semantic change, no transcript JSONL schema change, no commit, preserve unrelated worktree changes
+    scope: cmd/agora/format.go, cmd/agora/main_test.go, .agentera/progress.yaml
+- number: 52
+  timestamp: "2026-05-16 08:21"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 2 prime startup briefing by adding the read-only `agora prime` command with default text output plus
+    `--format text|json|markdown` support. Prime now reports Agora-provided CLI operating context for agents, commands, flags,
+    defaults, enum values, settings keys, effective settings with shared redaction policy, transcript metadata, and the boundary
+    between `agora prime` and user-provided deliberation `--context PATH` evidence.
+  commit: none
+  inspiration: >-
+    Task 2 needed a product-facing startup surface built on the Task 1 metadata and format baseline without changing existing command
+    defaults, adding a `--json` alias, changing `--context` semantics, altering transcript JSONL storage, or implementing later rich
+    config/list/stats/show/docs/version tasks.
+  discovered: >-
+    Reusing command metadata directly from `primeCmd` caused a Go initialization cycle because `primeCmd` calls the prime data builder,
+    which calls command metadata. The fix was to describe `agora prime` manually in the metadata list, matching the existing manual
+    `agora metadata` entry, while keeping command/flag/default/enum facts centralized for the rest of the CLI.
+  verified: >-
+    Focused verification passed with `go test -count=1 ./cmd/agora -run 'TestPrime|TestFormatContract'`. Broad verification passed
+    with `go test -count=1 ./...`. CLI smoke verification ran `go run ./cmd/agora prime`, which printed the concise default text
+    briefing and stated prime is CLI operating context, not deliberation evidence; `go run ./cmd/agora prime --format json`, which
+    emitted a schema-versioned non-ANSI JSON envelope with data sections for commands, flags, defaults, enum_values, settings_keys,
+    settings, transcript_metadata, and context_boundary; `go run ./cmd/agora prime --format markdown`, which emitted non-ANSI Markdown
+    sections for context boundary, formats, commands, flags/defaults/enums, settings, effective settings, and transcript metadata; and
+    `go run ./cmd/agora prime --format xml`, which rejected the invalid format and named valid values `text`, `json`, and `markdown`.
+  next: >-
+    Task 2 is complete. Later plan tasks for rich config/validate output, list/stats output, show output, command-contract
+    verification, and docs/version closeout remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: implement only Task 2 prime startup briefing
+    constraints: default prime format is text, JSON and Markdown non-ANSI, no `--json` alias, no `--context` semantic change, prime read-only, no transcript JSONL schema change, no later task scope, no commit
+    scope: cmd/agora/main.go, cmd/agora/format.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
+- number: 51
+  timestamp: "2026-05-16 08:06"
+  type: fix
+  phase: verify
+  what: >-
+    Retried only Task 1 after evaluation failure by making Markdown inspection output carry the same core Task 1 facts as the
+    text/JSON surfaces for transcript `show` and `stats`, and by strengthening format-contract tests for default text preservation
+    and Markdown core-fact coverage.
+  commit: none
+  inspiration: >-
+    The retry scope was limited to the metadata and format contract baseline. Task 2 `prime` remains pending and was not implemented;
+    no `--json` alias, `--context` semantic change, or transcript JSONL storage schema change was introduced.
+  discovered: >-
+    `show --format markdown` was only reporting path, record count, and agents, while omitting the turn records and content present in
+    text/JSON. `stats --format markdown` was only reporting aggregate totals, while omitting per-agent and consensus facts present in
+    text/JSON. The local `agentera` executable was not on PATH (`agentera progress --format json` failed with command not found), so
+    progress was updated directly in the existing YAML shape.
+  verified: >-
+    Focused verification passed with `go test -count=1 ./cmd/agora -run 'TestFormatContract'`. Broad verification passed with
+    `go test -count=1 ./...`. CLI smoke verification passed by creating `/tmp/opencode/agora-format-contract.jsonl` and running
+    `go run ./cmd/agora show /tmp/opencode/agora-format-contract.jsonl --format markdown`, which showed the path, two records,
+    agents `analyst, critic`, ordered record sections, content `answer` and `second answer`, and consensus statement `We agree` with
+    no ANSI styling; `go run ./cmd/agora stats /tmp/opencode/agora-format-contract.jsonl --format markdown`, which showed total turns,
+    total tokens, per-agent facts for analyst and critic, one consensus event, and `We agree` with no ANSI styling; `go run ./cmd/agora
+    config get --all` compared equal to `go run ./cmd/agora config get --all --format text` using `cmp`; and invalid format rejection
+    from `go run ./cmd/agora metadata --format xml` named valid values `text`, `json`, and `markdown`.
+  next: >-
+    Task 1 remains complete after retry verification. Later plan tasks, including `prime`, remain pending. No commit or push was
+    performed, and unrelated TODO/plan diffs were not edited in this retry.
+  context:
+    intent: retry only Task 1 metadata and format contract baseline after evaluation failure
+    constraints: no prime implementation, no `--json` alias, no `--context` semantic changes, no transcript JSONL storage schema changes, no commit, preserve unrelated worktree changes
+    scope: cmd/agora/format.go, cmd/agora/main.go, cmd/agora/main_test.go, .agentera/progress.yaml
+- number: 50
+  timestamp: "2026-05-16 07:57"
+  type: implementation
+  phase: verify
+  what: >-
+    Completed Task 1 metadata and format contract baseline by adding a shared `--format text|json|markdown` contract for the supported inspection surfaces, schema-versioned JSON envelopes, non-ANSI Markdown outputs, and an `agora metadata` inspection surface for live command, flag, default, enum, settings-key, and transcript metadata facts.
+  commit: none
+  inspiration: >-
+    Task 1 is the foundation for later `prime` and richer formatted-output tasks, so the implementation stayed narrow: preserve current default text renderers, validate a common format enum, expose baseline machine-readable metadata, and add contract tests without changing transcript JSONL storage or `--context` semantics.
+  discovered: >-
+    Agora had no existing shared output-format or command-metadata layer. The smallest safe baseline was a CLI-local format helper and metadata command, with existing text renderers retained as the `text` path and JSON/Markdown implemented as unstyled inspection envelopes. Later plan tasks still own rich prime output and deeper per-surface formatted details.
+  verified: >-
+    Verification passed with `go test -count=1 ./cmd/agora -run 'TestFormatContract'`, `go test -count=1 ./...`, and a CLI smoke that ran `go run ./cmd/agora metadata --format json`, `go run ./cmd/agora validate examples/quick-sanity-check.yaml --format markdown`, and an intentional invalid-format rejection for `go run ./cmd/agora metadata --format xml` checked to fail. Added format-contract tests cover accepted formatted output and invalid-format errors for list, stats, show, validate, config get --all, and metadata; JSON assertions require schema_version and no ANSI styling, while Markdown assertions require usable non-ANSI facts.
+  next: >-
+    Task 1 is complete. Task 2 remains pending for `agora prime`; do not infer final decision satisfaction from current orchestration caveats. No commit or push was performed.
+  context:
+    intent: implement only Task 1 metadata and format contract baseline
+    constraints: preserve default text behavior for existing inspection commands, no `--json` alias, no `--context` semantic changes, no transcript JSONL schema changes, no prime command yet, no commit
+    scope: cmd/agora/format.go, cmd/agora/main.go, cmd/agora/config_cmd.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
 - number: 49
   timestamp: "2026-05-07 17:47"
   type: verification

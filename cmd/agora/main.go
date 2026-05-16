@@ -22,11 +22,10 @@ import (
 
 const defaultModel = "opencode-go/deepseek-v4-flash"
 
-var version = "0.2.0"
+var version = "0.3.0"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")
-	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, showCmd, listCmd, configCmd)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -36,6 +35,10 @@ var rootCmd = &cobra.Command{
 	Use:     "agora",
 	Short:   "Agora — Closed-loop multi-agent deliberation system",
 	Version: version,
+}
+
+func init() {
+	rootCmd.AddCommand(runCmd, statsCmd, validateCmd, resumeCmd, showCmd, listCmd, configCmd, metadataCmd, primeCmd)
 }
 
 // --- run ----------------------------------------------------------
@@ -293,48 +296,93 @@ func applyAutoLevelCaps(cmd *cobra.Command, state *types.DeliberationState, caps
 
 // --- stats --------------------------------------------------------
 
+var statsFormat string
+
 var statsCmd = &cobra.Command{
 	Use:   "stats TRANSCRIPT",
 	Short: "Print statistics from a deliberation transcript",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateFormat(statsFormat); err != nil {
+			return err
+		}
 		path, err := resolveTranscriptSource(args[0])
 		if err != nil {
-			return fmt.Errorf("loading transcript: %w", err)
+			loadErr := fmt.Errorf("loading transcript: %w", err)
+			writeFormattedCommandError(cmd, statsFormat, "stats", "Transcript Statistics Error", commandErrorData(args[0], path, "transcript_load_failed", loadErr))
+			return loadErr
 		}
 		records, err := loadTranscriptFile(path)
 		if err != nil {
-			return fmt.Errorf("loading transcript: %w", err)
+			loadErr := fmt.Errorf("loading transcript: %w", err)
+			writeFormattedCommandError(cmd, statsFormat, "stats", "Transcript Statistics Error", commandErrorData(args[0], path, "transcript_load_failed", loadErr))
+			return loadErr
 		}
 		if len(records) == 0 {
-			return fmt.Errorf("transcript empty or invalid")
+			emptyErr := fmt.Errorf("transcript empty or invalid: %s", path)
+			writeFormattedCommandError(cmd, statsFormat, "stats", "Transcript Statistics Error", commandErrorData(args[0], path, "transcript_empty_or_invalid", emptyErr))
+			return emptyErr
 		}
 
 		stats := types.ComputeStats(records)
+		statsData := statsToDict(stats)
+		switch statsFormat {
+		case formatJSON:
+			return writeJSON(cmd.OutOrStdout(), "stats", statsData)
+		case formatMarkdown:
+			return writeMarkdown(cmd.OutOrStdout(), "Transcript Statistics", statsMarkdownRows(statsData))
+		}
 		outMgr := output.NewOutputManager(false)
-		outMgr.PrintStats(statsToDict(stats))
+		outMgr.PrintStats(statsData)
 
 		return nil
 	},
 }
 
+func init() {
+	addFormatFlag(statsCmd, &statsFormat)
+}
+
 // --- show ---------------------------------------------------------
+
+var showFormat string
 
 var showCmd = &cobra.Command{
 	Use:   "show TRANSCRIPT|SLUG",
 	Short: "Show a deliberation transcript",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateFormat(showFormat); err != nil {
+			return err
+		}
 		path, err := resolveTranscriptSource(args[0])
 		if err != nil {
+			if showFormat == formatJSON || showFormat == formatMarkdown {
+				writeFormattedCommandError(cmd, showFormat, "show", "Transcript Error", commandErrorData(args[0], path, "transcript_load_failed", err))
+			}
 			return fmt.Errorf("loading transcript: %w", err)
 		}
 		records, err := loadTranscriptFile(path)
 		if err != nil {
+			if showFormat == formatJSON || showFormat == formatMarkdown {
+				writeFormattedCommandError(cmd, showFormat, "show", "Transcript Error", commandErrorData(args[0], path, "transcript_load_failed", err))
+			}
 			return fmt.Errorf("loading transcript: %w", err)
 		}
 		if len(records) == 0 {
-			return fmt.Errorf("transcript empty: %s", path)
+			err := fmt.Errorf("transcript empty: %s", path)
+			if showFormat == formatJSON || showFormat == formatMarkdown {
+				writeFormattedCommandError(cmd, showFormat, "show", "Transcript Error", commandErrorData(args[0], path, "transcript_empty", err))
+			}
+			return err
+		}
+
+		showData := transcriptShowData(path, records)
+		switch showFormat {
+		case formatJSON:
+			return writeJSON(cmd.OutOrStdout(), "show", showData)
+		case formatMarkdown:
+			return writeTranscriptMarkdown(cmd.OutOrStdout(), showData)
 		}
 
 		output.RenderTranscript(cmd.OutOrStdout(), records)
@@ -342,21 +390,62 @@ var showCmd = &cobra.Command{
 	},
 }
 
+func init() {
+	addFormatFlag(showCmd, &showFormat)
+}
+
 // --- validate -----------------------------------------------------
+
+var validateFormatValue string
 
 var validateCmd = &cobra.Command{
 	Use:   "validate CONFIG|SLUG",
 	Short: "Validate a configuration file",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfigArtifact(args[0])
+		if err := validateFormat(validateFormatValue); err != nil {
+			return err
+		}
+		path, err := resolveConfigArtifact(args[0], configArtifactRoots())
 		if err != nil {
+			if validateFormatValue == formatJSON || validateFormatValue == formatMarkdown {
+				result := validationFailure(args[0], path, err)
+				if validateFormatValue == formatJSON {
+					_ = writeJSON(cmd.OutOrStdout(), "validate", result)
+				} else {
+					_ = writeValidationMarkdown(cmd.OutOrStdout(), "Configuration Invalid", result)
+				}
+			}
 			return fmt.Errorf("ERROR: %w", err)
+		}
+		cfg, err := config.LoadConfig(path)
+		if err != nil {
+			if validateFormatValue == formatJSON || validateFormatValue == formatMarkdown {
+				result := validationFailure(args[0], path, err)
+				if validateFormatValue == formatJSON {
+					_ = writeJSON(cmd.OutOrStdout(), "validate", result)
+				} else {
+					_ = writeValidationMarkdown(cmd.OutOrStdout(), "Configuration Invalid", result)
+				}
+			}
+			return fmt.Errorf("ERROR: %w", err)
+		}
+		result := validationSuccess(args[0], path, cfg)
+
+		switch validateFormatValue {
+		case formatJSON:
+			return writeJSON(cmd.OutOrStdout(), "validate", result)
+		case formatMarkdown:
+			return writeValidationMarkdown(cmd.OutOrStdout(), "Configuration Valid", result)
 		}
 
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderConfigSummary(cfg))
 		return err
 	},
+}
+
+func init() {
+	addFormatFlag(validateCmd, &validateFormatValue)
 }
 
 // --- list ---------------------------------------------------------
@@ -368,12 +457,18 @@ type transcriptEntry struct {
 	turns    int
 }
 
-var listVerbose bool
+var (
+	listVerbose bool
+	listFormat  string
+)
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List managed transcripts",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateFormat(listFormat); err != nil {
+			return err
+		}
 		settings, err := config.LoadDefaultSettings()
 		if err != nil {
 			return fmt.Errorf("loading settings: %w", err)
@@ -390,6 +485,14 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		listData := transcriptListData(dir, entries)
+		switch listFormat {
+		case formatJSON:
+			return writeJSON(cmd.OutOrStdout(), "list", listData)
+		case formatMarkdown:
+			return writeTranscriptListMarkdown(cmd.OutOrStdout(), listData)
+		}
+
 		if len(entries) == 0 {
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderStatus("Managed Transcripts", [][]string{{"Status", "No transcripts found"}}, "6"))
 			return err
@@ -420,6 +523,7 @@ var listCmd = &cobra.Command{
 
 func init() {
 	listCmd.Flags().BoolVarP(&listVerbose, "verbose", "v", false, "Show transcript filenames")
+	addFormatFlag(listCmd, &listFormat)
 }
 
 // --- resume -------------------------------------------------------
