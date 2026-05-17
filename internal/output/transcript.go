@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -29,6 +30,10 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 		record.AgentID = transcriptAgentID(record.AgentID)
 		if transcriptEventRecord(record) {
 			writeLine(w, renderTranscriptEvent(record, i+1))
+			continue
+		}
+		if record.AgentID == "synthesizer" {
+			writeLine(w, renderTranscriptSynthesis(record, i+1))
 			continue
 		}
 
@@ -82,6 +87,50 @@ func transcriptAgentID(agentID string) string {
 
 func transcriptEventRecord(record types.TurnRecord) bool {
 	return strings.TrimSpace(record.AgentID) == "orchestrator" && record.Turn < 0
+}
+
+func renderTranscriptSynthesis(record types.TurnRecord, index int) string {
+	var result map[string]any
+	if err := json.Unmarshal([]byte(record.Content), &result); err != nil {
+		return renderTranscriptEvent(record, index)
+	}
+
+	width := outputWidth()
+	var sections []string
+
+	if rec, ok := result["recommended_decision"]; ok {
+		if s, ok := rec.(string); ok && s != "" {
+			sections = append(sections, renderProseSection("Recommended Decision", s, width, "2"))
+		}
+	}
+
+	if c, ok := result["confidence"]; ok {
+		if s, ok := c.(string); ok {
+			sections = append(sections, drawStructuredTable("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", s}}, []string{"", ""}, width, "6"))
+		}
+	}
+
+	if args, ok := result["key_arguments"]; ok {
+		if list, ok := args.([]any); ok && len(list) > 0 {
+			sections = append(sections, renderListSection("Key Arguments", list, width, "6", "*"))
+		}
+	}
+
+	if agrs, ok := result["points_of_agreement"]; ok {
+		if list, ok := agrs.([]any); ok && len(list) > 0 {
+			sections = append(sections, renderListSection("Points of Agreement", list, width, "2", "[CONSENSUS]"))
+		}
+	}
+
+	if tens, ok := result["unresolved_tensions"]; ok {
+		if list, ok := tens.([]any); ok && len(list) > 0 {
+			sections = append(sections, renderListSection("Unresolved Tensions", list, width, "3", "[WARNING]"))
+		}
+	}
+
+	body := strings.Join(sections, "\n")
+	title := "Synthesis"
+	return theaterPanel(title, body, width, "6")
 }
 
 func renderTranscriptEvent(record types.TurnRecord, index int) string {

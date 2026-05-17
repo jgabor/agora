@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -154,7 +155,9 @@ var runCmd = &cobra.Command{
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
-		tm.SetMetadata(types.NewTranscriptMetadata(cfg))
+		meta := types.NewTranscriptMetadata(cfg)
+		meta.ID = generateTranscriptID()
+		tm.SetMetadata(meta)
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
 		runner := agent.NewAgentRunner(runDryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
@@ -451,6 +454,7 @@ func init() {
 // --- list ---------------------------------------------------------
 
 type transcriptEntry struct {
+	id       int
 	date     time.Time
 	slug     string
 	filename string
@@ -498,21 +502,22 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		headers := []string{"Date", "Turns", "Slug"}
-		aligns := []string{"", "right", ""}
+		headers := []string{"#", "Date", "Turns", "Slug"}
+		aligns := []string{"right", "", "right", ""}
 		if listVerbose {
-			headers = []string{"Date", "Turns", "Transcript"}
+			headers = []string{"#", "Date", "Turns", "Transcript"}
 		}
 
 		rows := make([][]string, 0, len(entries))
 		for _, entry := range entries {
 			row := []string{
+				fmt.Sprintf("%d", entry.id),
 				entry.date.Format("2006-01-02 15:04:05"),
 				fmt.Sprintf("%d", entry.turns),
 				entry.slug,
 			}
 			if listVerbose {
-				row[2] = entry.slug + "\n" + entry.filename
+				row[3] = entry.slug + "\n" + entry.filename
 			}
 			rows = append(rows, row)
 		}
@@ -668,7 +673,9 @@ var resumeCmd = &cobra.Command{
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
-		tm.SetMetadata(types.NewTranscriptMetadata(cfg))
+		meta := types.NewTranscriptMetadata(cfg)
+		meta.ID = generateTranscriptID()
+		tm.SetMetadata(meta)
 		if _, err := tm.LoadExisting(); err != nil {
 			return fmt.Errorf("loading existing output transcript: %w", err)
 		}
@@ -792,6 +799,10 @@ func resolveTranscriptOutput(cmd *cobra.Command, currentOutput, topic string) (s
 	return config.TranscriptOutputPath(topic, settings, time.Now())
 }
 
+func generateTranscriptID() int {
+	return int(time.Now().UnixMilli())*1000 + rand.Intn(1000)
+}
+
 func listTranscriptEntries(dir string) ([]transcriptEntry, error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -813,6 +824,9 @@ func listTranscriptEntries(dir string) ([]transcriptEntry, error) {
 		records, err := loadTranscriptFile(filepath.Join(dir, file.Name()))
 		if err == nil {
 			entry.turns = len(records)
+			if meta := transcriptMetadataFromRecords(records); meta != nil && meta.ID > 0 {
+				entry.id = meta.ID
+			}
 		}
 		entries = append(entries, entry)
 	}
@@ -823,6 +837,13 @@ func listTranscriptEntries(dir string) ([]transcriptEntry, error) {
 		}
 		return entries[i].date.After(entries[j].date)
 	})
+	nextID := 1
+	for i := range entries {
+		if entries[i].id == 0 {
+			entries[i].id = nextID
+		}
+		nextID++
+	}
 	return entries, nil
 }
 

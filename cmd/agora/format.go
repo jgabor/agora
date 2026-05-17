@@ -207,6 +207,7 @@ func writeSettingsMarkdown(w io.Writer, data map[string]any) error {
 }
 
 type transcriptEntryOutput struct {
+	ID       int    `json:"id"`
 	Date     string `json:"date"`
 	Turns    int    `json:"turns"`
 	Slug     string `json:"slug"`
@@ -224,6 +225,7 @@ func transcriptEntriesOutput(entries []transcriptEntry) []transcriptEntryOutput 
 	out := make([]transcriptEntryOutput, 0, len(entries))
 	for _, entry := range entries {
 		out = append(out, transcriptEntryOutput{
+			ID:       entry.id,
 			Date:     entry.date.Format("2006-01-02 15:04:05"),
 			Turns:    entry.turns,
 			Slug:     entry.slug,
@@ -257,10 +259,10 @@ func writeTranscriptListMarkdown(w io.Writer, data transcriptListOutput) error {
 		return err
 	}
 	fmt.Fprintln(&sb)
-	fmt.Fprintln(&sb, "| Date | Turns | Slug | Filename |")
-	fmt.Fprintln(&sb, "| --- | ---: | --- | --- |")
+	fmt.Fprintln(&sb, "| # | Date | Turns | Slug | Filename |")
+	fmt.Fprintln(&sb, "| ---: | --- | ---: | --- | --- |")
 	for _, entry := range data.Transcripts {
-		fmt.Fprintf(&sb, "| %s | %d | %s | `%s` |\n", entry.Date, entry.Turns, entry.Slug, entry.Filename)
+		fmt.Fprintf(&sb, "| %d | %s | %d | %s | `%s` |\n", entry.ID, entry.Date, entry.Turns, entry.Slug, entry.Filename)
 	}
 	_, err := fmt.Fprint(w, sb.String())
 	return err
@@ -480,6 +482,10 @@ func writeTranscriptMarkdown(w io.Writer, data transcriptShowOutput) error {
 	fmt.Fprintln(&sb)
 	fmt.Fprintln(&sb, "## Records")
 	for _, record := range data.Records {
+		if record.AgentID == "synthesizer" {
+			writeTranscriptSynthesisMarkdown(&sb, record)
+			continue
+		}
 		fmt.Fprintf(&sb, "\n### Record %d\n\n", record.RecordIndex)
 		fmt.Fprintf(&sb, "- **Turn:** %d\n", record.Turn)
 		fmt.Fprintf(&sb, "- **Agent:** %s\n", record.AgentID)
@@ -512,6 +518,53 @@ func writeTranscriptMarkdown(w io.Writer, data transcriptShowOutput) error {
 	}
 	_, err := fmt.Fprint(w, sb.String())
 	return err
+}
+
+func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptRecordOutput) {
+	var result map[string]any
+	if err := json.Unmarshal([]byte(record.Content), &result); err != nil {
+		fmt.Fprintf(sb, "- **Synthesis:** %s\n", record.Content)
+		return
+	}
+	fmt.Fprintf(sb, "\n### Synthesis\n\n")
+	fmt.Fprintf(sb, "- **Record:** %d\n", record.RecordIndex)
+	if rec, ok := result["recommended_decision"]; ok {
+		if s, ok := rec.(string); ok && s != "" {
+			fmt.Fprintf(sb, "- **Recommended Decision:** %s\n", s)
+		}
+	}
+	if c, ok := result["confidence"]; ok {
+		if s, ok := c.(string); ok {
+			fmt.Fprintf(sb, "- **Confidence:** %s\n", s)
+		}
+	}
+	if args, ok := result["key_arguments"]; ok {
+		if list, ok := args.([]any); ok && len(list) > 0 {
+			fmt.Fprintln(sb)
+			fmt.Fprintln(sb, "### Key Arguments")
+			for _, arg := range list {
+				fmt.Fprintf(sb, "- %s\n", fmt.Sprint(arg))
+			}
+		}
+	}
+	if agrs, ok := result["points_of_agreement"]; ok {
+		if list, ok := agrs.([]any); ok && len(list) > 0 {
+			fmt.Fprintln(sb)
+			fmt.Fprintln(sb, "### Points of Agreement")
+			for _, arg := range list {
+				fmt.Fprintf(sb, "- %s\n", fmt.Sprint(arg))
+			}
+		}
+	}
+	if tens, ok := result["unresolved_tensions"]; ok {
+		if list, ok := tens.([]any); ok && len(list) > 0 {
+			fmt.Fprintln(sb)
+			fmt.Fprintln(sb, "### Unresolved Tensions")
+			for _, arg := range list {
+				fmt.Fprintf(sb, "- %s\n", fmt.Sprint(arg))
+			}
+		}
+	}
 }
 
 func transcriptMetadataFromRecords(records []types.TurnRecord) *types.TranscriptMetadata {

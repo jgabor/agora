@@ -2,6 +2,7 @@
 package orchestrator
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -178,7 +179,17 @@ func (o *Orchestrator) Synthesize() map[string]any {
 	}
 	stop := o.activity("Synthesis")
 	defer stop()
-	return synthesis.Synthesize(o.runner, o.transcript.Records(), o.state.Topic, o.synthesizeModel())
+	result := synthesis.Synthesize(o.runner, o.transcript.Records(), o.state.Topic, o.synthesizeModel())
+
+	content, _ := json.Marshal(result)
+	_ = o.transcript.Append(types.TurnRecord{
+		AgentID:   "synthesizer",
+		Timestamp: float64(time.Now().UnixNano()) / 1e9,
+		Content:   string(content),
+	})
+	_ = o.transcript.WriteAll()
+
+	return result
 }
 
 // synthesizeModel returns the model to use for synthesis (explicit override or first agent's model).

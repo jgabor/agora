@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jgabor/agora/internal/config"
@@ -31,6 +32,12 @@ func resolveTranscriptArtifact(input, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	if id, err := strconv.Atoi(input); err == nil && id >= 1 && id <= len(entries) {
+		entry := entries[id-1]
+		return filepath.Join(dir, entry.filename), nil
+	}
+
 	for _, tier := range []artifactMatchTier{artifactMatchExact, artifactMatchPrefix, artifactMatchSubstring} {
 		for _, entry := range entries {
 			if transcriptEntryMatches(entry, input, tier) {

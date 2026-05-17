@@ -114,6 +114,7 @@ type CastMember struct {
 // TranscriptMetadata is written into the first transcript record so replay can
 // render the original cast without reloading the config file.
 type TranscriptMetadata struct {
+	ID            int                 `yaml:"id,omitempty" json:"id,omitempty"`
 	SchemaVersion int                 `yaml:"schema_version" json:"schema_version"`
 	Cast          []CastMember        `yaml:"cast" json:"cast"`
 	Config        *DeliberationConfig `yaml:"config" json:"config"`
