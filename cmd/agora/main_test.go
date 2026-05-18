@@ -665,10 +665,10 @@ func TestResolveTranscriptOutputKeepsExplicitOutput(t *testing.T) {
 
 func TestResearchOverridesCapturesRepeatedContext(t *testing.T) {
 	cmd := &cobra.Command{}
-	runContext = nil
+	runFlags.Context = nil
 	cmd.Flags().Bool("research", false, "Research")
 	cmd.Flags().Bool("no-research", false, "No research")
-	cmd.Flags().StringArrayVar(&runContext, "context", nil, "Context")
+	cmd.Flags().StringArrayVar(&runFlags.Context, "context", nil, "Context")
 	if err := cmd.Flags().Set("context", "README.md"); err != nil {
 		t.Fatalf("set first context: %v", err)
 	}
@@ -688,10 +688,10 @@ func TestResearchOverridesCapturesRepeatedContext(t *testing.T) {
 
 func TestResearchOverridesNoResearchDisablesConfigResearch(t *testing.T) {
 	cmd := &cobra.Command{}
-	runContext = nil
+	runFlags.Context = nil
 	cmd.Flags().Bool("research", false, "Research")
 	cmd.Flags().Bool("no-research", false, "No research")
-	cmd.Flags().StringArrayVar(&runContext, "context", nil, "Context")
+	cmd.Flags().StringArrayVar(&runFlags.Context, "context", nil, "Context")
 	if err := cmd.Flags().Set("no-research", "true"); err != nil {
 		t.Fatalf("set no-research: %v", err)
 	}
@@ -707,10 +707,10 @@ func TestResearchOverridesNoResearchDisablesConfigResearch(t *testing.T) {
 
 func TestRunEvidenceOverridesAddsAutoDefaults(t *testing.T) {
 	cmd := &cobra.Command{}
-	runContext = nil
+	runFlags.Context = nil
 	cmd.Flags().Bool("research", false, "Research")
 	cmd.Flags().Bool("no-research", false, "No research")
-	cmd.Flags().StringArrayVar(&runContext, "context", nil, "Context")
+	cmd.Flags().StringArrayVar(&runFlags.Context, "context", nil, "Context")
 
 	overrides := runEvidenceOverrides(cmd, true, types.AutoNormal)
 
@@ -1167,7 +1167,7 @@ func TestRunCommandDefaultShowsResponseAndQuietHidesIt(t *testing.T) {
 	restore()
 
 	restore = configureRunGlobals(configPath, filepath.Join(dir, "run-quiet.jsonl"))
-	runQuiet = true
+	runFlags.Quiet = true
 	quiet := captureStdout(t, func() {
 		if err := runCmd.RunE(artifactCommand(t, filepath.Join(dir, "run-quiet.jsonl")), nil); err != nil {
 			t.Fatalf("run quiet: %v", err)
@@ -1388,7 +1388,7 @@ func TestResumeCommandDefaultShowsResponseAndVerboseAddsDiagnostics(t *testing.T
 	t.Chdir(dir)
 
 	restore := configureResumeGlobals(configPath, source, filepath.Join(dir, "resume-normal.jsonl"))
-	resumeMaxTurns = 1
+	resumeFlags.MaxTurns = 1
 	normal := captureStdout(t, func() {
 		if err := resumeCmd.RunE(artifactCommand(t, filepath.Join(dir, "resume-normal.jsonl")), nil); err != nil {
 			t.Fatalf("resume normal: %v", err)
@@ -1397,8 +1397,8 @@ func TestResumeCommandDefaultShowsResponseAndVerboseAddsDiagnostics(t *testing.T
 	restore()
 
 	restore = configureResumeGlobals(configPath, source, filepath.Join(dir, "resume-verbose.jsonl"))
-	resumeMaxTurns = 1
-	resumeVerbose = true
+	resumeFlags.MaxTurns = 1
+	resumeFlags.Verbose = true
 	verbose := captureStdout(t, func() {
 		if err := resumeCmd.RunE(artifactCommand(t, filepath.Join(dir, "resume-verbose.jsonl")), nil); err != nil {
 			t.Fatalf("resume verbose: %v", err)
@@ -1834,9 +1834,9 @@ func TestRunCommandRejectsQuietVerboseConflict(t *testing.T) {
 	writeSettings(t, "")
 	restore := configureRunGlobals("", filepath.Join(dir, "run.jsonl"))
 	defer restore()
-	runAuto = "quick"
-	runQuiet = true
-	runVerbose = true
+	runFlags.Auto = "quick"
+	runFlags.Quiet = true
+	runFlags.Verbose = true
 
 	err := runCmd.PreRunE(outputModeCommand(t), nil)
 	if err == nil || !strings.Contains(err.Error(), "cannot use --quiet and --verbose together") {
@@ -1849,9 +1849,9 @@ func TestResumeCommandRejectsQuietVerboseConflict(t *testing.T) {
 	writeSettings(t, "")
 	restore := configureResumeGlobals("", filepath.Join(dir, "source.jsonl"), filepath.Join(dir, "resume.jsonl"))
 	defer restore()
-	resumeAuto = "quick"
-	resumeQuiet = true
-	resumeVerbose = true
+	resumeFlags.Auto = "quick"
+	resumeFlags.Quiet = true
+	resumeFlags.Verbose = true
 
 	err := resumeCmd.PreRunE(outputModeCommand(t), []string{filepath.Join(dir, "source.jsonl")})
 	if err == nil || !strings.Contains(err.Error(), "cannot use --quiet and --verbose together") {
@@ -2103,66 +2103,66 @@ func assertJSONNoANSI(t *testing.T, out string) {
 }
 
 func configureRunGlobals(configPath, outputPath string) func() {
-	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := runConfig, runTopic, runTimeLimit, runWindow, runMaxTurns, runOutput
-	oldVerbose, oldQuiet, oldBudget, oldBudgetFlag, oldSynthesize, oldFullContext := runVerbose, runQuiet, runBudget, runBudgetFlag, runSynthesize, runFullContext
-	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldContext := runDryRun, runAuto, runModel, runYes, runResearch, runNoResearch, runContext
+	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output
+	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext := runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext
+	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldContext := runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.Context
 
-	runConfig = configPath
-	runTopic = "artifact resolution"
-	runTimeLimit = 60
-	runWindow = 2
-	runMaxTurns = 1
-	runOutput = outputPath
-	runVerbose = false
-	runQuiet = false
-	runBudget = 0
-	runBudgetFlag = false
+	runFlags.Config = configPath
+	runFlags.Topic = "artifact resolution"
+	runFlags.TimeLimit = 60
+	runFlags.Window = 2
+	runFlags.MaxTurns = 1
+	runFlags.Output = outputPath
+	runFlags.Verbose = false
+	runFlags.Quiet = false
+	runFlags.Budget = 0
+	runFlags.BudgetSet = false
 	runSynthesize = false
-	runFullContext = false
-	runDryRun = true
-	runAuto = ""
-	runModel = defaultModel
-	runYes = true
-	runResearch = false
-	runNoResearch = false
-	runContext = nil
+	runFlags.FullContext = false
+	runFlags.DryRun = true
+	runFlags.Auto = ""
+	runFlags.Model = defaultModel
+	runFlags.Yes = true
+	runFlags.Research = false
+	runFlags.NoResearch = false
+	runFlags.Context = nil
 
 	return func() {
-		runConfig, runTopic, runTimeLimit, runWindow, runMaxTurns, runOutput = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
-		runVerbose, runQuiet, runBudget, runBudgetFlag, runSynthesize, runFullContext = oldVerbose, oldQuiet, oldBudget, oldBudgetFlag, oldSynthesize, oldFullContext
-		runDryRun, runAuto, runModel, runYes, runResearch, runNoResearch, runContext = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldContext
+		runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
+		runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext
+		runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.Context = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldContext
 	}
 }
 
 func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
-	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := resumeConfig, resumeTopic, resumeTimeLimit, resumeWindow, resumeMaxTurns, resumeOutput
-	oldVerbose, oldQuiet, oldBudget, oldBudgetFlag, oldFullContext, oldDryRun := resumeVerbose, resumeQuiet, resumeBudget, resumeBudgetFlag, resumeFullContext, resumeDryRun
-	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldContext := resumeAuto, resumeModel, resumeYes, resumeFile, resumeResearch, resumeNoResearch, resumeContext
+	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output
+	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun := resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun
+	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldContext := resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.Context
 
-	resumeConfig = configPath
-	resumeTopic = "artifact resolution"
-	resumeTimeLimit = 60
-	resumeWindow = 2
-	resumeMaxTurns = 0
-	resumeOutput = outputPath
-	resumeVerbose = false
-	resumeQuiet = false
-	resumeBudget = 0
-	resumeBudgetFlag = false
-	resumeFullContext = false
-	resumeDryRun = true
-	resumeAuto = ""
-	resumeModel = defaultModel
-	resumeYes = true
+	resumeFlags.Config = configPath
+	resumeFlags.Topic = "artifact resolution"
+	resumeFlags.TimeLimit = 60
+	resumeFlags.Window = 2
+	resumeFlags.MaxTurns = 0
+	resumeFlags.Output = outputPath
+	resumeFlags.Verbose = false
+	resumeFlags.Quiet = false
+	resumeFlags.Budget = 0
+	resumeFlags.BudgetSet = false
+	resumeFlags.FullContext = false
+	resumeFlags.DryRun = true
+	resumeFlags.Auto = ""
+	resumeFlags.Model = defaultModel
+	resumeFlags.Yes = true
 	resumeFile = sourcePath
-	resumeResearch = false
-	resumeNoResearch = false
-	resumeContext = nil
+	resumeFlags.Research = false
+	resumeFlags.NoResearch = false
+	resumeFlags.Context = nil
 
 	return func() {
-		resumeConfig, resumeTopic, resumeTimeLimit, resumeWindow, resumeMaxTurns, resumeOutput = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
-		resumeVerbose, resumeQuiet, resumeBudget, resumeBudgetFlag, resumeFullContext, resumeDryRun = oldVerbose, oldQuiet, oldBudget, oldBudgetFlag, oldFullContext, oldDryRun
-		resumeAuto, resumeModel, resumeYes, resumeFile, resumeResearch, resumeNoResearch, resumeContext = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldContext
+		resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
+		resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun
+		resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.Context = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldContext
 	}
 }
 
@@ -2253,10 +2253,10 @@ func TestRunCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
 	restore := configureRunGlobals("", filepath.Join(dir, "run.jsonl"))
 	defer restore()
 
-	runAuto = "quick"
-	runTopic = "test topic"
-	runYes = false
-	runDryRun = false
+	runFlags.Auto = "quick"
+	runFlags.Topic = "test topic"
+	runFlags.Yes = false
+	runFlags.DryRun = false
 
 	cmd := artifactCommand(t, filepath.Join(dir, "run.jsonl"))
 	err := runCmd.RunE(cmd, nil)
@@ -2283,10 +2283,10 @@ func TestResumeCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
 	restore := configureResumeGlobals("", filepath.Join(dir, "source.jsonl"), filepath.Join(dir, "resume.jsonl"))
 	defer restore()
 
-	resumeAuto = "quick"
-	resumeTopic = "test topic"
-	resumeYes = false
-	resumeDryRun = false
+	resumeFlags.Auto = "quick"
+	resumeFlags.Topic = "test topic"
+	resumeFlags.Yes = false
+	resumeFlags.DryRun = false
 
 	cmd := artifactCommand(t, filepath.Join(dir, "resume.jsonl"))
 	err := resumeCmd.RunE(cmd, nil)

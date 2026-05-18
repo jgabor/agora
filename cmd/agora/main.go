@@ -44,26 +44,42 @@ func init() {
 
 // --- run ----------------------------------------------------------
 
+type runFlagValues struct {
+	Config      string
+	Topic       string
+	TimeLimit   int
+	Window      int
+	MaxTurns    int
+	Output      string
+	Verbose     bool
+	Quiet       bool
+	Budget      float64
+	BudgetSet   bool // true when --budget was explicitly passed
+	FullContext bool
+	DryRun      bool
+	Auto        string
+	Model       string
+	Yes         bool
+	Research    bool
+	NoResearch  bool
+	Context     []string // local text context paths (repeatable)
+}
+
 var (
-	runConfig      string
-	runTopic       string
-	runTimeLimit   int = 60
-	runWindow      int = 2
-	runMaxTurns    int = 10
-	runOutput      string
-	runVerbose     bool
-	runQuiet       bool
-	runBudget      float64
-	runBudgetFlag  bool
-	runSynthesize  bool
-	runFullContext bool
-	runDryRun      bool
-	runAuto        string
-	runModel       string = defaultModel
-	runYes         bool
-	runResearch    bool
-	runNoResearch  bool
-	runContext     []string
+	runFlags = runFlagValues{
+		TimeLimit: 60,
+		Window:    2,
+		MaxTurns:  10,
+		Model:     defaultModel,
+	}
+	resumeFlags = runFlagValues{
+		TimeLimit: 60,
+		Window:    2,
+		MaxTurns:  10,
+		Model:     defaultModel,
+	}
+	runSynthesize bool
+	resumeFile    string
 )
 
 var runCmd = &cobra.Command{
@@ -73,30 +89,30 @@ var runCmd = &cobra.Command{
 		var cfg *types.DeliberationConfig
 		var autoLevel types.AutoLevel
 		var levelCaps types.LevelCaps
-		autoMode := runAuto != ""
-		outputPath, err := resolveTranscriptOutput(cmd, runOutput, runTopic)
+		autoMode := runFlags.Auto != ""
+		outputPath, err := resolveTranscriptOutput(cmd, runFlags.Output, runFlags.Topic)
 		if err != nil {
 			return err
 		}
 
 		if autoMode {
-			level, err := types.ParseAutoLevel(runAuto)
+			level, err := types.ParseAutoLevel(runFlags.Auto)
 			if err != nil {
 				return err
 			}
 			autoLevel = level
 			levelCaps = types.CapsForLevel(level)
-			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
+			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 
-			if runDryRun {
-				cfg, err = autogen.GenerateDryRunConfig(runTopic, level, runModel)
+			if runFlags.DryRun {
+				cfg, err = autogen.GenerateDryRunConfig(runFlags.Topic, level, runFlags.Model)
 				if err != nil {
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			} else {
 				runner := agent.NewAgentRunner(false)
 				stop := outMgr.Activity("Config generation")
-				cfg, err = autogen.GenerateConfig(runTopic, level, runModel, runner)
+				cfg, err = autogen.GenerateConfig(runFlags.Topic, level, runFlags.Model, runner)
 				stop()
 				if err != nil {
 					return fmt.Errorf("auto config generation: %w", err)
@@ -105,11 +121,11 @@ var runCmd = &cobra.Command{
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
-			if err := requireAutoApprovalForNonTTY(runYes, runDryRun); err != nil {
+			if err := requireAutoApprovalForNonTTY(runFlags.Yes, runFlags.DryRun); err != nil {
 				return err
 			}
 
-			if !runYes {
+			if !runFlags.Yes {
 				if !confirmProceed() {
 					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
 					return nil
@@ -117,7 +133,7 @@ var runCmd = &cobra.Command{
 			}
 		} else {
 			var err error
-			cfg, err = loadConfigArtifact(runConfig)
+			cfg, err = loadConfigArtifact(runFlags.Config)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -131,8 +147,8 @@ var runCmd = &cobra.Command{
 		defer readOnlyCleanup()
 
 		var budget *float64
-		if runBudgetFlag {
-			budget = &runBudget
+		if runFlags.BudgetSet {
+			budget = &runFlags.Budget
 		}
 
 		settings, err := config.LoadDefaultSettings()
@@ -144,12 +160,12 @@ var runCmd = &cobra.Command{
 
 		state := &types.DeliberationState{
 			Config:      cfg,
-			Topic:       runTopic,
-			Window:      runWindow,
-			MaxTurns:    runMaxTurns,
-			TimeLimit:   runTimeLimit,
+			Topic:       runFlags.Topic,
+			Window:      runFlags.Window,
+			MaxTurns:    runFlags.MaxTurns,
+			TimeLimit:   runFlags.TimeLimit,
 			Budget:      budget,
-			FullContext: runFullContext,
+			FullContext: runFlags.FullContext,
 			Evidence:    evidenceRequest,
 		}
 
@@ -162,8 +178,8 @@ var runCmd = &cobra.Command{
 		meta := types.NewTranscriptMetadata(cfg)
 		meta.ID = generateTranscriptID()
 		tm.SetMetadata(meta)
-		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runQuiet, runVerbose))
-		runner := agent.NewAgentRunner(runDryRun)
+		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
+		runner := agent.NewAgentRunner(runFlags.DryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 		orch.OnEvidence(outMgr.EvidenceSummary)
@@ -195,55 +211,39 @@ var runCmd = &cobra.Command{
 }
 
 func init() {
-	runCmd.Flags().StringVarP(&runConfig, "config", "c", "", "Path to YAML agent configuration file")
-	runCmd.Flags().StringVarP(&runTopic, "topic", "t", "", "Topic or goal for deliberation")
-	runCmd.Flags().IntVarP(&runTimeLimit, "time", "T", 60, "Time limit in seconds")
-	runCmd.Flags().IntVarP(&runWindow, "window", "w", 2, "Number of predecessor messages each agent sees")
-	runCmd.Flags().IntVarP(&runMaxTurns, "max-turns", "m", 10, "Maximum total turns")
-	runCmd.Flags().StringVarP(&runOutput, "output", "o", "", "Path to write the JSONL transcript")
-	runCmd.Flags().BoolVarP(&runVerbose, "verbose", "v", false, "Print response bodies plus additional live diagnostics")
-	runCmd.Flags().BoolVarP(&runQuiet, "quiet", "q", false, "Suppress live response bodies and show metadata/progress only")
-	runCmd.Flags().Float64Var(&runBudget, "budget", 0, "Cost cap in dollars")
+	sharedRunFlags(runCmd, "run")
 	runCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
-	runCmd.Flags().BoolVar(&runFullContext, "full-context", false, "Show last K messages from ALL agents")
-	runCmd.Flags().BoolVar(&runDryRun, "dry-run", false, "Run with simulated agent responses")
-	runCmd.Flags().StringVar(&runAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
-	runCmd.Flags().StringVarP(&runModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
-	runCmd.Flags().BoolVar(&runYes, "yes", false, "Skip preview confirmation prompt")
-	runCmd.Flags().BoolVar(&runResearch, "research", false, "Enable topic-inferred web research before deliberation")
-	runCmd.Flags().BoolVar(&runNoResearch, "no-research", false, "Disable config-enabled web research for this run")
-	runCmd.Flags().StringArrayVar(&runContext, "context", nil, "Local text context path to include before deliberation (repeatable)")
 
 	_ = runCmd.MarkFlagRequired("topic")
 
 	runCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		runBudgetFlag = cmd.Flags().Changed("budget")
-		if runQuiet && runVerbose {
+		runFlags.BudgetSet = cmd.Flags().Changed("budget")
+		if runFlags.Quiet && runFlags.Verbose {
 			return fmt.Errorf("cannot use --quiet and --verbose together")
 		}
 		if cmd.Flags().Changed("research") && cmd.Flags().Changed("no-research") {
 			return fmt.Errorf("cannot use --research and --no-research together")
 		}
-		if err := applySettingsDefaults(cmd, &runModel, &runAuto); err != nil {
+		if err := applySettingsDefaults(cmd, &runFlags.Model, &runFlags.Auto); err != nil {
 			return err
 		}
 
-		autoSet := runAuto != ""
-		configSet := runConfig != ""
+		autoSet := runFlags.Auto != ""
+		configSet := runFlags.Config != ""
 
 		if autoSet && configSet {
 			return fmt.Errorf("cannot use --auto and --config together")
 		}
 
 		if autoSet {
-			level, err := types.ParseAutoLevel(runAuto)
+			level, err := types.ParseAutoLevel(runFlags.Auto)
 			if err != nil {
 				return err
 			}
 			if level == types.AutoOff {
 				return fmt.Errorf("--auto off is not a valid mode; omit --auto to run with a config file")
 			}
-			if runTopic == "" {
+			if runFlags.Topic == "" {
 				return fmt.Errorf("--topic is required with --auto")
 			}
 		} else {
@@ -271,7 +271,7 @@ func researchOverrides(cmd *cobra.Command) evidence.Overrides {
 	return evidence.Overrides{
 		Research:     research,
 		ContextSet:   cmd.Flags().Changed("context"),
-		ContextPaths: append([]string(nil), runContext...),
+		ContextPaths: append([]string(nil), runFlags.Context...),
 	}
 }
 
@@ -537,28 +537,6 @@ func init() {
 
 // --- resume -------------------------------------------------------
 
-var (
-	resumeConfig      string
-	resumeTopic       string
-	resumeTimeLimit   int = 60
-	resumeWindow      int = 2
-	resumeMaxTurns    int = 10
-	resumeOutput      string
-	resumeVerbose     bool
-	resumeQuiet       bool
-	resumeBudget      float64
-	resumeBudgetFlag  bool
-	resumeFullContext bool
-	resumeDryRun      bool
-	resumeAuto        string
-	resumeModel       string = defaultModel
-	resumeYes         bool
-	resumeFile        string
-	resumeResearch    bool
-	resumeNoResearch  bool
-	resumeContext     []string
-)
-
 var resumeCmd = &cobra.Command{
 	Use:   "resume [TRANSCRIPT|SLUG]",
 	Short: "Continue deliberation from an existing transcript",
@@ -575,33 +553,33 @@ var resumeCmd = &cobra.Command{
 		return nil
 	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		resumeBudgetFlag = cmd.Flags().Changed("budget")
-		if resumeQuiet && resumeVerbose {
+		resumeFlags.BudgetSet = cmd.Flags().Changed("budget")
+		if resumeFlags.Quiet && resumeFlags.Verbose {
 			return fmt.Errorf("cannot use --quiet and --verbose together")
 		}
 		if resumeEvidenceRequestChanged(cmd) {
 			return fmt.Errorf("resume cannot change research or context evidence; existing transcript evidence is reused")
 		}
-		if err := applySettingsDefaults(cmd, &resumeModel, &resumeAuto); err != nil {
+		if err := applySettingsDefaults(cmd, &resumeFlags.Model, &resumeFlags.Auto); err != nil {
 			return err
 		}
 
-		autoSet := resumeAuto != ""
-		configSet := resumeConfig != ""
+		autoSet := resumeFlags.Auto != ""
+		configSet := resumeFlags.Config != ""
 
 		if autoSet && configSet {
 			return fmt.Errorf("cannot use --auto and --config together")
 		}
 
 		if autoSet {
-			level, err := types.ParseAutoLevel(resumeAuto)
+			level, err := types.ParseAutoLevel(resumeFlags.Auto)
 			if err != nil {
 				return err
 			}
 			if level == types.AutoOff {
 				return fmt.Errorf("--auto off is not a valid mode; omit --auto to run with a config file")
 			}
-			if resumeTopic == "" {
+			if resumeFlags.Topic == "" {
 				return fmt.Errorf("--topic is required with --auto")
 			}
 		} else {
@@ -615,8 +593,8 @@ var resumeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var cfg *types.DeliberationConfig
 		var levelCaps types.LevelCaps
-		autoMode := resumeAuto != ""
-		outputPath, err := resolveTranscriptOutput(cmd, resumeOutput, resumeTopic)
+		autoMode := resumeFlags.Auto != ""
+		outputPath, err := resolveTranscriptOutput(cmd, resumeFlags.Output, resumeFlags.Topic)
 		if err != nil {
 			return err
 		}
@@ -626,22 +604,22 @@ var resumeCmd = &cobra.Command{
 		}
 
 		if autoMode {
-			level, err := types.ParseAutoLevel(resumeAuto)
+			level, err := types.ParseAutoLevel(resumeFlags.Auto)
 			if err != nil {
 				return err
 			}
 			levelCaps = types.CapsForLevel(level)
-			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeQuiet, resumeVerbose))
+			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
 
-			if resumeDryRun {
-				cfg, err = autogen.GenerateDryRunConfig(resumeTopic, level, resumeModel)
+			if resumeFlags.DryRun {
+				cfg, err = autogen.GenerateDryRunConfig(resumeFlags.Topic, level, resumeFlags.Model)
 				if err != nil {
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			} else {
 				runner := agent.NewAgentRunner(false)
 				stop := outMgr.Activity("Config generation")
-				cfg, err = autogen.GenerateConfig(resumeTopic, level, resumeModel, runner)
+				cfg, err = autogen.GenerateConfig(resumeFlags.Topic, level, resumeFlags.Model, runner)
 				stop()
 				if err != nil {
 					return fmt.Errorf("auto config generation: %w", err)
@@ -650,18 +628,18 @@ var resumeCmd = &cobra.Command{
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
-			if err := requireAutoApprovalForNonTTY(resumeYes, resumeDryRun); err != nil {
+			if err := requireAutoApprovalForNonTTY(resumeFlags.Yes, resumeFlags.DryRun); err != nil {
 				return err
 			}
 
-			if !resumeYes {
+			if !resumeFlags.Yes {
 				if !confirmProceed() {
 					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
 					return nil
 				}
 			}
 		} else {
-			cfg, err = loadConfigArtifact(resumeConfig)
+			cfg, err = loadConfigArtifact(resumeFlags.Config)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -702,18 +680,18 @@ var resumeCmd = &cobra.Command{
 		}
 
 		var budget *float64
-		if resumeBudgetFlag {
-			budget = &resumeBudget
+		if resumeFlags.BudgetSet {
+			budget = &resumeFlags.Budget
 		}
 
 		state := &types.DeliberationState{
 			Config:      cfg,
-			Topic:       resumeTopic,
-			Window:      resumeWindow,
-			MaxTurns:    existingTurns + resumeMaxTurns,
-			TimeLimit:   resumeTimeLimit,
+			Topic:       resumeFlags.Topic,
+			Window:      resumeFlags.Window,
+			MaxTurns:    existingTurns + resumeFlags.MaxTurns,
+			TimeLimit:   resumeFlags.TimeLimit,
 			Budget:      budget,
-			FullContext: resumeFullContext,
+			FullContext: resumeFlags.FullContext,
 			Turn:        existingTurns,
 		}
 
@@ -722,8 +700,8 @@ var resumeCmd = &cobra.Command{
 			applyAutoLevelCaps(cmd, state, levelCaps, existingTurns)
 		}
 
-		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeQuiet, resumeVerbose))
-		runner := agent.NewAgentRunner(resumeDryRun)
+		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
+		runner := agent.NewAgentRunner(resumeFlags.DryRun)
 		orch := orchestrator.NewOrchestrator(state, tm, runner)
 		orch.OnEvidence(outMgr.EvidenceSummary)
 		orch.OnTurn(outMgr.TurnProgress)
@@ -742,29 +720,67 @@ var resumeCmd = &cobra.Command{
 }
 
 func init() {
-	resumeCmd.Flags().StringVarP(&resumeConfig, "config", "c", "", "Path to YAML agent configuration file")
-	resumeCmd.Flags().StringVarP(&resumeTopic, "topic", "t", "", "Topic or goal for deliberation")
-	resumeCmd.Flags().IntVarP(&resumeTimeLimit, "time", "T", 60, "Additional time limit in seconds")
-	resumeCmd.Flags().IntVarP(&resumeWindow, "window", "w", 2, "Window size")
-	resumeCmd.Flags().IntVarP(&resumeMaxTurns, "max-turns", "m", 10, "Additional max turns")
-	resumeCmd.Flags().StringVarP(&resumeOutput, "output", "o", "", "Path to write the updated JSONL transcript")
-	resumeCmd.Flags().BoolVarP(&resumeVerbose, "verbose", "v", false, "Print response bodies plus additional live diagnostics")
-	resumeCmd.Flags().BoolVarP(&resumeQuiet, "quiet", "q", false, "Suppress live response bodies and show metadata/progress only")
-	resumeCmd.Flags().Float64Var(&resumeBudget, "budget", 0, "Remaining cost budget")
-	resumeCmd.Flags().BoolVar(&resumeFullContext, "full-context", false, "Show last K messages from ALL agents")
-	resumeCmd.Flags().BoolVar(&resumeDryRun, "dry-run", false, "Run with simulated agent responses")
-	resumeCmd.Flags().StringVar(&resumeAuto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
-	resumeCmd.Flags().StringVarP(&resumeModel, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
-	resumeCmd.Flags().BoolVar(&resumeYes, "yes", false, "Skip preview confirmation prompt")
+	sharedRunFlags(resumeCmd, "resume")
 	resumeCmd.Flags().StringVar(&resumeFile, "file", "", "Transcript file path to resume")
-	resumeCmd.Flags().BoolVar(&resumeResearch, "research", false, "Rejected on resume: evidence is reused from the transcript")
-	resumeCmd.Flags().BoolVar(&resumeNoResearch, "no-research", false, "Rejected on resume: evidence is reused from the transcript")
-	resumeCmd.Flags().StringArrayVar(&resumeContext, "context", nil, "Rejected on resume: evidence is reused from the transcript")
 
 	_ = resumeCmd.MarkFlagRequired("topic")
 }
 
 // --- helpers ------------------------------------------------------
+
+// sharedRunFlags registers the common flags shared by run and resume
+// commands. The prefix distinguishes the backing variable set.
+func sharedRunFlags(cmd *cobra.Command, prefix string) {
+	var v *runFlagValues
+	switch prefix {
+	case "run":
+		v = &runFlags
+	case "resume":
+		v = &resumeFlags
+	default:
+		return
+	}
+
+	timeDesc := "Time limit in seconds"
+	maxTurnsDesc := "Maximum total turns"
+	outputDesc := "Path to write the JSONL transcript"
+	budgetDesc := "Cost cap in dollars"
+	researchDesc := "Enable topic-inferred web research before deliberation"
+	noResearchDesc := "Disable config-enabled web research for this run"
+	contextDesc := "Local text context path to include before deliberation (repeatable)"
+
+	if prefix == "resume" {
+		timeDesc = "Additional time limit in seconds"
+		maxTurnsDesc = "Additional max turns"
+		outputDesc = "Path to write the updated JSONL transcript"
+		budgetDesc = "Remaining cost budget"
+		researchDesc = "Rejected on resume: evidence is reused from the transcript"
+		noResearchDesc = "Rejected on resume: evidence is reused from the transcript"
+		contextDesc = "Rejected on resume: evidence is reused from the transcript"
+	}
+
+	cmd.Flags().StringVarP(&v.Config, "config", "c", "", "Path to YAML agent configuration file")
+	cmd.Flags().StringVarP(&v.Topic, "topic", "t", "", "Topic or goal for deliberation")
+	cmd.Flags().IntVarP(&v.TimeLimit, "time", "T", 60, timeDesc)
+	windowDesc := "Number of predecessor messages each agent sees"
+	if prefix == "resume" {
+		windowDesc = "Window size"
+	}
+	cmd.Flags().IntVarP(&v.Window, "window", "w", 2, windowDesc)
+	cmd.Flags().IntVarP(&v.MaxTurns, "max-turns", "m", 10, maxTurnsDesc)
+	cmd.Flags().StringVarP(&v.Output, "output", "o", "", outputDesc)
+	cmd.Flags().BoolVarP(&v.Verbose, "verbose", "v", false, "Print response bodies plus additional live diagnostics")
+	cmd.Flags().BoolVarP(&v.Quiet, "quiet", "q", false, "Suppress live response bodies and show metadata/progress only")
+	cmd.Flags().Float64Var(&v.Budget, "budget", 0, budgetDesc)
+	cmd.Flags().BoolVar(&v.FullContext, "full-context", false, "Show last K messages from ALL agents")
+	cmd.Flags().BoolVar(&v.DryRun, "dry-run", false, "Run with simulated agent responses")
+	cmd.Flags().StringVar(&v.Auto, "auto", "", "Auto-generate agent config (off, quick, normal, deep, yolo)")
+	cmd.Flags().StringVarP(&v.Model, "model", "M", "opencode-go/deepseek-v4-flash", "Model to use for auto config generation and deliberation agents")
+	cmd.Flags().BoolVar(&v.Yes, "yes", false, "Skip preview confirmation prompt")
+	cmd.Flags().BoolVar(&v.Research, "research", false, researchDesc)
+	cmd.Flags().BoolVar(&v.NoResearch, "no-research", false, noResearchDesc)
+	cmd.Flags().StringArrayVar(&v.Context, "context", nil, contextDesc)
+}
 
 func liveOutputMode(quiet, verbose bool) output.OutputMode {
 	if quiet {
