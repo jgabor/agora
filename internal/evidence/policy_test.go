@@ -3,7 +3,6 @@ package evidence
 import (
 	"testing"
 
-	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -13,9 +12,8 @@ func TestResolveRequestPrecedence(t *testing.T) {
 		ResearchEnabled: true,
 		ContextPaths:    []string{"config.md"},
 	}
-	settings := config.Settings{ResearchMaxSources: 7, ContextMaxBytes: 512, ContextMaxDepth: 2}
 
-	request := ResolveRequest(cfg, settings, Overrides{
+	request := ResolveRequest(cfg, 7, int64(512), 2, Overrides{
 		Research:     &falseValue,
 		ContextSet:   true,
 		ContextPaths: []string{"cli.md", "cli-dir"},
@@ -41,7 +39,7 @@ func TestResolveRequestPrecedence(t *testing.T) {
 
 func TestResolveRequestUsesAutoDefaultsWhenSettingsUnset(t *testing.T) {
 	cfg := &types.DeliberationConfig{ContextPaths: []string{"README.md"}}
-	request := ResolveRequest(cfg, config.Settings{}, Overrides{
+	request := ResolveRequest(cfg, 0, int64(0), 0, Overrides{
 		Defaults: DefaultsForAutoLevel(types.AutoDeep),
 	})
 
@@ -58,7 +56,7 @@ func TestResolveRequestUsesAutoDefaultsWhenSettingsUnset(t *testing.T) {
 
 func TestResolveRequestSettingsOverrideAutoDefaults(t *testing.T) {
 	cfg := &types.DeliberationConfig{ContextPaths: []string{"README.md"}}
-	request := ResolveRequest(cfg, config.Settings{ResearchMaxSources: 7, ContextMaxBytes: 512, ContextMaxDepth: 2}, Overrides{
+	request := ResolveRequest(cfg, 7, int64(512), 2, Overrides{
 		Defaults: DefaultsForAutoLevel(types.AutoYOLO),
 	})
 
@@ -91,7 +89,7 @@ func TestDefaultsForAutoLevel(t *testing.T) {
 
 func TestResolveRequestUsesConfigResearchWithoutCLI(t *testing.T) {
 	cfg := &types.DeliberationConfig{ResearchEnabled: true, ContextPaths: []string{"config.md"}}
-	request := ResolveRequest(cfg, config.Settings{}, Overrides{})
+	request := ResolveRequest(cfg, 0, int64(0), 0, Overrides{})
 	if !request.ResearchEnabled {
 		t.Fatal("ResearchEnabled: got false, want config-enabled research")
 	}
@@ -102,7 +100,7 @@ func TestResolveRequestUsesConfigResearchWithoutCLI(t *testing.T) {
 
 func TestResolveRequestSettingsDoNotEnableResearch(t *testing.T) {
 	cfg := &types.DeliberationConfig{}
-	request := ResolveRequest(cfg, config.Settings{ResearchMaxSources: 5}, Overrides{})
+	request := ResolveRequest(cfg, 5, int64(0), 0, Overrides{})
 	if request.ResearchEnabled {
 		t.Fatal("ResearchEnabled: got true, want false because settings must not enable web access")
 	}

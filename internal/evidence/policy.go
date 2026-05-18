@@ -1,7 +1,6 @@
 package evidence
 
 import (
-	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -35,14 +34,16 @@ func DefaultsForAutoLevel(level types.AutoLevel) Defaults {
 }
 
 // ResolveRequest applies CLI/config evidence choices plus settings/default caps.
-func ResolveRequest(cfg *types.DeliberationConfig, settings config.Settings, overrides Overrides) types.EvidenceRequest {
+// Settings caps are injected as individual primitives rather than importing the
+// config package, keeping policy resolution and collection self-contained.
+func ResolveRequest(cfg *types.DeliberationConfig, researchMaxSources int, contextMaxBytes int64, contextMaxDepth int, overrides Overrides) types.EvidenceRequest {
 	defaults := defaultsOrBase(overrides.Defaults)
 	request := types.EvidenceRequest{
 		ResearchEnabled: cfg.ResearchEnabled,
 		ContextPaths:    append([]string(nil), cfg.ContextPaths...),
-		MaxSources:      positiveOrDefault(settings.ResearchMaxSources, defaults.MaxSources),
-		MaxBytes:        positiveInt64OrDefault(settings.ContextMaxBytes, defaults.MaxBytes),
-		MaxDepth:        positiveOrDefault(settings.ContextMaxDepth, defaults.MaxDepth),
+		MaxSources:      positiveOrDefault(researchMaxSources, defaults.MaxSources),
+		MaxBytes:        positiveInt64OrDefault(contextMaxBytes, defaults.MaxBytes),
+		MaxDepth:        positiveOrDefault(contextMaxDepth, defaults.MaxDepth),
 	}
 
 	if overrides.Research != nil {

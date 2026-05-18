@@ -140,7 +140,7 @@ var runCmd = &cobra.Command{
 			return err
 		}
 		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
-		evidenceRequest := evidence.ResolveRequest(cfg, settings, evidenceOverrides)
+		evidenceRequest := evidence.ResolveRequest(cfg, settings.ResearchMaxSources, settings.ContextMaxBytes, settings.ContextMaxDepth, evidenceOverrides)
 
 		state := &types.DeliberationState{
 			Config:      cfg,

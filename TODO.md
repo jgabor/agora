@@ -6,8 +6,6 @@
 
 ## → Normal
 
-- [ ] Separate evidence policy resolution (`ResolveRequest`) from evidence collection (`Collector`) — inject resolved caps directly instead of importing `config`
-
 ## ⇢ Annoying
 
 - [ ] Deduplicate `run`/`resume` command flag definitions — extract `sharedRunFlags(cmd)` in `cmd/agora/main.go`
@@ -48,3 +46,4 @@
 - [x] Terminal output with ANSI-styled panels and tables
 - [x] CLI commands (run, stats, validate, resume) via cobra
 - [x] Test suite with semantic-parity verification (43 tests)
+- [x] Separate evidence policy resolution (`ResolveRequest`) from evidence collection (`Collector`) — inject resolved caps as primitives instead of importing `config`
