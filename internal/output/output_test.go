@@ -36,15 +36,14 @@ func TestDrawPanelPlainModeUsesASCIIBorder(t *testing.T) {
 
 	got := drawPanel("Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.", "Topic", "4")
 
-	assertContains(t, got, "+")
-	assertContains(t, got, "| Topic")
+	assertContains(t, got, "+- Topic")
 	assertContains(t, got, "| Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu.")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)
 }
 
 func TestDrawTableAlignsAndPadsCells(t *testing.T) {
-	got := drawTable("Stats", []string{"Agent", "Tokens"}, [][]string{
+	got := drawTable(&PlainRenderer{}, "Stats", []string{"Agent", "Tokens"}, [][]string{
 		{"a", "7"},
 		{"long-agent", "123"},
 	}, []string{"", "right"})
@@ -840,5 +839,158 @@ func assertOrder(t *testing.T, s, first, second string) {
 	secondIndex := strings.Index(s, second)
 	if firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex {
 		t.Fatalf("expected %q before %q\noutput: %q", first, second, s)
+	}
+}
+
+// --- Renderer contract tests ---
+
+func TestPlainRendererContract(t *testing.T) {
+	r := &PlainRenderer{}
+	width := 76
+
+	// IsRich
+	if r.IsRich() {
+		t.Fatal("PlainRenderer.IsRich should be false")
+	}
+
+	// Panel
+	p := r.Panel("Title", "Body content", width, "4")
+	assertContains(t, p, "Title")
+	assertContains(t, p, "Body content")
+	assertNoANSI(t, p)
+	assertNoUnicodeBox(t, p)
+
+	// SectionBlock
+	sb := r.SectionBlock("Label", []string{"line1", "line2"}, width)
+	assertContains(t, sb, "Label")
+	assertContains(t, sb, "line1")
+	assertNoANSI(t, sb)
+
+	// SectionTitle
+	st := r.SectionTitle("Important", "2")
+	assertContains(t, st, "Important")
+	assertNoANSI(t, st)
+
+	// Table
+	tbl := r.Table("Stats", []string{"A", "B"}, [][]string{{"x", "1"}, {"y", "2"}}, []string{"", "right"}, width, "6")
+	assertContains(t, tbl, "Stats")
+	assertContains(t, tbl, "A")
+	assertContains(t, tbl, "x")
+	assertContains(t, tbl, "2")
+	assertNoANSI(t, tbl)
+
+	// ListSection
+	ls := r.ListSection("Items", []string{"first", "second"}, width, "6")
+	assertContains(t, ls, "Items")
+	assertContains(t, ls, "first")
+	assertContains(t, ls, "second")
+	assertNoANSI(t, ls)
+
+	// ProseSection
+	ps := r.ProseSection("Prose", "Some content here.", width, "2")
+	assertContains(t, ps, "Prose")
+	assertContains(t, ps, "Some content here.")
+	assertNoANSI(t, ps)
+
+	// VerboseBody
+	vb := r.VerboseBody("Verbose output content.", width, "4")
+	assertContains(t, vb, "AGENT CONTENT")
+	assertContains(t, vb, "Verbose output content.")
+	assertNoANSI(t, vb)
+
+	// MetricBar
+	mb := r.MetricBar(50)
+	assertNoANSI(t, mb)
+
+	// StatusLabel
+	sl := r.StatusLabel("OK", "✓", "2")
+	assertContains(t, sl, "OK")
+	assertNoANSI(t, sl)
+
+	// Styled
+	styled := r.Styled("text", "2")
+	if styled != "text" {
+		t.Fatalf("PlainRenderer.Styled should return plain text, got %q", styled)
+	}
+
+	// Muted
+	muted := r.Muted("dim")
+	if muted != "dim" {
+		t.Fatalf("PlainRenderer.Muted should return plain text, got %q", muted)
+	}
+
+	// Width
+	if r.Width() <= 0 {
+		t.Fatalf("PlainRenderer.Width should be positive, got %d", r.Width())
+	}
+}
+
+func TestRichRendererContract(t *testing.T) {
+	r := &RichRenderer{}
+	width := 76
+
+	// IsRich
+	if !r.IsRich() {
+		t.Fatal("RichRenderer.IsRich should be true")
+	}
+
+	// Panel - should include Unicode box borders
+	p := r.Panel("Title", "Body content", width, "4")
+	assertContains(t, p, "╭")
+	assertContains(t, p, "╰")
+	assertContains(t, p, "Title")
+	assertContains(t, p, "Body content")
+
+	// SectionBlock
+	sb := r.SectionBlock("Label", []string{"line1", "line2"}, width)
+	assertContains(t, sb, "Label")
+	assertContains(t, sb, "line1")
+
+	// SectionTitle
+	st := r.SectionTitle("Important", "2")
+	assertContains(t, st, "Important")
+
+	// Table
+	tbl := r.Table("Stats", []string{"A", "B"}, [][]string{{"x", "1"}}, []string{"", "right"}, width, "6")
+	assertContains(t, tbl, "Stats")
+	assertContains(t, tbl, "A")
+	assertContains(t, tbl, "x")
+
+	// ListSection
+	ls := r.ListSection("Items", []string{"first", "second"}, width, "6")
+	assertContains(t, ls, "Items")
+	assertContains(t, ls, "first")
+
+	// ProseSection
+	ps := r.ProseSection("Prose", "Some prose content.", width, "2")
+	assertContains(t, ps, "Prose")
+	assertContains(t, ps, "Some prose content.")
+
+	// VerboseBody
+	vb := r.VerboseBody("Verbose output content.", width, "4")
+	assertContains(t, vb, "Agent Response")
+	assertContains(t, vb, "Verbose output content.")
+
+	// MetricBar
+	mb := r.MetricBar(50)
+	if mb == "" {
+		t.Fatal("RichRenderer.MetricBar should not be empty")
+	}
+
+	// StatusLabel
+	sl := r.StatusLabel("OK", "✓", "2")
+	assertContains(t, sl, "OK")
+
+	// Styled
+	styled := r.Styled("text", "2")
+	assertContains(t, styled, "text")
+
+	// Muted
+	muted := r.Muted("dim")
+	assertContains(t, muted, "dim")
+
+	// Width
+	if r.Width() <= 0 {
+		t.Fatalf("RichRenderer.Width should be positive, got %d", r.Width())
 	}
 }

@@ -55,7 +55,7 @@ func WriteReadOnlyConfig(dir string) (cleanup func(), err error) {
 
 // Runner is the interface for executing agent turns.
 type Runner interface {
-	Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error)
+	Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error)
 }
 
 // AgentRunner executes agent turns via the opencode subprocess.
@@ -70,7 +70,7 @@ func NewAgentRunner(dryRun bool) *AgentRunner {
 
 // Run executes a single agent turn via opencode subprocess.
 // Returns text content, metadata (tokens, cost), and any error.
-func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	if r.dryRun {
 		return r.dryRunResponse(agent, envelope)
 	}
@@ -162,12 +162,9 @@ func opencodeRunArgs(model string) []string {
 	return []string{"run", "--model", model, "--format", "json"}
 }
 
-func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
+func parseOpenCodeOutput(output string) ([]string, *types.RunMetadata, error) {
 	var textParts []string
-	metadata := map[string]any{
-		"tokens": map[string]any{},
-		"cost":   (*float64)(nil),
-	}
+	meta := &types.RunMetadata{}
 
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		line = strings.TrimSpace(line)
@@ -196,20 +193,22 @@ func parseOpenCodeOutput(output string) ([]string, map[string]any, error) {
 		case "step_finish":
 			part, _ := event["part"].(map[string]any)
 			if part != nil {
-				if tokens, ok := part["tokens"]; ok {
-					metadata["tokens"] = convertTokens(tokens)
+				if rawTokens, ok := part["tokens"]; ok {
+					if tokenMap, ok := rawTokens.(map[string]any); ok {
+						meta.Tokens = convertTokens(tokenMap)
+					}
 				}
 				if costVal, ok := part["cost"]; ok && costVal != nil {
 					if cost, ok := costVal.(float64); ok {
 						c := cost
-						metadata["cost"] = &c
+						meta.Cost = &c
 					}
 				}
 			}
 		}
 	}
 
-	return textParts, metadata, nil
+	return textParts, meta, nil
 }
 
 func openCodeErrorMessage(event map[string]any) string {
@@ -288,23 +287,28 @@ func providerValidationMessage(message string) string {
 	return strings.Join(parts, " | ")
 }
 
-func convertTokens(tokens any) map[string]any {
-	tokenMap, ok := tokens.(map[string]any)
-	if !ok {
-		return map[string]any{}
+func convertTokens(tokens map[string]any) types.TokenUsage {
+	if tokens == nil {
+		return types.TokenUsage{}
 	}
-	converted := make(map[string]any, len(tokenMap))
-	for k, v := range tokenMap {
-		if f, ok := v.(float64); ok {
-			converted[k] = int(f)
-		} else {
-			converted[k] = v
-		}
+	return types.TokenUsage{
+		Total:     intFromFloat64(tokens["total"]),
+		Input:     intFromFloat64(tokens["input"]),
+		Output:    intFromFloat64(tokens["output"]),
+		Reasoning: intFromFloat64(tokens["reasoning"]),
 	}
-	return converted
 }
 
-func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func intFromFloat64(v any) *int {
+	f, ok := v.(float64)
+	if !ok {
+		return nil
+	}
+	i := int(f)
+	return &i
+}
+
+func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	if agent.ID == "research-query-planner" {
 		return dryRunResearchQueries(envelope)
 	}
@@ -325,17 +329,17 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 	cost := 0.001
 
 	return fmt.Sprintf("[DRY RUN] Agent '%s' responds to: %s", agent.ID, topic),
-		map[string]any{
-			"tokens": map[string]any{
-				"total":  total,
-				"input":  input,
-				"output": output,
+		&types.RunMetadata{
+			Tokens: types.TokenUsage{
+				Total:  &total,
+				Input:  &input,
+				Output: &output,
 			},
-			"cost": &cost,
+			Cost: &cost,
 		}, nil
 }
 
-func dryRunResearchQueries(envelope map[string]any) (string, map[string]any, error) {
+func dryRunResearchQueries(envelope map[string]any) (string, *types.RunMetadata, error) {
 	topic := "dry-run topic"
 	if value, ok := envelope["topic"].(string); ok && strings.TrimSpace(value) != "" {
 		topic = strings.TrimSpace(value)
@@ -355,7 +359,7 @@ func dryRunResearchQueries(envelope map[string]any) (string, map[string]any, err
 	return string(payload), dryRunMetadata(), nil
 }
 
-func dryRunWebResearch(envelope map[string]any) (string, map[string]any, error) {
+func dryRunWebResearch(envelope map[string]any) (string, *types.RunMetadata, error) {
 	queries, _ := envelope["queries"].([]string)
 	maxSources := intEnvelopeValue(envelope, "max_sources", 1)
 	if maxSources < len(queries) {
@@ -386,18 +390,18 @@ func intEnvelopeValue(envelope map[string]any, key string, fallback int) int {
 	return fallback
 }
 
-func dryRunMetadata() map[string]any {
+func dryRunMetadata() *types.RunMetadata {
 	total := 100
 	input := 50
 	output := 50
 	cost := 0.001
-	return map[string]any{
-		"tokens": map[string]any{
-			"total":  total,
-			"input":  input,
-			"output": output,
+	return &types.RunMetadata{
+		Tokens: types.TokenUsage{
+			Total:  &total,
+			Input:  &input,
+			Output: &output,
 		},
-		"cost": &cost,
+		Cost: &cost,
 	}
 }
 

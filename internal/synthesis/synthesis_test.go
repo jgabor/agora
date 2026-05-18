@@ -2,7 +2,6 @@ package synthesis
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -13,88 +12,19 @@ import (
 // mockRunner is a Runner whose Run method returns canned responses.
 type mockRunner struct {
 	content  string
-	metadata map[string]any
+	metadata *types.RunMetadata
 	err      error
 	agent    types.AgentConfig
 	envelope map[string]any
 }
 
-func (m *mockRunner) Run(ag types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (m *mockRunner) Run(ag types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	m.agent = ag
 	m.envelope = envelope
 	if m.err != nil {
 		return "", nil, m.err
 	}
 	return m.content, m.metadata, nil
-}
-
-func TestExtractJSON(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		want    map[string]any
-		wantErr bool
-	}{
-		{
-			name:  "json code block",
-			input: "```json\n{\"key_arguments\": [\"arg1\"]}\n```",
-			want:  map[string]any{"key_arguments": []any{"arg1"}},
-		},
-		{
-			name:  "plain code block",
-			input: "```\n{\"key_arguments\": [\"arg1\"]}\n```",
-			want:  map[string]any{"key_arguments": []any{"arg1"}},
-		},
-		{
-			name:  "raw json",
-			input: `{"key_arguments": ["arg1"]}`,
-			want:  map[string]any{"key_arguments": []any{"arg1"}},
-		},
-		{
-			name:    "no json found",
-			input:   "just text without json",
-			wantErr: true,
-		},
-		{
-			name:    "empty input",
-			input:   "",
-			wantErr: true,
-		},
-		{
-			name:    "malformed json",
-			input:   `{"key_arguments": broken}`,
-			wantErr: true,
-		},
-		{
-			name:  "multiple blocks picks first",
-			input: "```json\n{\"first\": true}\n```\n```json\n{\"second\": true}\n```",
-			want:  map[string]any{"first": true},
-		},
-		{
-			name:  "json in code block with text",
-			input: "Here is the result:\n```json\n{\"confidence\": \"high\"}\n```\nDone.",
-			want:  map[string]any{"confidence": "high"},
-		},
-	}
-
-	se := &synthesisEngine{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := se.extractJSON(tt.input)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("expected %v, got %v", tt.want, got)
-			}
-		})
-	}
 }
 
 func TestFormatTranscript(t *testing.T) {

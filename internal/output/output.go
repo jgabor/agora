@@ -55,6 +55,7 @@ type StatsDict = map[string]any
 // OutputManager manages terminal output for deliberation progress.
 type OutputManager struct {
 	mode            OutputMode
+	renderer        Renderer
 	agentBadges     map[string]string
 	agentIdentities map[string]*types.AgentIdentity
 	castMembers     map[string]types.CastMember
@@ -73,7 +74,10 @@ func NewOutputManager(verbose bool) *OutputManager {
 
 // NewOutputManagerWithMode creates a new OutputManager with explicit output semantics.
 func NewOutputManagerWithMode(mode OutputMode) *OutputManager {
-	return &OutputManager{mode: mode}
+	return &OutputManager{
+		mode:     mode,
+		renderer: detectRenderer(mode),
+	}
 }
 
 func (o *OutputManager) registerCast(cfg *types.DeliberationConfig) {
@@ -176,7 +180,7 @@ func (o *OutputManager) Activity(activity string) func() {
 		activity = "Working"
 	}
 	label := fmt.Sprintf("Working: %s", activity)
-	if !richOutput() {
+	if !o.renderer.IsRich() || !stdoutIsTerminal() {
 		fmt.Printf("[INFO] %s\n", label)
 		return func() {}
 	}
@@ -187,12 +191,11 @@ func (o *OutputManager) Activity(activity string) func() {
 	go func() {
 		defer close(stopped)
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		style := statusStyle("6")
 		ticker := time.NewTicker(120 * time.Millisecond)
 		defer ticker.Stop()
 		idx := 0
 		for {
-			fmt.Printf("\r%s %s", style.Render(frames[idx%len(frames)]), label)
+			fmt.Printf("\r%s %s", o.renderer.Styled(frames[idx%len(frames)], "6"), label)
 			idx++
 			select {
 			case <-done:
@@ -213,24 +216,26 @@ func (o *OutputManager) Activity(activity string) func() {
 
 // Info prints an informational message.
 func (o *OutputManager) Info(message string) {
-	fmt.Printf("%s %s\n", statusLabel("INFO", "i", "4"), message)
+	fmt.Printf("%s %s\n", o.renderer.StatusLabel("INFO", "i", "4"), message)
 }
 
 // Error prints an error message.
 func (o *OutputManager) Error(message string) {
-	fmt.Printf("%s %s\n", statusLabel("ERROR", "✗", "1"), message)
+	fmt.Printf("%s %s\n", o.renderer.StatusLabel("ERROR", "✗", "1"), message)
 }
 
 // Success prints a success message.
 func (o *OutputManager) Success(message string) {
-	fmt.Printf("%s %s\n", statusLabel("SUCCESS", "✓", "2"), message)
+	fmt.Printf("%s %s\n", o.renderer.StatusLabel("SUCCESS", "✓", "2"), message)
 }
 
 // Delimiter prints a horizontal rule.
 func (o *OutputManager) Delimiter() {
-	line := strings.Repeat("-", 60)
-	if !plainOutput() {
-		line = mutedStyle().Render(strings.Repeat("─", 60))
+	var line string
+	if o.renderer.IsRich() {
+		line = o.renderer.Muted(strings.Repeat("─", 60))
+	} else {
+		line = strings.Repeat("-", 60)
 	}
 	fmt.Println(line)
 }

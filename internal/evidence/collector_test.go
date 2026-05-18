@@ -15,13 +15,13 @@ import (
 // mockRunner is a Runner whose Run method returns canned responses.
 type mockRunner struct {
 	content  string
-	metadata map[string]any
+	metadata *types.RunMetadata
 	err      error
 	agent    types.AgentConfig
 	envelope map[string]any
 }
 
-func (m *mockRunner) Run(ag types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (m *mockRunner) Run(ag types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	m.agent = ag
 	m.envelope = envelope
 	if m.err != nil {
@@ -447,7 +447,7 @@ type recordingRunner struct {
 	envelopes []map[string]any
 }
 
-func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	r.agents = append(r.agents, agent)
 	r.envelopes = append(r.envelopes, envelope)
 	idx := r.callCount
@@ -464,7 +464,7 @@ func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) 
 
 type mockResponse struct {
 	content  string
-	metadata map[string]any
+	metadata *types.RunMetadata
 	err      error
 }
 

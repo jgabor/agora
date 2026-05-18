@@ -105,6 +105,10 @@ var runCmd = &cobra.Command{
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
+			if err := requireAutoApprovalForNonTTY(runYes, runDryRun); err != nil {
+				return err
+			}
+
 			if !runYes {
 				if !confirmProceed() {
 					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
@@ -646,6 +650,10 @@ var resumeCmd = &cobra.Command{
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
+			if err := requireAutoApprovalForNonTTY(resumeYes, resumeDryRun); err != nil {
+				return err
+			}
+
 			if !resumeYes {
 				if !confirmProceed() {
 					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
@@ -887,10 +895,26 @@ func resolveTranscriptSource(input string) (string, error) {
 	return resolveTranscriptArtifact(input, dir)
 }
 
+var stdinIsTerminal = func() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return true
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+func requireAutoApprovalForNonTTY(yes, dryRun bool) error {
+	if yes || dryRun {
+		return nil
+	}
+	if stdinIsTerminal() {
+		return nil
+	}
+	return fmt.Errorf("stdin is not a terminal: --auto requires --yes (auto-approve config) or --dry-run (preview only, no execution)")
+}
+
 func confirmProceed() bool {
-	fi, _ := os.Stdin.Stat()
-	isTerminal := (fi.Mode() & os.ModeCharDevice) != 0
-	if !isTerminal {
+	if !stdinIsTerminal() {
 		return true
 	}
 	fmt.Print("Proceed with deliberation? [y/N] ")

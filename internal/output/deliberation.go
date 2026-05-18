@@ -8,9 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/glamour/v2"
-	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/tree"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -21,14 +18,14 @@ import (
 func (o *OutputManager) ConfigPreview(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) {
 	o.registerCast(cfg)
 	fmt.Println()
-	fmt.Println(drawAutoConfigPanel(cfg, level, caps))
+	fmt.Println(drawAutoConfigPanel(o.renderer, cfg, level, caps))
 }
 
-func drawAutoConfigPanel(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) string {
-	return drawAutoConfigPanelAtWidth(cfg, level, caps, outputWidth())
+func drawAutoConfigPanel(r Renderer, cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) string {
+	return drawAutoConfigPanelAtWidth(r, cfg, level, caps, outputWidth())
 }
 
-func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps, width int) string {
+func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps, width int) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
 
@@ -37,7 +34,7 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 		fmt.Sprintf("Topology: %s", string(cfg.Topology)),
 		fmt.Sprintf("Consensus threshold: %d", cfg.ConsensusThreshold),
 	}
-	if !plainOutput() {
+	if r.IsRich() {
 		shapeTitle = "Run Shape"
 		agreementTarget := "none"
 		if cfg.ConsensusThreshold > 0 {
@@ -59,7 +56,7 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 		)
 	}
 	limitsTitle := "Run Bounds"
-	if !plainOutput() {
+	if r.IsRich() {
 		limitsTitle = "Limits"
 		capLines = []string{fmt.Sprintf("Auto level: %s", string(level))}
 		if caps.MaxAgents == 0 {
@@ -73,43 +70,35 @@ func drawAutoConfigPanelAtWidth(cfg *types.DeliberationConfig, level types.AutoL
 		}
 	}
 	agentLines := make([]string, 0, len(cfg.Agents))
-	if plainOutput() {
+	if !r.IsRich() {
 		for i, a := range cfg.Agents {
-			agentLines = append(agentLines, agentCastLine(i, a, true))
+			agentLines = append(agentLines, agentCastLine(r, i, a, true))
 		}
 	} else {
-		agentLines = append(agentLines, agentCastTree(cfg.Agents, true, contentWidth))
+		agentLines = append(agentLines, agentCastTree(r, cfg.Agents, true, contentWidth))
 	}
 	agentsTitle := "Agents"
-	if !plainOutput() {
+	if r.IsRich() {
 		agentsTitle = "Cast"
 	}
 
-	if !plainOutput() {
-		leftWidth, rightWidth := splitWidths(contentWidth, 2, 0.5)
-		top := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			lipgloss.NewStyle().Width(leftWidth).Render(sectionBlock(shapeTitle, shapeLines, leftWidth)),
-			lipgloss.NewStyle().Width(2).Render(""),
-			lipgloss.NewStyle().Width(rightWidth).Render(sectionBlock(limitsTitle, capLines, rightWidth)),
-		)
-		body := lipgloss.JoinVertical(lipgloss.Left, top, "", sectionBlock(agentsTitle, agentLines, contentWidth))
-		return theaterPanel("Generated Config", body, width, "6")
+	if r.IsRich() {
+		return richAutoConfigPanelAtWidth(r, width, contentWidth, shapeTitle, limitsTitle, agentsTitle, shapeLines, capLines, agentLines)
 	}
 
 	var sb strings.Builder
-	writeSection := sectionWriter(&sb, contentWidth)
+	writeSection := sectionWriter(r, &sb, contentWidth)
 	writeSection(shapeTitle, shapeLines)
 	writeSection(limitsTitle, capLines)
 	writeSection(agentsTitle, agentLines)
 
-	return theaterPanel("Generated Config", sb.String(), width, "6")
+	return r.Panel("Generated Config", sb.String(), width, "6")
 }
 
-func agentCastLine(index int, agent types.AgentConfig, includeContext bool) string {
+func agentCastLine(r Renderer, index int, agent types.AgentConfig, includeContext bool) string {
 	member := types.CastMemberForAgent(index, agent)
-	if !plainOutput() {
-		return richAgentCastLine(member, agent, includeContext)
+	if r.IsRich() {
+		return richAgentCastLine(r, member, agent, includeContext)
 	}
 	line := fmt.Sprintf("AGENT %s", castDisplay(castBadge(member), member))
 	if member.ProviderModel != "" {
@@ -127,18 +116,18 @@ func agentCastLine(index int, agent types.AgentConfig, includeContext bool) stri
 	return line
 }
 
-func richAgentCastLine(member types.CastMember, agent types.AgentConfig, includeContext bool) string {
+func richAgentCastLine(r Renderer, member types.CastMember, agent types.AgentConfig, includeContext bool) string {
 	accent := member.Color
 	if accent == "" {
 		accent = agentAccent(agent.ID)
 	}
-	badge := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render("● " + strings.Trim(castBadge(member), "[]"))
+	badge := r.Styled("● "+strings.Trim(castBadge(member), "[]"), accent)
 	parts := []string{badge}
 	if member.Name != "" {
-		parts = append(parts, lipgloss.NewStyle().Bold(true).Render(member.Name))
+		parts = append(parts, r.Styled(member.Name, accent))
 	}
 	if member.Persona != "" {
-		parts = append(parts, mutedStyle().Render(member.Persona))
+		parts = append(parts, r.Muted(member.Persona))
 	}
 
 	lines := []string{strings.Join(parts, "  ")}
@@ -156,55 +145,9 @@ func richAgentCastLine(member types.CastMember, agent types.AgentConfig, include
 		}
 	}
 	if len(metadata) > 0 {
-		lines = append(lines, mutedStyle().Render(strings.Join(metadata, " · ")))
+		lines = append(lines, r.Muted(strings.Join(metadata, " · ")))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func agentCastTree(agents []types.AgentConfig, includeContext bool, width int) string {
-	root := tree.Root("ensemble").
-		Enumerator(tree.RoundedEnumerator).
-		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))).
-		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
-		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
-		Width(width)
-
-	for i, agent := range agents {
-		member := types.CastMemberForAgent(i, agent)
-		accent := member.Color
-		if accent == "" {
-			accent = agentAccent(agent.ID)
-		}
-
-		heading := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(strings.Trim(castBadge(member), "[]"))
-		if member.Name != "" {
-			heading += " " + lipgloss.NewStyle().Bold(true).Render(member.Name)
-		}
-		if member.Persona != "" {
-			heading += " " + mutedStyle().Render(member.Persona)
-		}
-
-		agentNode := tree.Root(heading).
-			RootStyle(lipgloss.NewStyle().Foreground(lipgloss.Color(accent))).
-			Enumerator(tree.RoundedEnumerator).
-			EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color(accent))).
-			IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8")))
-
-		if member.ProviderModel != "" {
-			agentNode.Child(mutedStyle().Render("model " + member.ProviderModel))
-		}
-		if member.Color != "" {
-			agentNode.Child(mutedStyle().Render("color " + member.Color))
-		}
-		if includeContext {
-			if context := firstPromptLine(agent.SystemPrompt); context != "" {
-				agentNode.Child(mutedStyle().Render("context ") + renderInlineText(context, width-8))
-			}
-		}
-
-		root.Child(agentNode)
-	}
-	return root.String()
 }
 
 func renderInlineText(text string, width int) string {
@@ -230,19 +173,19 @@ func (o *OutputManager) DeliberationHeader(state *types.DeliberationState) {
 	o.consensusStreak = 0
 	o.registerCast(state.Config)
 	fmt.Println()
-	fmt.Println(drawDeliberationHeaderAtWidth(state, outputWidth()))
+	fmt.Println(drawDeliberationHeaderAtWidth(o.renderer, state, outputWidth()))
 	fmt.Println()
 }
 
-func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) string {
+func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, width int) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
 	topicLines := []string{state.Topic}
 
 	cast := make([]string, 0, len(state.Config.Agents))
-	if plainOutput() {
+	if !r.IsRich() {
 		for i, a := range state.Config.Agents {
-			cast = append(cast, agentCastLine(i, a, true))
+			cast = append(cast, agentCastLine(r, i, a, true))
 		}
 	}
 
@@ -252,7 +195,7 @@ func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) st
 		fmt.Sprintf("Max turns: %d", state.MaxTurns),
 		fmt.Sprintf("Window: %d", state.Window),
 	}
-	if !plainOutput() {
+	if r.IsRich() {
 		settings = []string{
 			fmt.Sprintf("Topology: %s", string(state.Config.Topology)),
 			fmt.Sprintf("Time: %ds max", state.TimeLimit),
@@ -262,44 +205,34 @@ func drawDeliberationHeaderAtWidth(state *types.DeliberationState, width int) st
 	}
 	if state.Budget != nil {
 		budgetLine := fmt.Sprintf("Budget: $%.2f", *state.Budget)
-		if !plainOutput() {
+		if r.IsRich() {
 			budgetLine = fmt.Sprintf("Budget: $%.2f max", *state.Budget)
 		}
 		settings = append(settings, budgetLine)
 	}
 	if state.Config.ConsensusThreshold > 0 {
 		agreementLine := fmt.Sprintf("Consensus threshold: %d", state.Config.ConsensusThreshold)
-		if !plainOutput() {
+		if r.IsRich() {
 			agreementLine = fmt.Sprintf("Agreement target: %d agents", state.Config.ConsensusThreshold)
 		}
 		settings = append(settings, agreementLine)
 	}
 	settingsTitle := "Run Settings"
-	if !plainOutput() {
+	if r.IsRich() {
 		settingsTitle = "Limits"
 	}
 
-	if !plainOutput() {
-		castWidth, settingsWidth := splitWidths(contentWidth, 2, 0.62)
-		cast = append(cast, agentCastTree(state.Config.Agents, true, castWidth))
-		castBlock := lipgloss.NewStyle().Width(castWidth).Render(sectionBlock("Cast", cast, castWidth))
-		settingsBlock := lipgloss.NewStyle().Width(settingsWidth).Render(sectionBlock(settingsTitle, settings, settingsWidth))
-		body := lipgloss.JoinVertical(
-			lipgloss.Left,
-			sectionBlock("Topic", topicLines, contentWidth),
-			"",
-			lipgloss.JoinHorizontal(lipgloss.Top, castBlock, lipgloss.NewStyle().Width(2).Render(""), settingsBlock),
-		)
-		return theaterPanel("Deliberation Start", body, width, "4")
+	if r.IsRich() {
+		return richDeliberationHeaderAtWidth(r, width, contentWidth, topicLines, cast, settings, settingsTitle, state.Config.Agents)
 	}
 
 	var sb strings.Builder
-	writeSection := sectionWriter(&sb, contentWidth)
+	writeSection := sectionWriter(r, &sb, contentWidth)
 	writeSection("Topic", topicLines)
 	writeSection("Cast", cast)
 	writeSection(settingsTitle, settings)
 
-	return theaterPanel("Deliberation Start", sb.String(), width, "4")
+	return r.Panel("Deliberation Start", sb.String(), width, "4")
 }
 
 // --- turn progress ---
@@ -323,7 +256,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 		costValue = fmt.Sprintf("$%.6f", *record.Cost)
 	}
 	if o.state != nil && o.state.Budget != nil {
-		costValue = boundedCostMetricValue(o.totalCost, *o.state.Budget)
+		costValue = boundedCostMetricValue(o.renderer, o.totalCost, *o.state.Budget)
 	}
 	if record.Consensus {
 		o.consensusStreak++
@@ -332,8 +265,8 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}
 
 	agentDisplay := labelValue("AGENT", o.agentDisplayFor(record.AgentID))
-	if !plainOutput() {
-		agentDisplay = lipgloss.NewStyle().Foreground(lipgloss.Color(o.agentColorFor(record.AgentID))).Bold(true).Render(agentDisplay)
+	if o.renderer.IsRich() {
+		agentDisplay = o.renderer.Styled(agentDisplay, o.agentColorFor(record.AgentID))
 	}
 	modelDisplay := labelValue("MODEL", "?")
 	if record.Model != nil {
@@ -348,33 +281,33 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}, " | ")
 	if o.state != nil && o.state.StartTime > 0 && o.state.TimeLimit > 0 {
 		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
-		metadata += " | " + labelValue("TIME", boundedSecondsMetricValue(elapsedTotal, o.state.TimeLimit))
+		metadata += " | " + labelValue("TIME", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit))
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		metadata += " | " + labelValue("CONSENSUS", boundedIntMetricValue(o.consensusStreak, o.state.Config.ConsensusThreshold))
+		metadata += " | " + labelValue("CONSENSUS", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold))
 	}
 
 	turnValue := fmt.Sprintf("%d", turn+1)
 	if maxTurns > 0 {
-		turnValue = boundedIntMetricValue(turn+1, maxTurns)
+		turnValue = boundedIntMetricValue(o.renderer, turn+1, maxTurns)
 	}
-	if !plainOutput() {
+	if o.renderer.IsRich() {
 		writeLine(w, o.renderTurnCard(record, turn, maxTurns, elapsed, tokensTotal, costValue))
 		if o.mode == OutputVerbose {
 			writeText(w, o.renderTurnDiagnostics(record, costValue))
 		}
 		if o.mode != OutputQuiet && record.Content != "" {
 			writeLine(w)
-			writeText(w, renderVerboseBody(record.Content, outputWidth(), o.agentColorFor(record.AgentID)))
+			writeText(w, o.renderer.VerboseBody(record.Content, outputWidth(), o.agentColorFor(record.AgentID)))
 		}
 		return
 	}
 	writeFormat(w, "TURN %s | %s\n", turnValue, metadata)
 
 	if record.Consensus {
-		label := "[CONSENSUS]"
-		if !plainOutput() {
-			label = statusStyle("2").Render("✓ CONSENSUS")
+		label := o.renderer.Styled("✓ CONSENSUS", "2")
+		if !o.renderer.IsRich() {
+			label = "[CONSENSUS]"
 		}
 		writeFormat(w, "  %s %s\n", label, record.ConsensusStatement)
 	}
@@ -385,7 +318,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 
 	if o.mode != OutputQuiet && record.Content != "" {
 		writeLine(w)
-		writeText(w, renderVerboseBody(record.Content, outputWidth(), o.agentColorFor(record.AgentID)))
+		writeText(w, o.renderer.VerboseBody(record.Content, outputWidth(), o.agentColorFor(record.AgentID)))
 	}
 }
 
@@ -402,7 +335,7 @@ func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue
 	}
 	parts = append(parts, labelValue("CUMULATIVE_COST", costValue))
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		parts = append(parts, labelValue("CONSENSUS_STREAK", boundedIntMetricValue(o.consensusStreak, o.state.Config.ConsensusThreshold)))
+		parts = append(parts, labelValue("CONSENSUS_STREAK", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold)))
 	}
 	return "  " + strings.Join(parts, " | ") + "\n"
 }
@@ -421,13 +354,13 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 	}
 
 	var lines []string
-	agent := statusStyle(accent).Render(o.agentDisplayFor(record.AgentID))
+	agent := o.renderer.Styled(o.agentDisplayFor(record.AgentID), accent)
 	lines = append(lines, richMetricLine("Agent", agent, accent))
 	lines = append(lines, richMetricLine("Model", model, "7"))
 	lines = append(lines, "")
 	if maxTurns > 0 {
 		percent := boundedPercent(float64(turn+1), float64(maxTurns))
-		lines = append(lines, richMetricLine("Run", fmt.Sprintf("%d/%d (%d%%) %s", turn+1, maxTurns, percent, metricBar(percent)), "6"))
+		lines = append(lines, richMetricLine("Run", fmt.Sprintf("%d/%d (%d%%) %s", turn+1, maxTurns, percent, o.renderer.MetricBar(percent)), "6"))
 	} else {
 		lines = append(lines, richMetricLine("Run", fmt.Sprintf("%d", turn+1), "6"))
 	}
@@ -436,65 +369,20 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 	lines = append(lines, richMetricLine("Cost", costValue, "7"))
 	if o.state != nil && o.state.StartTime > 0 && o.state.TimeLimit > 0 {
 		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
-		lines = append(lines, richMetricLine("Time limit", boundedSecondsMetricValue(elapsedTotal, o.state.TimeLimit), "3"))
+		lines = append(lines, richMetricLine("Time limit", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit), "3"))
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.consensusStreak, o.state.Config.ConsensusThreshold), "2"))
+		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold), "2"))
 	}
 	if record.Consensus {
 		statement := strings.TrimSpace(record.ConsensusStatement)
 		if statement == "" {
 			statement = "This turn agrees with the emerging decision."
 		}
-		lines = append(lines, "", statusStyle("2").Render("✓ Agreement"), statement)
+		lines = append(lines, "", o.renderer.Styled("✓ Agreement", "2"), statement)
 	}
 
-	return theaterPanel(title, strings.Join(lines, "\n"), width, accent)
-}
-
-func renderVerboseBody(content string, width int, borderColor string) string {
-	width = clampOutputWidth(width)
-	bodyWidth := width - 4
-	var sb strings.Builder
-
-	body := strings.TrimRight(content, "\n")
-	if !plainOutput() && markdownLike(body) {
-		if r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(bodyWidth)); err == nil {
-			if rendered, err := r.Render(body); err == nil {
-				body = strings.TrimRight(rendered, "\n")
-			}
-		}
-	}
-
-	if !plainOutput() {
-		for _, line := range strings.Split(body, "\n") {
-			if line == "" {
-				sb.WriteString("\n")
-				continue
-			}
-			for _, wrapped := range wrapText(line, bodyWidth) {
-				sb.WriteString(wrapped)
-				sb.WriteString("\n")
-			}
-		}
-		return theaterPanel("Agent Response", sb.String(), width, borderColor) + "\n"
-	}
-
-	sb.WriteString(mutedStyle().Render("AGENT CONTENT"))
-	sb.WriteString("\n")
-	for _, line := range strings.Split(body, "\n") {
-		if line == "" {
-			sb.WriteString("  |\n")
-			continue
-		}
-		for _, wrapped := range wrapText(line, bodyWidth) {
-			sb.WriteString("  | ")
-			sb.WriteString(wrapped)
-			sb.WriteString("\n")
-		}
-	}
-	sb.WriteString("\n")
-	return sb.String()
+	return o.renderer.Panel(title, strings.Join(lines, "\n"), width, accent)
 }
 
 func writeText(w io.Writer, text string) {
@@ -525,42 +413,42 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 
 	fmt.Println()
 	rows := [][]string{
-		{"Turns completed", finalTurnsValue(actualTurns, state.MaxTurns)},
-		{"Duration", finalDurationValue(duration, state.TimeLimit)},
+		{"Turns completed", finalTurnsValue(o.renderer, actualTurns, state.MaxTurns)},
+		{"Duration", finalDurationValue(o.renderer, duration, state.TimeLimit)},
 		{"Total tokens", fmt.Sprintf("%d", stats.TotalTokens)},
-		{"Total cost", finalCostValue(stats.TotalCost, state.Budget)},
+		{"Total cost", finalCostValue(o.renderer, stats.TotalCost, state.Budget)},
 	}
 	if state.Config != nil && state.Config.ConsensusThreshold > 0 {
-		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(finalConsensusStreak(records), state.Config.ConsensusThreshold)})
+		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(o.renderer, finalConsensusStreak(records), state.Config.ConsensusThreshold)})
 	}
 	rows = append(rows, []string{"Halted by", state.HaltedBy})
-	fmt.Println(drawStructuredTable("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
+	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 
 	if len(stats.PerAgent) > 0 {
 		fmt.Println()
-		fmt.Println(drawStructuredTable("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, finalAgentRows(stats.PerAgent, state.Config), []string{"", "right", "right", "right"}, outputWidth(), "4"))
+		fmt.Println(o.renderer.Table("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, finalAgentRows(stats.PerAgent, state.Config), []string{"", "right", "right", "right"}, outputWidth(), "4"))
 	}
 }
 
-func finalTurnsValue(value int, bound int) string {
+func finalTurnsValue(r Renderer, value int, bound int) string {
 	if bound <= 0 {
 		return fmt.Sprintf("%d", value)
 	}
-	return boundedIntMetricValue(value, bound)
+	return boundedIntMetricValue(r, value, bound)
 }
 
-func finalDurationValue(value float64, bound int) string {
+func finalDurationValue(r Renderer, value float64, bound int) string {
 	if bound <= 0 {
 		return fmt.Sprintf("%.1fs", value)
 	}
-	return boundedSecondsMetricValue(value, bound)
+	return boundedSecondsMetricValue(r, value, bound)
 }
 
-func finalCostValue(value float64, bound *float64) string {
+func finalCostValue(r Renderer, value float64, bound *float64) string {
 	if bound == nil {
 		return fmt.Sprintf("$%.6f", value)
 	}
-	return boundedCostMetricValue(value, *bound)
+	return boundedCostMetricValue(r, value, *bound)
 }
 
 func finalConsensusStreak(records []types.TurnRecord) int {
@@ -633,7 +521,7 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 	}
 	rows = append(rows, []string{"Avg turn duration", fmt.Sprintf("%vs", stats["avg_turn_duration_seconds"])})
 
-	fmt.Println(drawStructuredTable("Transcript Statistics", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
+	fmt.Println(o.renderer.Table("Transcript Statistics", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 
 	if perAgent, ok := stats["per_agent"]; ok {
 		if pa, ok := perAgent.(map[string]any); ok && len(pa) > 0 {
@@ -651,14 +539,20 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 					})
 				}
 			}
-			fmt.Println(drawStructuredTable("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, agentRows, []string{"", "right", "right", "right"}, outputWidth(), "4"))
+			fmt.Println(o.renderer.Table("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, agentRows, []string{"", "right", "right", "right"}, outputWidth(), "4"))
 		}
 	}
 
 	if ce, ok := stats["consensus_events"]; ok {
 		if events, ok := ce.([]any); ok && len(events) > 0 {
 			fmt.Println()
-			fmt.Println(renderConsensusEvents(events, outputWidth()))
+			lines := make([]string, 0, len(events))
+			for _, evt := range events {
+				if em, ok := evt.(map[string]any); ok {
+					lines = append(lines, fmt.Sprintf("[CONSENSUS] Turn %v [%v]: %v", em["turn"], em["agent_id"], em["statement"]))
+				}
+			}
+			fmt.Println(o.renderer.ListSection("Consensus Events:", lines, outputWidth(), "2"))
 		}
 	}
 }

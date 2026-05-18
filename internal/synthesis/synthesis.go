@@ -2,12 +2,11 @@
 package synthesis
 
 import (
-	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/llmutil"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -26,8 +25,6 @@ Your output must be valid JSON with this exact structure:
 
 Be concise but thorough. Capture the essential insights from the deliberation.
 `
-
-var jsonBlockPattern = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*?\\})\\s*```")
 
 // Synthesize runs a synthesis agent to summarize the deliberation.
 func Synthesize(runner agent.Runner, records []types.TurnRecord, topic, model string) map[string]any {
@@ -72,8 +69,8 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 		}
 	}
 
-	parsed, err := se.extractJSON(content)
-	if err != nil {
+	var parsed map[string]any
+	if err := llmutil.ExtractJSON(content, &parsed); err != nil {
 		return map[string]any{
 			"key_arguments":        []any{},
 			"points_of_agreement":  []any{},
@@ -92,23 +89,4 @@ func (se *synthesisEngine) formatTranscript(records []types.TurnRecord) string {
 		lines = append(lines, fmt.Sprintf("[Turn %d] %s: %s", r.Turn, r.AgentID, r.Content))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func (se *synthesisEngine) extractJSON(content string) (map[string]any, error) {
-	if m := jsonBlockPattern.FindStringSubmatch(content); m != nil {
-		content = m[1]
-	}
-
-	start := strings.Index(content, "{")
-	end := strings.LastIndex(content, "}")
-	if start < 0 || end <= start {
-		return nil, fmt.Errorf("no JSON object found in synthesis response")
-	}
-	content = content[start : end+1]
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("parsing synthesis JSON: %w", err)
-	}
-	return result, nil
 }

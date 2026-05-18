@@ -2178,6 +2178,130 @@ func executeConfigCommand(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// --- requireAutoApprovalForNonTTY tests ---------------------------
+
+func TestRequireAutoApprovalNonTTYYesSkips(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	err := requireAutoApprovalForNonTTY(true, false)
+	if err != nil {
+		t.Fatalf("expected nil for yes=true, got: %v", err)
+	}
+}
+
+func TestRequireAutoApprovalNonTTYDryRunSkips(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	err := requireAutoApprovalForNonTTY(false, true)
+	if err != nil {
+		t.Fatalf("expected nil for dryRun=true, got: %v", err)
+	}
+}
+
+func TestRequireAutoApprovalNonTTYBothBypass(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	err := requireAutoApprovalForNonTTY(true, true)
+	if err != nil {
+		t.Fatalf("expected nil for both yes=true dryRun=true, got: %v", err)
+	}
+}
+
+func TestRequireAutoApprovalTTYInteractiveSkips(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	err := requireAutoApprovalForNonTTY(false, false)
+	if err != nil {
+		t.Fatalf("expected nil for TTY stdin, got: %v", err)
+	}
+}
+
+func TestRequireAutoApprovalNonTTYNoYesDryRunErrors(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	err := requireAutoApprovalForNonTTY(false, false)
+	if err == nil {
+		t.Fatal("expected error for non-TTY without --yes or --dry-run")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--yes") {
+		t.Fatalf("error should mention --yes, got: %s", msg)
+	}
+	if !strings.Contains(msg, "--dry-run") {
+		t.Fatalf("error should mention --dry-run, got: %s", msg)
+	}
+}
+
+func TestRunCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
+	dir := t.TempDir()
+	writeSettings(t, "")
+	t.Chdir(dir)
+
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+	restore := configureRunGlobals("", filepath.Join(dir, "run.jsonl"))
+	defer restore()
+
+	runAuto = "quick"
+	runTopic = "test topic"
+	runYes = false
+	runDryRun = false
+
+	cmd := artifactCommand(t, filepath.Join(dir, "run.jsonl"))
+	err := runCmd.RunE(cmd, nil)
+	if err == nil {
+		t.Fatal("expected error for run auto non-TTY without --yes or --dry-run")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--yes") {
+		t.Fatalf("error should mention --yes, got: %s", msg)
+	}
+	if !strings.Contains(msg, "--dry-run") {
+		t.Fatalf("error should mention --dry-run, got: %s", msg)
+	}
+}
+
+func TestResumeCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
+	dir := t.TempDir()
+	writeSettings(t, "")
+	t.Chdir(dir)
+
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+	restore := configureResumeGlobals("", filepath.Join(dir, "source.jsonl"), filepath.Join(dir, "resume.jsonl"))
+	defer restore()
+
+	resumeAuto = "quick"
+	resumeTopic = "test topic"
+	resumeYes = false
+	resumeDryRun = false
+
+	cmd := artifactCommand(t, filepath.Join(dir, "resume.jsonl"))
+	err := resumeCmd.RunE(cmd, nil)
+	if err == nil {
+		t.Fatal("expected error for resume auto non-TTY without --yes or --dry-run")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--yes") {
+		t.Fatalf("error should mention --yes, got: %s", msg)
+	}
+	if !strings.Contains(msg, "--dry-run") {
+		t.Fatalf("error should mention --dry-run, got: %s", msg)
+	}
+}
+
 func modelCommand(model *string) *cobra.Command {
 	cmd := &cobra.Command{}
 	cmd.Flags().StringVarP(model, "model", "M", *model, "Model")

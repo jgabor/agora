@@ -3,16 +3,13 @@ package autogen
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/llmutil"
 	"github.com/jgabor/agora/internal/types"
 )
-
-// codeFenceRe matches markdown code fences wrapping YAML content.
-var codeFenceRe = regexp.MustCompile("(?s)```(?:ya?ml)?\\s*\n(.*?)```")
 
 // GenerateDryRunConfig returns a hardcoded config for dry-run mode without
 // calling the LLM. The config is level-appropriate with placeholder agents.
@@ -80,7 +77,7 @@ func GenerateConfig(topic string, level types.AutoLevel, model string, runner ag
 		return nil, fmt.Errorf("auto config generation failed: LLM call error: %w", err)
 	}
 
-	yamlBody := stripCodeFences(resp)
+	yamlBody := llmutil.StripCodeFences(resp)
 
 	cfg, err := config.LoadConfigFromBytes([]byte(yamlBody))
 	if err != nil {
@@ -122,17 +119,6 @@ func buildSystemPrompt(topic string, level types.AutoLevel, model string, caps t
 	fmt.Fprintf(&b, "Topic: %s\n", topic)
 
 	return b.String()
-}
-
-// stripCodeFences removes markdown code fences from the LLM response,
-// returning the inner content if fences are present, or the original text
-// otherwise.
-func stripCodeFences(s string) string {
-	locs := codeFenceRe.FindStringSubmatch(s)
-	if len(locs) >= 2 {
-		return strings.TrimSpace(locs[1])
-	}
-	return strings.TrimSpace(s)
 }
 
 // validateCaps checks that the generated config respects level caps.

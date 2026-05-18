@@ -1,18 +1,14 @@
 package evidence
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jgabor/agora/internal/agent"
+	"github.com/jgabor/agora/internal/llmutil"
 	"github.com/jgabor/agora/internal/types"
 )
-
-var codeFenceRe = regexp.MustCompile("(?s)```(?:ya?ml|json)?\\s*\n(.*?)```")
 
 const researchQuerySystemPrompt = `Derive focused web research queries for an Agora deliberation.
 
@@ -131,8 +127,7 @@ func parseWebEvidence(content string, queries []string, maxSources int, retrieve
 			Query string `json:"query"`
 		} `json:"sources"`
 	}
-	cleaned := stripCodeFences(strings.TrimSpace(content))
-	if err := decodeFirstJSONObject(cleaned, &payload); err != nil {
+	if err := llmutil.ExtractJSON(content, &payload); err != nil {
 		return nil, fmt.Errorf("parse failure reading web evidence: %w", err)
 	}
 
@@ -166,24 +161,6 @@ func parseWebEvidence(content string, queries []string, maxSources int, retrieve
 		summary = "Web research completed with source references."
 	}
 	return &types.EvidenceBundle{Summary: summary, SourceReferences: refs}, nil
-}
-
-func stripCodeFences(s string) string {
-	locs := codeFenceRe.FindStringSubmatch(s)
-	if len(locs) >= 2 {
-		return strings.TrimSpace(locs[1])
-	}
-	return strings.TrimSpace(s)
-}
-
-func decodeFirstJSONObject(content string, payload any) error {
-	cleaned := []byte(strings.TrimSpace(content))
-	start := bytes.IndexByte(cleaned, '{')
-	if start < 0 {
-		return fmt.Errorf("no JSON object found")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(cleaned[start:]))
-	return decoder.Decode(payload)
 }
 
 func (c PolicyCollector) deriveResearchQueries(request types.EvidenceRequest) ([]string, error) {
@@ -223,8 +200,7 @@ func parseResearchQueries(content string, maxQueries int) ([]string, error) {
 	var payload struct {
 		Queries []string `json:"queries"`
 	}
-	cleaned := stripCodeFences(strings.TrimSpace(content))
-	if err := decodeFirstJSONObject(cleaned, &payload); err != nil {
+	if err := llmutil.ExtractJSON(content, &payload); err != nil {
 		return nil, fmt.Errorf("parsing queries: %w", err)
 	}
 

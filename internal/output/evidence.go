@@ -10,16 +10,16 @@ import (
 
 // EvidenceSummary prints the pre-deliberation evidence summary and source list.
 func (o *OutputManager) EvidenceSummary(evidence types.EvidenceBundle) {
-	writeLine(os.Stdout, renderTranscriptEvidence(&evidence, "6"))
+	writeLine(os.Stdout, renderTranscriptEvidence(o.renderer, &evidence, "6"))
 }
 
-func renderTranscriptEvidence(evidence *types.EvidenceBundle, color string) string {
+func renderTranscriptEvidence(r Renderer, evidence *types.EvidenceBundle, color string) string {
 	width := outputWidth()
 	contentWidth := width - 4
 	var sb strings.Builder
-	writeSection := sectionWriter(&sb, contentWidth)
+	writeSection := sectionWriter(r, &sb, contentWidth)
 	writeTranscriptEvidenceSections(writeSection, evidence)
-	return theaterPanel("Transcript Evidence", sb.String(), width, color)
+	return r.Panel("Transcript Evidence", sb.String(), width, color)
 }
 
 func writeTranscriptEvidenceSections(writeSection func(string, []string), evidence *types.EvidenceBundle) {

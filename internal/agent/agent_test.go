@@ -267,16 +267,18 @@ func TestAgentRunnerDryRun(t *testing.T) {
 	}
 
 	// Check tokens.
-	tokenMap, ok := metadata["tokens"].(map[string]any)
-	if !ok {
-		t.Fatal("tokens missing from metadata")
+	if metadata.Tokens.Total == nil || *metadata.Tokens.Total != 100 {
+		t.Errorf("total tokens: got %v, want 100", metadata.Tokens.Total)
 	}
-	if tokenMap["total"] != 100 {
-		t.Errorf("total tokens: got %v, want 100", tokenMap["total"])
+	if metadata.Tokens.Input == nil || *metadata.Tokens.Input != 50 {
+		t.Errorf("input tokens: got %v, want 50", metadata.Tokens.Input)
+	}
+	if metadata.Tokens.Output == nil || *metadata.Tokens.Output != 50 {
+		t.Errorf("output tokens: got %v, want 50", metadata.Tokens.Output)
 	}
 
 	// Check cost.
-	if _, ok := metadata["cost"]; !ok {
+	if metadata.Cost == nil {
 		t.Error("cost missing from metadata")
 	}
 }
@@ -467,23 +469,18 @@ func TestParseOpenCodeOutputStepFinish(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 
-	tokenMap, ok := metadata["tokens"].(map[string]any)
-	if !ok {
-		t.Fatal("tokens not found in metadata")
+	if metadata.Tokens.Total == nil || *metadata.Tokens.Total != 150 {
+		t.Errorf("total: got %v, want 150", metadata.Tokens.Total)
 	}
-	if tokenMap["total"] != 150 {
-		t.Errorf("total: got %v, want 150", tokenMap["total"])
+	if metadata.Tokens.Input == nil || *metadata.Tokens.Input != 100 {
+		t.Errorf("input: got %v, want 100", metadata.Tokens.Input)
 	}
-	if tokenMap["input"] != 100 {
-		t.Errorf("input: got %v, want 100", tokenMap["input"])
-	}
-	if tokenMap["output"] != 50 {
-		t.Errorf("output: got %v, want 50", tokenMap["output"])
+	if metadata.Tokens.Output == nil || *metadata.Tokens.Output != 50 {
+		t.Errorf("output: got %v, want 50", metadata.Tokens.Output)
 	}
 
-	cost, _ := metadata["cost"].(*float64)
-	if cost == nil || *cost != 0.002 {
-		t.Errorf("cost: got %v, want 0.002", cost)
+	if metadata.Cost == nil || *metadata.Cost != 0.002 {
+		t.Errorf("cost: got %v, want 0.002", metadata.Cost)
 	}
 }
 
@@ -612,21 +609,21 @@ func TestConvertTokens(t *testing.T) {
 
 	converted := convertTokens(input)
 
-	if converted["total"] != 150 {
-		t.Errorf("total: got %v (type %T), want 150 (int)", converted["total"], converted["total"])
+	if converted.Total == nil || *converted.Total != 150 {
+		t.Errorf("total: got %v, want 150", converted.Total)
 	}
-	if converted["input"] != 100 {
-		t.Errorf("input: got %v, want 100", converted["input"])
+	if converted.Input == nil || *converted.Input != 100 {
+		t.Errorf("input: got %v, want 100", converted.Input)
 	}
-	if converted["reasoning"] != 30 {
-		t.Errorf("reasoning: got %v, want 30", converted["reasoning"])
+	if converted.Reasoning == nil || *converted.Reasoning != 30 {
+		t.Errorf("reasoning: got %v, want 30", converted.Reasoning)
 	}
 }
 
-func TestConvertTokensNonMap(t *testing.T) {
-	converted := convertTokens("not a map")
-	if len(converted) != 0 {
-		t.Errorf("non-map should return empty: got %v", converted)
+func TestConvertTokensNil(t *testing.T) {
+	converted := convertTokens(nil)
+	if converted.Total != nil || converted.Input != nil || converted.Output != nil || converted.Reasoning != nil {
+		t.Errorf("nil input should return zero TokenUsage, got %#v", converted)
 	}
 }
 
@@ -644,11 +641,7 @@ func TestDryRunCostIsNonNull(t *testing.T) {
 		t.Fatalf("dry run: %v", err)
 	}
 
-	cost, ok := metadata["cost"]
-	if !ok {
-		t.Fatal("cost missing from dry-run metadata")
-	}
-	if cost == nil {
+	if metadata.Cost == nil {
 		t.Error("cost should be non-nil *float64 in dry-run metadata")
 	}
 }
@@ -669,9 +662,9 @@ func TestParseOpenCodeOutputPartialJSON(t *testing.T) {
 	if len(textParts) != 0 {
 		t.Errorf("expected 0 text parts, got %d", len(textParts))
 	}
-	// Should still return default metadata.
-	if _, ok := metadata["tokens"]; !ok {
-		t.Error("tokens should be in metadata even if empty")
+	// Should still return non-nil metadata with zero-valued fields.
+	if metadata == nil {
+		t.Error("metadata should not be nil")
 	}
 }
 

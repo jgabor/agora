@@ -19,14 +19,14 @@ import (
 // mockRunner is a Runner whose Run method returns canned responses.
 type mockRunner struct {
 	content  string
-	metadata map[string]any
+	metadata *types.RunMetadata
 	err      error
 	onRun    func()
 	agent    types.AgentConfig
 	envelope map[string]any
 }
 
-func (m *mockRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (m *mockRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	m.agent = agent
 	m.envelope = envelope
 	if m.onRun != nil {
@@ -510,13 +510,13 @@ func TestExecuteTurn(t *testing.T) {
 	cost := 0.005
 	mock := &mockRunner{
 		content: "[CONSENSUS: we agree] This is the agent response.",
-		metadata: map[string]any{
-			"tokens": map[string]any{
-				"total":  total,
-				"input":  input,
-				"output": output,
+		metadata: &types.RunMetadata{
+			Tokens: types.TokenUsage{
+				Total:  &total,
+				Input:  &input,
+				Output: &output,
 			},
-			"cost": &cost,
+			Cost: &cost,
 		},
 	}
 
@@ -578,80 +578,6 @@ func TestExecuteTurnRunnerError(t *testing.T) {
 	}
 }
 
-func TestTurnTokens(t *testing.T) {
-	total := 42
-	input := 20
-	output := 18
-	reasoning := 4
-
-	tests := []struct {
-		name     string
-		metadata map[string]any
-		want     types.TokenUsage
-	}{
-		{
-			name: "all token fields",
-			metadata: map[string]any{
-				"tokens": map[string]any{
-					"total":     total,
-					"input":     input,
-					"output":    output,
-					"reasoning": reasoning,
-				},
-			},
-			want: types.TokenUsage{Total: &total, Input: &input, Output: &output, Reasoning: &reasoning},
-		},
-		{
-			name:     "missing tokens",
-			metadata: map[string]any{},
-			want:     types.TokenUsage{},
-		},
-		{
-			name: "non-int token ignored",
-			metadata: map[string]any{
-				"tokens": map[string]any{"total": 42.0},
-			},
-			want: types.TokenUsage{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := turnTokens(tt.metadata); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("turnTokens() = %#v, want %#v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTurnCost(t *testing.T) {
-	cost := 0.005
-	tests := []struct {
-		name     string
-		metadata map[string]any
-		want     *float64
-	}{
-		{name: "float pointer", metadata: map[string]any{"cost": &cost}, want: &cost},
-		{name: "missing cost", metadata: map[string]any{}, want: nil},
-		{name: "float value ignored", metadata: map[string]any{"cost": cost}, want: nil},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := turnCost(tt.metadata)
-			if tt.want == nil {
-				if got != nil {
-					t.Errorf("turnCost() = %v, want nil", *got)
-				}
-				return
-			}
-			if got == nil || *got != *tt.want {
-				t.Errorf("turnCost() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestRunSkipsRunnerErrorAndContinues(t *testing.T) {
 	dir := t.TempDir()
 	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
@@ -666,8 +592,8 @@ func TestRunSkipsRunnerErrorAndContinues(t *testing.T) {
 	}
 	runner := &seqMockRunner{responses: []mockResponse{
 		{err: fmt.Errorf("malformed llm response")},
-		{content: "second turn succeeds", metadata: map[string]any{}},
-		{content: "third turn succeeds", metadata: map[string]any{}},
+		{content: "second turn succeeds", metadata: &types.RunMetadata{}},
+		{content: "third turn succeeds", metadata: &types.RunMetadata{}},
 	}}
 
 	o := NewOrchestrator(state, tm, runner)
@@ -701,11 +627,11 @@ type seqMockRunner struct {
 
 type mockResponse struct {
 	content  string
-	metadata map[string]any
+	metadata *types.RunMetadata
 	err      error
 }
 
-func (s *seqMockRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (s *seqMockRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	idx := s.callCount
 	if idx >= len(s.responses) {
 		idx = len(s.responses) - 1
@@ -740,8 +666,8 @@ func TestRunMaxTurnsZeroConsensusHalt(t *testing.T) {
 		Running:   true,
 	}
 
-	noConsensus := mockResponse{content: "I disagree.", metadata: map[string]any{}}
-	withConsensus := mockResponse{content: "[CONSENSUS: we agree] Agreed.", metadata: map[string]any{}}
+	noConsensus := mockResponse{content: "I disagree.", metadata: &types.RunMetadata{}}
+	withConsensus := mockResponse{content: "[CONSENSUS: we agree] Agreed.", metadata: &types.RunMetadata{}}
 
 	runner := &seqMockRunner{
 		responses: []mockResponse{
@@ -787,7 +713,7 @@ func TestRunMaxTurnsTenBackwardCompat(t *testing.T) {
 	// All turns return no consensus, so only the turn cap stops it.
 	runner := &seqMockRunner{
 		responses: []mockResponse{
-			{content: "No consensus here.", metadata: map[string]any{}},
+			{content: "No consensus here.", metadata: &types.RunMetadata{}},
 		},
 	}
 
@@ -828,9 +754,9 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 	cfg.ConsensusThreshold = 1
 	responses := make([]mockResponse, 15)
 	for i := range 14 {
-		responses[i] = mockResponse{content: "Still going.", metadata: map[string]any{}}
+		responses[i] = mockResponse{content: "Still going.", metadata: &types.RunMetadata{}}
 	}
-	responses[14] = mockResponse{content: "[CONSENSUS: done] Done.", metadata: map[string]any{}}
+	responses[14] = mockResponse{content: "[CONSENSUS: done] Done.", metadata: &types.RunMetadata{}}
 
 	runner := &seqMockRunner{responses: responses}
 
@@ -861,7 +787,7 @@ type recordingRunner struct {
 	envelopes []map[string]any
 }
 
-func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (r *recordingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	r.agents = append(r.agents, agent)
 	r.envelopes = append(r.envelopes, envelope)
 	idx := r.callCount

@@ -29,11 +29,11 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 
 		record.AgentID = transcriptAgentID(record.AgentID)
 		if transcriptEventRecord(record) {
-			writeLine(w, renderTranscriptEvent(record, i+1))
+			writeLine(w, renderTranscriptEvent(o.renderer, record, i+1))
 			continue
 		}
 		if record.AgentID == "synthesizer" {
-			writeLine(w, renderTranscriptSynthesis(record, i+1))
+			writeLine(w, renderTranscriptSynthesis(o.renderer, record, i+1))
 			continue
 		}
 
@@ -45,7 +45,7 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 		fallbackTurn++
 		if record.Evidence != nil {
 			writeLine(w)
-			writeLine(w, renderTranscriptEvidence(record.Evidence, o.agentColorFor(record.AgentID)))
+			writeLine(w, renderTranscriptEvidence(o.renderer, record.Evidence, o.agentColorFor(record.AgentID)))
 		}
 	}
 }
@@ -89,10 +89,10 @@ func transcriptEventRecord(record types.TurnRecord) bool {
 	return strings.TrimSpace(record.AgentID) == "orchestrator" && record.Turn < 0
 }
 
-func renderTranscriptSynthesis(record types.TurnRecord, index int) string {
+func renderTranscriptSynthesis(r Renderer, record types.TurnRecord, index int) string {
 	var result map[string]any
 	if err := json.Unmarshal([]byte(record.Content), &result); err != nil {
-		return renderTranscriptEvent(record, index)
+		return renderTranscriptEvent(r, record, index)
 	}
 
 	width := outputWidth()
@@ -100,44 +100,62 @@ func renderTranscriptSynthesis(record types.TurnRecord, index int) string {
 
 	if rec, ok := result["recommended_decision"]; ok {
 		if s, ok := rec.(string); ok && s != "" {
-			sections = append(sections, renderProseSection("Recommended Decision", s, width, "2"))
+			sections = append(sections, r.ProseSection("Recommended Decision", s, width, "2"))
 		}
 	}
 
 	if c, ok := result["confidence"]; ok {
 		if s, ok := c.(string); ok {
-			sections = append(sections, drawStructuredTable("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", s}}, []string{"", ""}, width, "6"))
+			sections = append(sections, r.Table("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", s}}, []string{"", ""}, width, "6"))
 		}
 	}
 
 	if args, ok := result["key_arguments"]; ok {
 		if list, ok := args.([]any); ok && len(list) > 0 {
-			sections = append(sections, renderListSection("Key Arguments", list, width, "6", "*"))
+			items := make([]string, len(list))
+			for i, v := range list {
+				if s, ok := v.(string); ok {
+					items[i] = "* " + s
+				}
+			}
+			sections = append(sections, r.ListSection("Key Arguments", items, width, "6"))
 		}
 	}
 
 	if agrs, ok := result["points_of_agreement"]; ok {
 		if list, ok := agrs.([]any); ok && len(list) > 0 {
-			sections = append(sections, renderListSection("Points of Agreement", list, width, "2", "[CONSENSUS]"))
+			items := make([]string, len(list))
+			for i, v := range list {
+				if s, ok := v.(string); ok {
+					items[i] = "[CONSENSUS] " + s
+				}
+			}
+			sections = append(sections, r.ListSection("Points of Agreement", items, width, "2"))
 		}
 	}
 
 	if tens, ok := result["unresolved_tensions"]; ok {
 		if list, ok := tens.([]any); ok && len(list) > 0 {
-			sections = append(sections, renderListSection("Unresolved Tensions", list, width, "3", "[WARNING]"))
+			items := make([]string, len(list))
+			for i, v := range list {
+				if s, ok := v.(string); ok {
+					items[i] = "[WARNING] " + s
+				}
+			}
+			sections = append(sections, r.ListSection("Unresolved Tensions", items, width, "3"))
 		}
 	}
 
 	body := strings.Join(sections, "\n")
 	title := "Synthesis"
-	return theaterPanel(title, body, width, "6")
+	return r.Panel(title, body, width, "6")
 }
 
-func renderTranscriptEvent(record types.TurnRecord, index int) string {
+func renderTranscriptEvent(r Renderer, record types.TurnRecord, index int) string {
 	width := outputWidth()
 	contentWidth := width - 4
 	var sb strings.Builder
-	writeSection := sectionWriter(&sb, contentWidth)
+	writeSection := sectionWriter(r, &sb, contentWidth)
 
 	metadata := []string{
 		fmt.Sprintf("RECORD %d", index),
@@ -167,5 +185,5 @@ func renderTranscriptEvent(record types.TurnRecord, index int) string {
 	if record.Evidence != nil {
 		title = "Transcript Evidence"
 	}
-	return theaterPanel(title, sb.String(), width, agentAccent(record.AgentID))
+	return r.Panel(title, sb.String(), width, agentAccent(record.AgentID))
 }

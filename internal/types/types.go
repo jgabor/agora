@@ -256,6 +256,14 @@ type TokenUsage struct {
 	Reasoning *int `yaml:"reasoning,omitempty" json:"reasoning,omitempty"`
 }
 
+// RunMetadata holds the typed metadata returned from a single agent run.
+// The Runner interface returns a pointer to this struct; nil means no metadata
+// (e.g. dry-run mode).
+type RunMetadata struct {
+	Tokens TokenUsage `json:"tokens"`
+	Cost   *float64   `json:"cost,omitempty"`
+}
+
 // TurnRecord represents a single turn in the deliberation transcript.
 type TurnRecord struct {
 	Turn               int                 `yaml:"turn" json:"turn"`

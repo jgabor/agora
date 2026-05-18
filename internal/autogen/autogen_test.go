@@ -18,7 +18,7 @@ type mockRunner struct {
 	err      error
 }
 
-func (m *mockRunner) Run(_ types.AgentConfig, _ map[string]any) (string, map[string]any, error) {
+func (m *mockRunner) Run(_ types.AgentConfig, _ map[string]any) (string, *types.RunMetadata, error) {
 	if m.err != nil {
 		return "", nil, m.err
 	}
@@ -33,7 +33,7 @@ type capturingRunner struct {
 	lastEnvelope map[string]any
 }
 
-func (c *capturingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, map[string]any, error) {
+func (c *capturingRunner) Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
 	c.lastAgent = agent
 	c.lastEnvelope = envelope
 	return c.response, nil, nil
@@ -185,53 +185,6 @@ agents:
 	}
 	if !strings.HasPrefix(runner.lastAgent.SystemPrompt, agent.ReadOnlyHint) {
 		t.Errorf("config designer prompt should start with read-only hint, got:\n%s", runner.lastAgent.SystemPrompt)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Test: code fence stripping
-// ---------------------------------------------------------------------------
-
-func TestStripCodeFences(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "yaml fence",
-			input: "```yaml\ntopology: ring\n```\n",
-			want:  "topology: ring",
-		},
-		{
-			name:  "yml fence",
-			input: "```yml\ntopology: ring\n```\n",
-			want:  "topology: ring",
-		},
-		{
-			name:  "bare fence",
-			input: "```\ntopology: ring\n```\n",
-			want:  "topology: ring",
-		},
-		{
-			name:  "no fence",
-			input: "topology: ring\n",
-			want:  "topology: ring",
-		},
-		{
-			name:  "fence with preamble",
-			input: "Here is the config:\n```yaml\ntopology: ring\n```\n",
-			want:  "topology: ring",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := stripCodeFences(tt.input)
-			if got != tt.want {
-				t.Errorf("stripCodeFences(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
 	}
 }
 

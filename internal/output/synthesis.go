@@ -7,7 +7,7 @@ import (
 // SynthesizeHeader prints the synthesis section header.
 func (o *OutputManager) SynthesizeHeader() {
 	fmt.Println()
-	fmt.Println(sectionTitle("Synthesis", "6"))
+	fmt.Println(o.renderer.SectionTitle("Synthesis", "6"))
 }
 
 // SynthesisResult displays the synthesis result.
@@ -17,7 +17,7 @@ func (o *OutputManager) SynthesisResult(result map[string]any) {
 
 	if rec, ok := result["recommended_decision"]; ok {
 		if s, ok := rec.(string); ok && s != "" {
-			fmt.Println(renderProseSection("Recommended Decision", s, width, "2"))
+			fmt.Println(o.renderer.ProseSection("Recommended Decision", s, width, "2"))
 		}
 	}
 
@@ -36,26 +36,44 @@ func (o *OutputManager) SynthesisResult(result map[string]any) {
 	case "low":
 		confColor = "1"
 	}
-	fmt.Println(drawStructuredTable("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", confidence}}, []string{"", ""}, width, confColor))
+	fmt.Println(o.renderer.Table("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", confidence}}, []string{"", ""}, width, confColor))
 
 	if args, ok := result["key_arguments"]; ok {
 		if list, ok := args.([]any); ok && len(list) > 0 {
 			fmt.Println()
-			fmt.Println(renderListSection("Key Arguments", list, width, "6", "*"))
+			items := make([]string, len(list))
+			for i, v := range list {
+				if s, ok := v.(string); ok {
+					items[i] = "* " + s
+				}
+			}
+			fmt.Println(o.renderer.ListSection("Key Arguments", items, width, "6"))
 		}
 	}
 
 	if agrs, ok := result["points_of_agreement"]; ok {
 		if list, ok := agrs.([]any); ok && len(list) > 0 {
 			fmt.Println()
-			fmt.Println(renderListSection("Points of Agreement", list, width, "2", "[CONSENSUS]"))
+			items := make([]string, len(list))
+			for i, v := range list {
+				if s, ok := v.(string); ok {
+					items[i] = "[CONSENSUS] " + s
+				}
+			}
+			fmt.Println(o.renderer.ListSection("Points of Agreement", items, width, "2"))
 		}
 	}
 
 	if tens, ok := result["unresolved_tensions"]; ok {
 		if list, ok := tens.([]any); ok && len(list) > 0 {
 			fmt.Println()
-			fmt.Println(renderListSection("Unresolved Tensions", list, width, "3", "[WARNING]"))
+			items := make([]string, len(list))
+			for i, v := range list {
+				if s, ok := v.(string); ok {
+					items[i] = "[WARNING] " + s
+				}
+			}
+			fmt.Println(o.renderer.ListSection("Unresolved Tensions", items, width, "3"))
 		}
 	}
 }
