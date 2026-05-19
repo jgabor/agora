@@ -12,6 +12,7 @@ import (
 
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/autogen"
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/orchestrator"
@@ -175,7 +176,8 @@ var runCmd = &cobra.Command{
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
-		meta := types.NewTranscriptMetadata(cfg)
+		c := cast.New(cfg.Agents)
+		meta := types.NewTranscriptMetadata(cfg, c.Members())
 		meta.ID = generateTranscriptID()
 		tm.SetMetadata(meta)
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
@@ -659,7 +661,8 @@ var resumeCmd = &cobra.Command{
 		}
 
 		tm := transcript.NewTranscriptManager(outputPath)
-		meta := types.NewTranscriptMetadata(cfg)
+		c := cast.New(cfg.Agents)
+		meta := types.NewTranscriptMetadata(cfg, c.Members())
 		meta.ID = generateTranscriptID()
 		tm.SetMetadata(meta)
 		if _, err := tm.LoadExisting(); err != nil {

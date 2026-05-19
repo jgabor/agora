@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2/list"
 	"charm.land/lipgloss/v2/table"
 	"charm.land/lipgloss/v2/tree"
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -235,7 +236,7 @@ func progressColor(percent int) string {
 }
 
 // agentCastTree renders a nested tree of agents with metadata; used in config panels.
-func agentCastTree(r Renderer, agents []types.AgentConfig, includeContext bool, width int) string {
+func agentCastTree(r Renderer, agents []types.AgentConfig, c *cast.Cast, includeContext bool, width int) string {
 	root := tree.Root("ensemble").
 		Enumerator(tree.RoundedEnumerator).
 		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))).
@@ -243,14 +244,11 @@ func agentCastTree(r Renderer, agents []types.AgentConfig, includeContext bool, 
 		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
 		Width(width)
 
-	for i, agent := range agents {
-		member := types.CastMemberForAgent(i, agent)
+	for _, agent := range agents {
+		member := c.Profile(agent.ID)
 		accent := member.Color
-		if accent == "" {
-			accent = agentAccent(agent.ID)
-		}
 
-		heading := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(strings.Trim(castBadge(member), "[]"))
+		heading := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(strings.Trim(c.Badge(agent.ID), "[]"))
 		if member.Name != "" {
 			heading += " " + lipgloss.NewStyle().Bold(true).Render(member.Name)
 		}
@@ -299,12 +297,12 @@ func richAutoConfigPanelAtWidth(r Renderer, width, contentWidth int,
 
 // richDeliberationHeaderAtWidth renders the deliberation header with side-by-side layout.
 func richDeliberationHeaderAtWidth(r Renderer, width, contentWidth int,
-	topicLines, cast []string, settings []string,
-	settingsTitle string, agents []types.AgentConfig,
+	topicLines, castLines []string, settings []string,
+	settingsTitle string, agents []types.AgentConfig, c *cast.Cast,
 ) string {
 	castWidth, settingsWidth := splitWidths(contentWidth, 2, 0.62)
-	cast = append(cast, agentCastTree(r, agents, true, castWidth))
-	castBlock := lipgloss.NewStyle().Width(castWidth).Render(sectionBlock(r, "Cast", cast, castWidth))
+	castLines = append(castLines, agentCastTree(r, agents, c, true, castWidth))
+	castBlock := lipgloss.NewStyle().Width(castWidth).Render(sectionBlock(r, "Cast", castLines, castWidth))
 	settingsBlock := lipgloss.NewStyle().Width(settingsWidth).Render(sectionBlock(r, settingsTitle, settings, settingsWidth))
 	body := lipgloss.JoinVertical(
 		lipgloss.Left,

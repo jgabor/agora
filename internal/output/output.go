@@ -9,6 +9,7 @@ import (
 	"time"
 
 	xterm "github.com/charmbracelet/x/term"
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -56,9 +57,8 @@ type StatsDict = map[string]any
 type OutputManager struct {
 	mode            OutputMode
 	renderer        Renderer
-	agentBadges     map[string]string
+	cast            *cast.Cast
 	agentIdentities map[string]*types.AgentIdentity
-	castMembers     map[string]types.CastMember
 	state           *types.DeliberationState
 	totalCost       float64
 	consensusStreak int
@@ -81,23 +81,19 @@ func NewOutputManagerWithMode(mode OutputMode) *OutputManager {
 }
 
 func (o *OutputManager) registerCast(cfg *types.DeliberationConfig) {
-	o.registerCastMembers(types.BuildCast(cfg), cfg)
+	o.cast = cast.New(cfg.Agents)
+	o.agentIdentities = make(map[string]*types.AgentIdentity, len(cfg.Agents))
+	for _, agent := range cfg.Agents {
+		o.agentIdentities[agent.ID] = agent.Identity
+	}
 }
 
-func (o *OutputManager) registerCastMembers(cast []types.CastMember, cfg *types.DeliberationConfig) {
-	if len(cast) == 0 {
-		return
-	}
-	o.agentBadges = make(map[string]string, len(cast))
-	o.agentIdentities = make(map[string]*types.AgentIdentity, len(cast))
-	o.castMembers = make(map[string]types.CastMember, len(cast))
-	for _, member := range cast {
-		o.agentBadges[member.Persona] = castBadge(member)
-		o.castMembers[member.Persona] = member
-	}
+func (o *OutputManager) registerCastMembers(members []types.CastMember, cfg *types.DeliberationConfig) {
+	o.cast = cast.FromMetadata(&types.TranscriptMetadata{Cast: members})
 	if cfg == nil {
 		return
 	}
+	o.agentIdentities = make(map[string]*types.AgentIdentity, len(cfg.Agents))
 	for _, agent := range cfg.Agents {
 		o.agentIdentities[agent.ID] = agent.Identity
 	}
@@ -108,28 +104,23 @@ func castBadge(member types.CastMember) string {
 }
 
 func (o *OutputManager) agentBadgeFor(id string) string {
-	if o != nil && o.agentBadges != nil {
-		if badge, ok := o.agentBadges[id]; ok {
-			return badge
-		}
+	if o != nil && o.cast != nil {
+		return o.cast.Badge(id)
 	}
 	return unknownAgentBadge(id)
 }
 
 func (o *OutputManager) agentDisplayFor(id string) string {
-	if o != nil && o.castMembers != nil {
-		if member, ok := o.castMembers[id]; ok {
-			return castDisplay(o.agentBadgeFor(id), member)
-		}
+	if o != nil && o.cast != nil {
+		member := o.cast.Profile(id)
+		return castDisplay(o.agentBadgeFor(id), member)
 	}
 	return agentDisplay(o.agentBadgeFor(id), o.agentIdentityFor(id))
 }
 
 func (o *OutputManager) agentColorFor(id string) string {
-	if o != nil && o.castMembers != nil {
-		if member, ok := o.castMembers[id]; ok && member.Color != "" {
-			return member.Color
-		}
+	if o != nil && o.cast != nil {
+		return o.cast.Color(id)
 	}
 	return agentAccent(id)
 }

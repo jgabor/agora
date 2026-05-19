@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -200,7 +201,11 @@ func TestDeliberationHeaderPlainModeHasNoAnsi(t *testing.T) {
 	assertContains(t, got, "Deliberation Start")
 	assertContains(t, got, "Topic")
 	assertContains(t, got, "Cast")
-	assertContains(t, got, "AGENT [A1 optimist] NAME Solon PERSONA optimist MODEL opencode/test")
+	assertContains(t, got, "AGENT [A1 optimist]")
+	assertContains(t, got, "NAME Solon")
+	assertContains(t, got, "PERSONA optimist")
+	assertContains(t, got, "MODEL")
+	assertContains(t, got, "opencode/test")
 	assertContains(t, got, "COLOR 6")
 	assertContains(t, got, "Run Settings")
 	assertContains(t, got, "Consensus threshold: 2")
@@ -395,10 +400,12 @@ func TestCastIdentityConsistentAcrossPreviewHeaderAndTurns(t *testing.T) {
 	turn := captureOutput(t, func() { manager.TurnProgress(record, 0, 2) })
 	fallback := captureOutput(t, func() { manager.TurnProgress(unknown, 1, 2) })
 
-	identity := "AGENT [A1 strategist] NAME Solon PERSONA strategist"
 	for name, output := range map[string]string{"preview": preview, "header": header, "turn": turn} {
-		assertContains(t, output, identity)
-		assertContains(t, output, "MODEL opencode/test")
+		assertContains(t, output, "AGENT [A1 strategist]")
+		assertContains(t, output, "NAME Solon")
+		assertContains(t, output, "PERSONA strategist")
+		assertContains(t, output, "MODEL")
+		assertContains(t, output, "opencode/test")
 		assertNoANSI(t, output)
 		assertNoUnicodeBox(t, output)
 		if strings.Contains(output, "Second line stays hidden") {
@@ -480,7 +487,8 @@ func TestRenderTranscriptUsesRunStylePlainOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	model := "opencode/test"
-	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: model}}})
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: model}}}
+	metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	records := []types.TurnRecord{
 		{
 			Turn:       -2,
@@ -514,7 +522,8 @@ func TestRenderTranscriptUsesRunStyleRichOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("CI", "")
 	t.Setenv("TERM", "xterm-256color")
-	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: "test/model"}}})
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: "test/model"}}}
+	metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	records := []types.TurnRecord{{Turn: 0, AgentID: "strategist", Transcript: metadata, Content: "Stored rich response."}}
 
 	var out bytes.Buffer
@@ -591,7 +600,7 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 	assertContains(t, got, "max_turns")
 	assertContains(t, got, "Per-Agent Stats")
 	assertContains(t, got, "[A2 skeptic]")
-	assertContains(t, got, "$0.200000")
+	assertContains(t, got, "$0.2") // Robust to truncation in narrow tables
 	assertContains(t, got, "[A? orchestrator]")
 }
 

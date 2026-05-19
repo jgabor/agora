@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -18,14 +19,14 @@ import (
 func (o *OutputManager) ConfigPreview(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) {
 	o.registerCast(cfg)
 	fmt.Println()
-	fmt.Println(drawAutoConfigPanel(o.renderer, cfg, level, caps))
+	fmt.Println(drawAutoConfigPanel(o.renderer, cfg, o.cast, level, caps))
 }
 
-func drawAutoConfigPanel(r Renderer, cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) string {
-	return drawAutoConfigPanelAtWidth(r, cfg, level, caps, outputWidth())
+func drawAutoConfigPanel(r Renderer, cfg *types.DeliberationConfig, c *cast.Cast, level types.AutoLevel, caps types.LevelCaps) string {
+	return drawAutoConfigPanelAtWidth(r, cfg, c, level, caps, outputWidth())
 }
 
-func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps, width int) string {
+func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, c *cast.Cast, level types.AutoLevel, caps types.LevelCaps, width int) string {
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
 
@@ -71,11 +72,11 @@ func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, level
 	}
 	agentLines := make([]string, 0, len(cfg.Agents))
 	if !r.IsRich() {
-		for i, a := range cfg.Agents {
-			agentLines = append(agentLines, agentCastLine(r, i, a, true))
+		for _, a := range cfg.Agents {
+			agentLines = append(agentLines, agentCastLine(r, c, a, true))
 		}
 	} else {
-		agentLines = append(agentLines, agentCastTree(r, cfg.Agents, true, contentWidth))
+		agentLines = append(agentLines, agentCastTree(r, cfg.Agents, c, true, contentWidth))
 	}
 	agentsTitle := "Agents"
 	if r.IsRich() {
@@ -95,12 +96,12 @@ func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, level
 	return r.Panel("Generated Config", sb.String(), width, "6")
 }
 
-func agentCastLine(r Renderer, index int, agent types.AgentConfig, includeContext bool) string {
-	member := types.CastMemberForAgent(index, agent)
+func agentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig, includeContext bool) string {
+	member := c.Profile(agent.ID)
 	if r.IsRich() {
-		return richAgentCastLine(r, member, agent, includeContext)
+		return richAgentCastLine(r, c, agent, includeContext)
 	}
-	line := fmt.Sprintf("AGENT %s", castDisplay(castBadge(member), member))
+	line := fmt.Sprintf("AGENT %s", castDisplay(c.Badge(agent.ID), member))
 	if member.ProviderModel != "" {
 		line += fmt.Sprintf(" MODEL %s", member.ProviderModel)
 	}
@@ -116,12 +117,10 @@ func agentCastLine(r Renderer, index int, agent types.AgentConfig, includeContex
 	return line
 }
 
-func richAgentCastLine(r Renderer, member types.CastMember, agent types.AgentConfig, includeContext bool) string {
+func richAgentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig, includeContext bool) string {
+	member := c.Profile(agent.ID)
 	accent := member.Color
-	if accent == "" {
-		accent = agentAccent(agent.ID)
-	}
-	badge := r.Styled("● "+strings.Trim(castBadge(member), "[]"), accent)
+	badge := r.Styled("● "+strings.Trim(c.Badge(agent.ID), "[]"), accent)
 	parts := []string{badge}
 	if member.Name != "" {
 		parts = append(parts, r.Styled(member.Name, accent))
@@ -181,11 +180,12 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 	width = clampOutputWidth(width)
 	contentWidth := width - 4
 	topicLines := []string{state.Topic}
+	c := cast.New(state.Config.Agents)
 
-	cast := make([]string, 0, len(state.Config.Agents))
+	castLines := make([]string, 0, len(state.Config.Agents))
 	if !r.IsRich() {
-		for i, a := range state.Config.Agents {
-			cast = append(cast, agentCastLine(r, i, a, true))
+		for _, a := range state.Config.Agents {
+			castLines = append(castLines, agentCastLine(r, c, a, true))
 		}
 	}
 
@@ -223,13 +223,13 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 	}
 
 	if r.IsRich() {
-		return richDeliberationHeaderAtWidth(r, width, contentWidth, topicLines, cast, settings, settingsTitle, state.Config.Agents)
+		return richDeliberationHeaderAtWidth(r, width, contentWidth, topicLines, castLines, settings, settingsTitle, state.Config.Agents, c)
 	}
 
 	var sb strings.Builder
 	writeSection := sectionWriter(r, &sb, contentWidth)
 	writeSection("Topic", topicLines)
-	writeSection("Cast", cast)
+	writeSection("Cast", castLines)
 	writeSection(settingsTitle, settings)
 
 	return r.Panel("Deliberation Start", sb.String(), width, "4")
@@ -469,10 +469,11 @@ func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.Deliber
 	rows := make([][]string, 0, len(perAgent))
 	seen := make(map[string]bool, len(perAgent))
 	if cfg != nil {
-		for i, agent := range cfg.Agents {
+		c := cast.New(cfg.Agents)
+		for _, agent := range cfg.Agents {
 			if s, ok := perAgent[agent.ID]; ok {
-				member := types.CastMemberForAgent(i, agent)
-				rows = append(rows, agentStatsRow(castDisplay(castBadge(member), member), s))
+				member := c.Profile(agent.ID)
+				rows = append(rows, agentStatsRow(castDisplay(c.Badge(agent.ID), member), s))
 				seen[agent.ID] = true
 			}
 		}

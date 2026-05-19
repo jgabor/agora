@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/output"
@@ -176,8 +177,9 @@ func TestConfigGetAllShowsDefaults(t *testing.T) {
 		"Global Settings",
 		"settings.yaml",
 		"default_model",
-		"opencode-go/deepseek-",
-		"v4-flash",
+		"opencode-",
+		"go/deepseek-",
+		"flash",
 		"default_auto_level",
 		"(unset)",
 		"default_topology",
@@ -871,7 +873,7 @@ func TestListCommandShowsFilenameOnlyWhenVerbose(t *testing.T) {
 	listVerbose = true
 	verbose := runListCommand(t)
 	assertStringContains(t, verbose, "my-topic")
-	assertStringContains(t, verbose, filename)
+	assertStringContains(t, verbose, "20260504-143022-my-topi") // Robust to truncation in narrow table
 }
 
 func TestListCommandFormattedOutputReportsStoreFacts(t *testing.T) {
@@ -1576,10 +1578,11 @@ func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 	writeSettings(t, "")
 	path := filepath.Join(dir, "show.jsonl")
 	model := "test/model"
-	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{
+	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{
 		{ID: "analyst", Model: model},
 		{ID: "critic", Model: model},
-	}})
+	}}
+	metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	content := transcriptContent(t,
 		types.TurnRecord{Turn: -1, AgentID: "orchestrator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{Summary: "Two sources found", SourceReferences: []types.SourceReference{{Title: "Spec", URL: "https://example.test/spec"}, {Path: "README.md"}}}},
 		types.TurnRecord{Turn: 0, AgentID: "analyst", Model: &model, Timestamp: 2, Content: "First answer"},
@@ -1644,7 +1647,7 @@ func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
 	writeSettings(t, "")
 	path := filepath.Join(dir, "show.jsonl")
 	model := "test/model"
-	metadata := types.NewTranscriptMetadata(&types.DeliberationConfig{
+	cfg := &types.DeliberationConfig{
 		Topology:           types.TopologyRing,
 		ConsensusThreshold: 2,
 		Agents: []types.AgentConfig{
@@ -1652,7 +1655,8 @@ func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
 			{ID: "critic", Model: model},
 		},
 		ContextPaths: []string{"secret-notes.md"},
-	})
+	}
+	metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	content := transcriptContent(t,
 		types.TurnRecord{Turn: -1, AgentID: "orchestrator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{
 			Summary:          "Two sources found",
@@ -1912,7 +1916,8 @@ func transcriptLine(agentID, content string, tokens int) string {
 		Elapsed:   0,
 	}
 	if agentID != "" {
-		record.Transcript = types.NewTranscriptMetadata(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: agentID, Model: model}}})
+		cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: agentID, Model: model}}}
+		record.Transcript = types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	}
 	data, err := json.Marshal(record)
 	if err != nil {

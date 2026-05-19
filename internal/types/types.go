@@ -141,58 +141,12 @@ type DeliberationConfig struct {
 	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
 }
 
-var castNames = []string{
-	"Solon",
-	"Aspasia",
-	"Pericles",
-	"Socrates",
-	"Plato",
-	"Themistocles",
-	"Demosthenes",
-	"Phidias",
-}
-
-var castColors = []string{
-	"6",
-	"4",
-	"2",
-	"1",
-	"3",
-	"5",
-	"12",
-	"9",
-}
-
 // NewTranscriptMetadata captures the run setup needed to replay a transcript.
-func NewTranscriptMetadata(cfg *DeliberationConfig) *TranscriptMetadata {
+func NewTranscriptMetadata(cfg *DeliberationConfig, cast []CastMember) *TranscriptMetadata {
 	return &TranscriptMetadata{
 		SchemaVersion: 1,
-		Cast:          BuildCast(cfg),
+		Cast:          cast,
 		Config:        CloneDeliberationConfig(cfg),
-	}
-}
-
-// BuildCast assigns stable display metadata to the configured agent order.
-func BuildCast(cfg *DeliberationConfig) []CastMember {
-	if cfg == nil {
-		return nil
-	}
-	cast := make([]CastMember, 0, len(cfg.Agents))
-	for i, agent := range cfg.Agents {
-		cast = append(cast, CastMemberForAgent(i, agent))
-	}
-	return cast
-}
-
-// CastMemberForAgent returns the display identity for one configured agent.
-func CastMemberForAgent(index int, agent AgentConfig) CastMember {
-	name := castNames[index%len(castNames)]
-	return CastMember{
-		ID:            index + 1,
-		Name:          name,
-		Persona:       agent.ID,
-		ProviderModel: agent.Model,
-		Color:         castColors[index%len(castColors)],
 	}
 }
 

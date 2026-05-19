@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -54,7 +55,8 @@ func mkRecordWithCost(turn int, agentID, content string, cost float64, tokens in
 
 func TestTranscriptAppendAndLoad(t *testing.T) {
 	tm := newTestTranscript(t)
-	tm.SetMetadata(types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "agent1", Model: "test-model"}}}))
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "agent1", Model: "test-model"}}}
+	tm.SetMetadata(types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members()))
 
 	record := mkRecord(0, "agent1", "hello", false, "")
 	if err := tm.Append(record); err != nil {
@@ -91,10 +93,11 @@ func TestTranscriptAppendAndLoad(t *testing.T) {
 
 func TestTranscriptAppendWritesMetadataOnFirstRecordOnly(t *testing.T) {
 	tm := newTestTranscript(t)
-	tm.SetMetadata(types.NewTranscriptMetadata(&types.DeliberationConfig{Agents: []types.AgentConfig{
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{
 		{ID: "alpha", Model: "openai/gpt-5.5"},
 		{ID: "beta", Model: "anthropic/claude"},
-	}}))
+	}}
+	tm.SetMetadata(types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members()))
 
 	if err := tm.Append(mkRecord(0, "alpha", "hello", false, "")); err != nil {
 		t.Fatalf("append first: %v", err)

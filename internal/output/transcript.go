@@ -29,11 +29,11 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 
 		record.AgentID = transcriptAgentID(record.AgentID)
 		if transcriptEventRecord(record) {
-			writeLine(w, renderTranscriptEvent(o.renderer, record, i+1))
+			writeLine(w, o.renderTranscriptEvent(record, i+1))
 			continue
 		}
 		if record.AgentID == "synthesizer" {
-			writeLine(w, renderTranscriptSynthesis(o.renderer, record, i+1))
+			writeLine(w, o.renderTranscriptSynthesis(record, i+1))
 			continue
 		}
 
@@ -89,12 +89,13 @@ func transcriptEventRecord(record types.TurnRecord) bool {
 	return strings.TrimSpace(record.AgentID) == "orchestrator" && record.Turn < 0
 }
 
-func renderTranscriptSynthesis(r Renderer, record types.TurnRecord, index int) string {
+func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index int) string {
 	var result map[string]any
 	if err := json.Unmarshal([]byte(record.Content), &result); err != nil {
-		return renderTranscriptEvent(r, record, index)
+		return o.renderTranscriptEvent(record, index)
 	}
 
+	r := o.renderer
 	width := outputWidth()
 	var sections []string
 
@@ -151,7 +152,8 @@ func renderTranscriptSynthesis(r Renderer, record types.TurnRecord, index int) s
 	return r.Panel(title, body, width, "6")
 }
 
-func renderTranscriptEvent(r Renderer, record types.TurnRecord, index int) string {
+func (o *OutputManager) renderTranscriptEvent(record types.TurnRecord, index int) string {
+	r := o.renderer
 	width := outputWidth()
 	contentWidth := width - 4
 	var sb strings.Builder
@@ -185,5 +187,5 @@ func renderTranscriptEvent(r Renderer, record types.TurnRecord, index int) strin
 	if record.Evidence != nil {
 		title = "Transcript Evidence"
 	}
-	return r.Panel(title, sb.String(), width, agentAccent(record.AgentID))
+	return r.Panel(title, sb.String(), width, o.agentColorFor(record.AgentID))
 }

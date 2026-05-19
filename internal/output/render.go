@@ -8,6 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/tree"
+	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -19,25 +20,8 @@ func labelValue(label, value string) string {
 }
 
 func agentAccent(agentID string) string {
-	normalized := strings.ReplaceAll(agentID, "-", "_")
-	switch normalized {
-	case "orchestrator", "synthesizer":
-		return "6"
-	case "strategist":
-		return "4"
-	case "domain_expert":
-		return "2"
-	case "skeptic", "risk_officer":
-		return "1"
-	case "optimist":
-		return "3"
-	case "user_advocate":
-		return "5"
-	case "implementer":
-		return "8"
-	default:
-		return "7"
-	}
+	var c cast.Cast
+	return c.FallbackColor(agentID)
 }
 
 // --- rendering primitives ---
@@ -275,8 +259,9 @@ func RenderConfigSummary(cfg *types.DeliberationConfig) string {
 		Enumerator(tree.RoundedEnumerator).
 		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))).
 		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8")))
-	for i, agent := range cfg.Agents {
-		member := types.CastMemberForAgent(i, agent)
+	c := cast.New(cfg.Agents)
+	for _, agent := range cfg.Agents {
+		member := c.Profile(agent.ID)
 		label := fmt.Sprintf("%s %s", strings.Trim(castBadge(member), "[]"), agent.ID)
 		if agent.Model != "" {
 			label += " · " + agent.Model
