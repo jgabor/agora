@@ -8,8 +8,8 @@
 
 ## ⇢ Annoying
 
-- [ ] Deduplicate `run`/`resume` command flag definitions — extract `sharedRunFlags(cmd)` in `cmd/agora/main.go`
-- [ ] Generated config output does not correspond to actual config (e.g. `--auto deep --time 3600` initially shows default max time of `deep`)
+- [x] Deduplicate `run`/`resume` command flag definitions — extract `sharedRunFlags(cmd)` in `cmd/agora/main.go` ✓ already done (line 736)
+- [x] Generated config output does not correspond to actual config: auto-mode preview ignores explicit `--time`/`--max-turns` overrides, shows raw caps instead ✓ fixed — preview now respects `cmd.Flags().Changed("time")` and `cmd.Flags().Changed("max-turns")` overrides in both run and resume auto-mode paths
 - [ ] Add source/domain allowlists for web research evidence when users need stricter provenance controls
 - [ ] Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence
 - [ ] Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety

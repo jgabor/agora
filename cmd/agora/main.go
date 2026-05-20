@@ -103,6 +103,12 @@ var runCmd = &cobra.Command{
 			}
 			autoLevel = level
 			levelCaps = types.CapsForLevel(level)
+			if cmd.Flags().Changed("time") {
+				levelCaps.TimeLimit = runFlags.TimeLimit
+			}
+			if cmd.Flags().Changed("max-turns") {
+				levelCaps.MaxTurns = runFlags.MaxTurns
+			}
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 
 			if runFlags.DryRun {
@@ -611,6 +617,12 @@ var resumeCmd = &cobra.Command{
 				return err
 			}
 			levelCaps = types.CapsForLevel(level)
+			if cmd.Flags().Changed("time") {
+				levelCaps.TimeLimit = resumeFlags.TimeLimit
+			}
+			if cmd.Flags().Changed("max-turns") {
+				levelCaps.MaxTurns = resumeFlags.MaxTurns
+			}
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
 
 			if resumeFlags.DryRun {
