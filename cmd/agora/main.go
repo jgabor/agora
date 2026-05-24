@@ -12,11 +12,10 @@ import (
 
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/autogen"
-	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/evidence"
-	"github.com/jgabor/agora/internal/orchestrator"
 	"github.com/jgabor/agora/internal/output"
+	"github.com/jgabor/agora/internal/session"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
@@ -165,54 +164,30 @@ var runCmd = &cobra.Command{
 		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
 		evidenceRequest := evidence.ResolveRequest(cfg, settings.ResearchMaxSources, settings.ContextMaxBytes, settings.ContextMaxDepth, evidenceOverrides)
 
-		state := &types.DeliberationState{
-			Config:      cfg,
-			Topic:       runFlags.Topic,
-			Window:      runFlags.Window,
-			MaxTurns:    runFlags.MaxTurns,
-			TimeLimit:   runFlags.TimeLimit,
-			Budget:      budget,
-			FullContext: runFlags.FullContext,
-			Evidence:    evidenceRequest,
-		}
-
-		// Auto level caps are defaults; explicit CLI limits win.
-		if autoMode {
-			applyAutoLevelCaps(cmd, state, levelCaps, 0)
-		}
-
-		tm := transcript.NewTranscriptManager(outputPath)
-		c := cast.New(cfg.Agents)
-		meta := types.NewTranscriptMetadata(cfg, c.Members())
-		meta.ID = generateTranscriptID()
-		tm.SetMetadata(meta)
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
-		runner := agent.NewAgentRunner(runFlags.DryRun)
-		orch := orchestrator.NewOrchestrator(state, tm, runner)
-		orch.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
-		orch.OnEvidence(outMgr.EvidenceSummary)
-		orch.OnTurn(outMgr.TurnProgress)
-		orch.OnActivity(outMgr.Activity)
-
-		outMgr.DeliberationHeader(state)
-
-		stats := orch.Run()
-
-		outMgr.FinalStats(tm.Records(), state)
-
-		// Force synthesis ON for auto mode
-		if runSynthesize || autoMode {
-			result := orch.Synthesize()
-			if result != nil {
-				outMgr.SynthesizeHeader()
-				outMgr.SynthesisResult(result)
-				outMgr.Success("Synthesis complete")
-			}
+		req := session.RunRequest{
+			Topic:        runFlags.Topic,
+			Config:       cfg,
+			OutputPath:   outputPath,
+			Window:       runFlags.Window,
+			MaxTurns:     runFlags.MaxTurns,
+			TimeLimit:    runFlags.TimeLimit,
+			Budget:       budget,
+			FullContext:  runFlags.FullContext,
+			DryRun:       runFlags.DryRun,
+			Evidence:     evidenceRequest,
+			Synthesize:   runSynthesize || autoMode,
+			TranscriptID: generateTranscriptID(),
+		}
+		if autoMode {
+			req.Auto = sessionAutoCaps(cmd, levelCaps)
 		}
 
-		outMgr.Success(fmt.Sprintf("Deliberation complete (%d turns)", stats.TotalTurns))
-		outMgr.Success(fmt.Sprintf("Transcript: %s", outputPath))
-		outMgr.Info(fmt.Sprintf("Halted by: %s", state.HaltedBy))
+		result, err := session.Run(req, sessionHooks(outMgr))
+		if err != nil {
+			return err
+		}
+		printSessionResult(outMgr, result, fmt.Sprintf("Deliberation complete (%d turns)", result.Stats.TotalTurns))
 
 		return nil
 	},
@@ -295,18 +270,33 @@ func resumeEvidenceRequestChanged(cmd *cobra.Command) bool {
 	return cmd.Flags().Changed("research") || cmd.Flags().Changed("no-research") || cmd.Flags().Changed("context")
 }
 
-func applyAutoLevelCaps(cmd *cobra.Command, state *types.DeliberationState, caps types.LevelCaps, existingTurns int) {
-	if !cmd.Flags().Changed("time") {
-		state.TimeLimit = caps.TimeLimit
+func sessionAutoCaps(cmd *cobra.Command, caps types.LevelCaps) *session.AutoCaps {
+	return &session.AutoCaps{
+		Caps:             caps,
+		ExplicitTime:     cmd.Flags().Changed("time"),
+		ExplicitMaxTurns: cmd.Flags().Changed("max-turns"),
 	}
-	if cmd.Flags().Changed("max-turns") {
-		return
+}
+
+func sessionHooks(outMgr *output.OutputManager) session.Hooks {
+	return session.Hooks{
+		OnTurn:     outMgr.TurnProgress,
+		OnEvidence: outMgr.EvidenceSummary,
+		OnActivity: outMgr.Activity,
+		OnHeader:   outMgr.DeliberationHeader,
 	}
-	if caps.MaxTurns == 0 {
-		state.MaxTurns = 0
-		return
+}
+
+func printSessionResult(outMgr *output.OutputManager, result session.Result, completeMsg string) {
+	outMgr.FinalStats(result.Records, result.State)
+	if result.Synthesis != nil {
+		outMgr.SynthesizeHeader()
+		outMgr.SynthesisResult(result.Synthesis)
+		outMgr.Success("Synthesis complete")
 	}
-	state.MaxTurns = existingTurns + caps.MaxTurns
+	outMgr.Success(completeMsg)
+	outMgr.Success(fmt.Sprintf("Transcript: %s", result.OutputPath))
+	outMgr.Info(fmt.Sprintf("Halted by: %s", result.HaltedBy))
 }
 
 // --- stats --------------------------------------------------------
@@ -668,67 +658,37 @@ var resumeCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("loading source transcript: %w", err)
 		}
-		if len(sourceRecords) == 0 {
-			return fmt.Errorf("no existing transcript found — use 'agora run' to start")
-		}
-
-		tm := transcript.NewTranscriptManager(outputPath)
-		c := cast.New(cfg.Agents)
-		meta := types.NewTranscriptMetadata(cfg, c.Members())
-		meta.ID = generateTranscriptID()
-		tm.SetMetadata(meta)
-		if _, err := tm.LoadExisting(); err != nil {
-			return fmt.Errorf("loading existing output transcript: %w", err)
-		}
-
-		for _, r := range sourceRecords {
-			if err := tm.Append(r); err != nil {
-				return fmt.Errorf("copying records: %w", err)
-			}
-		}
-
-		existingTurns := 0
-		for _, r := range sourceRecords {
-			if r.AgentID != "orchestrator" {
-				existingTurns++
-			}
-		}
 
 		var budget *float64
 		if resumeFlags.BudgetSet {
 			budget = &resumeFlags.Budget
 		}
 
-		state := &types.DeliberationState{
-			Config:      cfg,
-			Topic:       resumeFlags.Topic,
-			Window:      resumeFlags.Window,
-			MaxTurns:    existingTurns + resumeFlags.MaxTurns,
-			TimeLimit:   resumeFlags.TimeLimit,
-			Budget:      budget,
-			FullContext: resumeFlags.FullContext,
-			Turn:        existingTurns,
-		}
-
-		// Auto level caps are defaults; explicit CLI limits win.
-		if autoMode {
-			applyAutoLevelCaps(cmd, state, levelCaps, existingTurns)
-		}
-
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
-		runner := agent.NewAgentRunner(resumeFlags.DryRun)
-		orch := orchestrator.NewOrchestrator(state, tm, runner)
-		orch.OnEvidence(outMgr.EvidenceSummary)
-		orch.OnTurn(outMgr.TurnProgress)
-		orch.OnActivity(outMgr.Activity)
+		req := session.ResumeRequest{
+			RunRequest: session.RunRequest{
+				Topic:       resumeFlags.Topic,
+				Config:      cfg,
+				OutputPath:  outputPath,
+				Window:      resumeFlags.Window,
+				MaxTurns:    resumeFlags.MaxTurns,
+				TimeLimit:   resumeFlags.TimeLimit,
+				Budget:      budget,
+				FullContext: resumeFlags.FullContext,
+				DryRun:      resumeFlags.DryRun,
+				Synthesize:  runSynthesize || autoMode,
+			},
+			SourceRecords: sourceRecords,
+		}
+		if autoMode {
+			req.Auto = sessionAutoCaps(cmd, levelCaps)
+		}
 
-		outMgr.DeliberationHeader(state)
-
-		stats := orch.Run()
-
-		outMgr.FinalStats(tm.Records(), state)
-		outMgr.Success(fmt.Sprintf("Resumed deliberation complete (%d total turns)", stats.TotalTurns))
-		outMgr.Success(fmt.Sprintf("Transcript: %s", outputPath))
+		result, err := session.Resume(req, sessionHooks(outMgr))
+		if err != nil {
+			return err
+		}
+		printSessionResult(outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d total turns)", result.Stats.TotalTurns))
 
 		return nil
 	},
@@ -737,6 +697,7 @@ var resumeCmd = &cobra.Command{
 func init() {
 	sharedRunFlags(resumeCmd, "resume")
 	resumeCmd.Flags().StringVar(&resumeFile, "file", "", "Transcript file path to resume")
+	resumeCmd.Flags().BoolVar(&runSynthesize, "synthesize", false, "Run final synthesis agent after deliberation")
 
 	_ = resumeCmd.MarkFlagRequired("topic")
 }

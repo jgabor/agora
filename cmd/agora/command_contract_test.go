@@ -31,7 +31,7 @@ var commandContract = struct {
 		"agora metadata":    {"format"},
 		"agora prime":       {"format"},
 		"agora run":         {"auto", "budget", "config", "context", "dry-run", "full-context", "max-turns", "model", "no-research", "output", "quiet", "research", "synthesize", "time", "topic", "verbose", "window", "yes"},
-		"agora resume":      {"auto", "budget", "config", "context", "dry-run", "file", "full-context", "max-turns", "model", "no-research", "output", "quiet", "research", "time", "topic", "verbose", "window", "yes"},
+		"agora resume":      {"auto", "budget", "config", "context", "dry-run", "file", "full-context", "max-turns", "model", "no-research", "output", "quiet", "research", "synthesize", "time", "topic", "verbose", "window", "yes"},
 		"agora stats":       {"format"},
 		"agora show":        {"format"},
 		"agora validate":    {"format"},

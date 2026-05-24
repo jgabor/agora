@@ -750,73 +750,6 @@ func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
 	}
 }
 
-func TestApplyAutoLevelCapsKeepsExplicitRunLimits(t *testing.T) {
-	cmd := autoCapsCommand(t)
-	if err := cmd.Flags().Set("time", "1200"); err != nil {
-		t.Fatalf("set time: %v", err)
-	}
-	if err := cmd.Flags().Set("max-turns", "50"); err != nil {
-		t.Fatalf("set max-turns: %v", err)
-	}
-	state := &types.DeliberationState{TimeLimit: 1200, MaxTurns: 50}
-
-	applyAutoLevelCaps(cmd, state, types.CapsForLevel(types.AutoDeep), 0)
-
-	if state.TimeLimit != 1200 || state.MaxTurns != 50 {
-		t.Fatalf("state limits: got time=%d maxTurns=%d, want explicit time=1200 maxTurns=50", state.TimeLimit, state.MaxTurns)
-	}
-}
-
-func TestApplyAutoLevelCapsAppliesRunDefaults(t *testing.T) {
-	cmd := autoCapsCommand(t)
-	state := &types.DeliberationState{TimeLimit: 60, MaxTurns: 10}
-
-	applyAutoLevelCaps(cmd, state, types.CapsForLevel(types.AutoDeep), 0)
-
-	if state.TimeLimit != 900 || state.MaxTurns != 20 {
-		t.Fatalf("state limits: got time=%d maxTurns=%d, want deep defaults time=900 maxTurns=20", state.TimeLimit, state.MaxTurns)
-	}
-}
-
-func TestApplyAutoLevelCapsKeepsExplicitResumeLimits(t *testing.T) {
-	cmd := autoCapsCommand(t)
-	if err := cmd.Flags().Set("time", "1200"); err != nil {
-		t.Fatalf("set time: %v", err)
-	}
-	if err := cmd.Flags().Set("max-turns", "50"); err != nil {
-		t.Fatalf("set max-turns: %v", err)
-	}
-	state := &types.DeliberationState{TimeLimit: 1200, MaxTurns: 57}
-
-	applyAutoLevelCaps(cmd, state, types.CapsForLevel(types.AutoDeep), 7)
-
-	if state.TimeLimit != 1200 || state.MaxTurns != 57 {
-		t.Fatalf("state limits: got time=%d maxTurns=%d, want explicit resume time=1200 maxTurns=57", state.TimeLimit, state.MaxTurns)
-	}
-}
-
-func TestApplyAutoLevelCapsAddsResumeDefaultsToExistingTurns(t *testing.T) {
-	cmd := autoCapsCommand(t)
-	state := &types.DeliberationState{TimeLimit: 60, MaxTurns: 17}
-
-	applyAutoLevelCaps(cmd, state, types.CapsForLevel(types.AutoDeep), 7)
-
-	if state.TimeLimit != 900 || state.MaxTurns != 27 {
-		t.Fatalf("state limits: got time=%d maxTurns=%d, want deep resume defaults time=900 maxTurns=27", state.TimeLimit, state.MaxTurns)
-	}
-}
-
-func TestApplyAutoLevelCapsPreservesYOLOUnlimitedDefault(t *testing.T) {
-	cmd := autoCapsCommand(t)
-	state := &types.DeliberationState{TimeLimit: 60, MaxTurns: 17}
-
-	applyAutoLevelCaps(cmd, state, types.CapsForLevel(types.AutoYOLO), 7)
-
-	if state.TimeLimit != 0 || state.MaxTurns != 0 {
-		t.Fatalf("state limits: got time=%d maxTurns=%d, want yolo unlimited defaults", state.TimeLimit, state.MaxTurns)
-	}
-}
-
 func TestParseTranscriptFilename(t *testing.T) {
 	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
 	if !ok {
@@ -2317,14 +2250,5 @@ func settingsCommand(model, auto *string) *cobra.Command {
 	cmd := modelCommand(model)
 	cmd.Flags().StringVar(auto, "auto", "", "Auto")
 	cmd.Flags().String("config", "", "Config")
-	return cmd
-}
-
-func autoCapsCommand(t *testing.T) *cobra.Command {
-	t.Helper()
-
-	cmd := &cobra.Command{}
-	cmd.Flags().Int("time", 60, "Time")
-	cmd.Flags().Int("max-turns", 10, "Max turns")
 	return cmd
 }
