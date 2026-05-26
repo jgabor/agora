@@ -261,8 +261,8 @@ func writeTranscriptListMarkdown(w io.Writer, data transcriptListOutput) error {
 	fmt.Fprintln(&sb)
 	fmt.Fprintln(&sb, "| # | Date | Turns | Slug | Filename |")
 	fmt.Fprintln(&sb, "| ---: | --- | ---: | --- | --- |")
-	for _, entry := range data.Transcripts {
-		fmt.Fprintf(&sb, "| %d | %s | %d | %s | `%s` |\n", entry.ID, entry.Date, entry.Turns, entry.Slug, entry.Filename)
+	for i, entry := range data.Transcripts {
+		fmt.Fprintf(&sb, "| %d | %s | %d | %s | `%s` |\n", i+1, entry.Date, entry.Turns, entry.Slug, entry.Filename)
 	}
 	_, err := fmt.Fprint(w, sb.String())
 	return err

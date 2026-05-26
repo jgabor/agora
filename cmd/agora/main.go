@@ -525,9 +525,9 @@ var listCmd = &cobra.Command{
 		}
 
 		rows := make([][]string, 0, len(entries))
-		for _, entry := range entries {
+		for i, entry := range entries {
 			row := []string{
-				fmt.Sprintf("%d", entry.id),
+				fmt.Sprintf("%d", i+1),
 				entry.date.Format("2006-01-02 15:04:05"),
 				fmt.Sprintf("%d", entry.turns),
 				entry.slug,

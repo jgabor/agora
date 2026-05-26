@@ -80,7 +80,7 @@ tasks:
   - number: 5
     name: Fix list table # column inconsistency
     depends_on: []
-    status: pending
+    status: complete
     acceptance:
       - GIVEN `agora list` runs WHEN the table renders THEN the # column shows sequential integers for every row.
       - GIVEN transcripts are listed WHEN the first column displays THEN no raw Unix millisecond IDs appear in the # column.
