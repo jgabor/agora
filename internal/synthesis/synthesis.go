@@ -41,7 +41,7 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 
 	totalTurns := 0
 	for _, r := range records {
-		if r.AgentID != "orchestrator" {
+		if r.AgentID != "moderator" {
 			totalTurns++
 		}
 	}

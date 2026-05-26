@@ -1,0 +1,26 @@
+header:
+  level: light
+  created: 2026-05-20
+  status: active
+  title: Auto-mode config preview respects explicit --time and --max-turns overrides
+what: >
+  Fix the auto-mode config preview so that when a user passes `--auto deep
+  --time 3600`, the preview shows the user's explicit time limit (3600s) instead
+  of the raw caps-based value (900s). The same fix applies to `--max-turns`.
+
+why: >
+  Users expect their explicit CLI flags to be reflected in the config preview.
+  Currently the preview shows `CapsForLevel()` values regardless of whether the
+  user overrode `--time` or `--max-turns`, creating a mismatch between what is
+  shown and what actually runs.
+
+constraints: >
+  Do not change default (non-auto) mode behavior.
+  Do not alter the actual run/resume execution — only the preview display.
+  Preserve existing caps defaults when no explicit override is passed.
+  Both `run` and `resume` auto-mode paths must be fixed.
+
+overall_acceptance:
+  - GIVEN auto mode with an explicit `--time` flag WHEN the config preview renders THEN the displayed time limit matches the user's value, not the caps default
+  - GIVEN auto mode with an explicit `--max-turns` flag WHEN the config preview renders THEN the displayed max turns matches the user's value, not the caps default
+  - GIVEN auto mode without `--time` or `--max-turns` WHEN the config preview renders THEN the caps defaults are shown as before

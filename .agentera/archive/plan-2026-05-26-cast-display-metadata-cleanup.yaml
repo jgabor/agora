@@ -1,0 +1,86 @@
+header:
+  level: full
+  created: '2026-05-26'
+  status: complete
+  reviewed: '2026-05-26'
+  critic_issues: 1 found, 1 addressed, 0 dismissed
+  title: Cast Display Metadata Cleanup
+what: >-
+  Remove stale and noisy metadata from agent cast display in Generated Config, Deliberation Start,
+  and plain-mode render paths. Context always shows the same sandbox boilerplate, offering no
+  per-agent information. Color is a render implementation detail with no user-facing value.
+  Model per-agent is useful but the plain-mode rendering still uses raw all-caps labels.
+why: >-
+  The "context" line in every agent's cast display always reads "You are operating in a
+  read-only sandbox. Your tools are limited to reading, searching, and exploring files."
+  It is identical across all agents, never changes, and tells the user nothing about the
+  agent's role or expertise. Removing it tightens the display by 2-3 lines per agent.
+  The "color" slot number is an internal render detail with zero diagnostic value.
+constraints: >-
+  Keep Go-only implementation and existing render architecture. Do not change the firstPromptLine
+  utility — it may be useful for --verbose diagnostics. Only change the call sites that
+  display context, color, and model in the agent cast output. The model value per agent is
+  useful and should be retained.
+scope:
+  included:
+    - Remove context from rich agentCastTree in Generated Config and Deliberation Start panels
+    - Remove context from richAgentCastLine metadata line
+    - Remove context from plain agentCastLine (CONTEXT label)
+    - Remove color from rich agentCastTree tree child nodes
+    - Remove color from richAgentCastLine metadata line
+    - Remove color from plain agentCastLine (COLOR label)
+    - Clean up plain-mode agentCastLine to use clean format without all-caps inline labels
+    - Update tests to match new format
+  excluded:
+    - firstPromptLine utility removal
+    - Model removal from any render path
+    - Context removal from --verbose diagnostic output
+    - Changing the turn card Agent line (already fixed in Task 1)
+  deferred: []
+design: >-
+  Surgical changes at the three call sites that render context/color/model in agent cast
+  display. The approach is minimal: pass `false` for includeContext instead of `true` in
+  the four call sites that render config headers, and remove the color line from agent
+  metadata. Model remains. The plain agentCastLine gets the same treatment as castDisplay
+  got in Task 1 — remove the all-caps label prefix, just emit the value cleanly.
+tasks:
+  - number: 1
+    name: Remove context and color from rich agentCastTree (Generated Config + Deliberation Start)
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN a deliberation starts in rich mode WHEN the Generated Config panel renders THEN no agent subtree child shows a "context" or "color" line.
+      - GIVEN a deliberation starts in rich mode WHEN the Deliberation Start panel renders THEN no agent subtree child shows a "context" or "color" line.
+      - GIVEN an agent has a model configured WHEN its tree node renders THEN the model value is still shown.
+  - number: 2
+    name: Remove context and color from richAgentCastLine (config header metadata)
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN a deliberation starts in plain mode WHEN the agent cast line renders THEN no CONTEXT or COLOR label is appended.
+      - GIVEN an agent has a model configured WHEN the agent cast line renders THEN the model value is shown without an all-caps MODEL label.
+      - GIVEN plain mode renders the cast line WHEN the format is inspected THEN it uses clean inline format (badge name persona) with model as metadata, matching the rich path style.
+  - number: 3
+    name: Clean up plain agentCastLine format
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN plain mode renders an agent cast line WHEN the line is inspected THEN it shows AGENT [A1 skeptic] Solon skeptic without all-caps inline labels.
+      - GIVEN the plain mode format is compared to rich mode WHEN both render THEN both use the same clean display conventions.
+  - number: 4
+    name: Update tests and verify
+    depends_on:
+      - Task 1
+      - Task 2
+      - Task 3
+    status: complete
+    acceptance:
+      - GIVEN all render changes are applied WHEN `go build ./...` runs THEN it passes.
+      - GIVEN all render changes are applied WHEN `go test ./...` runs THEN tests pass or are updated to match new format.
+      - GIVEN the changes are applied WHEN `scripts/e2e-rmux.sh` runs THEN all e2e checks pass.
+      - GIVEN a dry-run deliberation runs WHEN the output is reviewed THEN no stale context or color text appears.
+overall_acceptance:
+  - GIVEN the fixes are applied WHEN a deliberation runs in rich mode THEN the config panels show agent badge, name, persona, and model — no context or color.
+  - GIVEN the fixes are applied WHEN a deliberation runs in plain mode THEN the same clean agent display is shown without all-caps labels.
+  - GIVEN the changes are applied WHEN the full test suite runs THEN all tests pass.
+surprises: []

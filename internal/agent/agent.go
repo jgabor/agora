@@ -130,15 +130,27 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 // enforcement happens through opencode's permission config.
 const ReadOnlyHint = "You are operating in a read-only sandbox. Your tools are limited to reading, searching, and exploring files."
 
+const ConsensusHint = "If you fully agree with the direction of the deliberation, include [CONSENSUS: your statement] in your response."
+
+const ModeratorPrompt = "You are a discussion moderator. Your role is to keep deliberation productive by asking clarifying questions when agents are unclear, redirecting agents that go off-topic, and introducing new angles or perspectives when the conversation reaches a stalemate. Only interject when necessary — when agents are repeating themselves, stuck, or drifting off course. Your goal is to move the group toward consensus without dominating the discussion."
+
+func ModeratorConfig(model string) types.AgentConfig {
+	return types.AgentConfig{
+		ID:           "moderator",
+		Model:        model,
+		SystemPrompt: ModeratorPrompt,
+	}
+}
+
 func WithReadOnlySystemPrompt(prompt string) string {
 	prompt = strings.TrimSpace(prompt)
 	if strings.Contains(prompt, ReadOnlyHint) {
 		return prompt
 	}
 	if prompt == "" {
-		return ReadOnlyHint
+		return ReadOnlyHint + "\n\n" + ConsensusHint
 	}
-	return ReadOnlyHint + "\n\n" + prompt
+	return ReadOnlyHint + "\n\n" + ConsensusHint + "\n\n" + prompt
 }
 
 func WithReadOnlyAgentPrompt(agent types.AgentConfig) types.AgentConfig {

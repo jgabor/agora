@@ -1,0 +1,83 @@
+header:
+  level: full
+  created: '2026-05-26'
+  status: complete
+  reviewed: '2026-05-26'
+  critic_issues: 4 found, 4 addressed, 0 dismissed
+  title: Consensus Mechanism Fixes
+what: >-
+  Fix the deliberation consensus mechanism which is currently dead code. Agents
+  are never instructed to use the [CONSENSUS: ...] syntax, so the streak tracker
+  always stays at 0 and consensus-based early termination never triggers. Four
+  fixes: add consensus instructions to agent system prompts, pass consensus
+  state into the agent context envelope, set a meaningful autogen default for
+  consensus_threshold, and hide the Agreement bar when threshold is 0.
+why: >-
+  The consensus mechanism exists as infrastructure (regex detection, streak
+  tracking, termination check) but is entirely inert. This wastes a potential
+  early-termination path that could save time and money when agents converge.
+  The misleading Agreement progress bar erodes trust when it never moves.
+constraints: >-
+  Keep Go-only implementation. Do not change the consensus detection regex or
+  the orchestrator loop structure. Do not add new dependencies. Preserve
+  backward compatibility for existing configs with consensus_threshold=0.
+scope:
+  included:
+    - Add consensus instruction to agent system prompts (instructions on when/how to use [CONSENSUS: ...])
+    - Pass current consensus streak and last statement into the agent context envelope
+    - Change autogen default for consensus_threshold from 0 to numAgents
+    - Hide the Agreement progress bar and header line when consensus_threshold is 0
+  excluded:
+    - Adding a mid-loop synthesis check (separate, larger feature)
+    - Changing the ConsecutiveConsensusCount algorithm
+    - Changing the consensus detection regex
+    - Adding new config fields or CLI flags
+  deferred:
+    - Mid-loop synthesis for implicit agreement detection
+design: >-
+  Surgical changes in four locations: agent system prompt builder (to add
+  consensus instructions), agent envelope/payload (to pass consensus state),
+  autogen config defaults, and output render guard. Each fix is independently
+  testable and does not change the deliberation logic — only enables the
+  existing infrastructure to work.
+tasks:
+  - number: 1
+    name: Add [CONSENSUS] instructions to agent system prompts
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN an agent is created for a deliberation WHEN its system prompt is constructed THEN it includes an instruction to emit [CONSENSUS: ...] when agreement is reached.
+      - GIVEN the consensus instruction is added WHEN a dry-run deliberation runs THEN the agent output is not affected (consensus instructions are informational, not structural).
+      - GIVEN the system prompt has a consensus instruction WHEN it is prepended to the existing prompt THEN the read-only sandbox hint remains the first element.
+  - number: 2
+    name: Pass consensus state into agent context envelope
+    depends_on:
+      - Task 1
+    status: complete
+    acceptance:
+      - GIVEN a deliberation is running WHEN an agent receives its context envelope THEN the envelope includes the current consensus streak and last consensus statement.
+      - GIVEN no consensus has been reached WHEN the agent context is built THEN the consensus fields are empty or zero-valued.
+      - GIVEN consensus has been reached WHEN the next agent turn executes THEN the envelope includes the streak count and the statement text.
+  - number: 3
+    name: Set meaningful autogen default for consensus_threshold
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN autogen generates a config for N agents WHEN the config is inspected THEN consensus_threshold is set to N (the number of agents).
+      - GIVEN a config already has consensus_threshold set explicitly WHEN it is used THEN the autogen default does not override it.
+      - GIVEN consensus_threshold is N (=numAgents) WHEN N consecutive agents signal [CONSENSUS] THEN the deliberation halts via the existing termination check.
+  - number: 4
+    name: Hide Agreement bar and header when threshold is 0
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN a config has consensus_threshold=0 WHEN the deliberation header renders THEN no "Agreement target" or "Consensus threshold" line appears.
+      - GIVEN a config has consensus_threshold=0 WHEN the turn card renders THEN no "Agreement" progress bar is shown.
+      - GIVEN a config has consensus_threshold=N>0 WHEN the turn card renders THEN the "Agreement" progress bar is shown as before.
+      - GIVEN a config has consensus_threshold=0 WHEN the summary table renders THEN no "Consensus streak" row appears.
+overall_acceptance:
+  - GIVEN all four fixes are applied WHEN a deliberation runs with auto-generated config THEN the consensus mechanism is functional (non-zero threshold, agents know how to signal).
+  - GIVEN all four fixes are applied WHEN a manual config with consensus_threshold=0 is used THEN the UI hides all consensus-related display elements cleanly.
+  - GIVEN all four fixes are applied WHEN `go test ./...` runs THEN all existing tests pass.
+  - GIVEN all four fixes are applied WHEN the e2e script runs THEN all checks pass.
+surprises: []

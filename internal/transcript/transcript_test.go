@@ -124,8 +124,8 @@ func TestTranscriptAppendWritesMetadataOnFirstRecordOnly(t *testing.T) {
 func TestTranscriptMultipleAppends(t *testing.T) {
 	tm := newTestTranscript(t)
 
-	// Write orchestrator seed then agent turns.
-	if err := tm.Append(mkRecord(-1, "orchestrator", "seed", false, "")); err != nil {
+	// Write moderator seed then agent turns.
+	if err := tm.Append(mkRecord(-1, "moderator", "seed", false, "")); err != nil {
 		t.Fatalf("append seed: %v", err)
 	}
 	if err := tm.Append(mkRecord(0, "a", "turn 0", false, "")); err != nil {
@@ -183,7 +183,7 @@ func TestLoadFileStrictRejectsMalformedNonBlankRecord(t *testing.T) {
 
 func TestHistoryRingTopology(t *testing.T) {
 	records := []types.TurnRecord{
-		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
 		mkRecord(0, "a", "msg from a", false, ""),
 		mkRecord(1, "b", "msg from b", false, ""),
 	}
@@ -192,8 +192,8 @@ func TestHistoryRingTopology(t *testing.T) {
 	if len(history) != 1 {
 		t.Fatalf("turn 0 history: got %d, want 1", len(history))
 	}
-	if history[0]["agent_id"] != "orchestrator" {
-		t.Errorf("turn 0: expected orchestrator, got %q", history[0]["agent_id"])
+	if history[0]["agent_id"] != "moderator" {
+		t.Errorf("turn 0: expected moderator, got %q", history[0]["agent_id"])
 	}
 
 	history = HistoryForAgent(records, "b", 5, types.TopologyRing, 2, 1)
@@ -215,7 +215,7 @@ func TestHistoryRingTopology(t *testing.T) {
 
 func TestHistoryRingTopologyWindow(t *testing.T) {
 	records := []types.TurnRecord{
-		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
 		mkRecord(0, "a", "a-0", false, ""),
 		mkRecord(1, "b", "b-0", false, ""),
 		mkRecord(2, "c", "c-0", false, ""),
@@ -238,7 +238,7 @@ func TestHistoryRingTopologyWindow(t *testing.T) {
 
 func TestHistoryStarTopology(t *testing.T) {
 	records := []types.TurnRecord{
-		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
 		mkRecord(0, "a", "msg a", false, ""),
 		mkRecord(1, "b", "msg b", false, ""),
 	}
@@ -251,14 +251,14 @@ func TestHistoryStarTopology(t *testing.T) {
 	for _, h := range history {
 		agents[h["agent_id"]] = true
 	}
-	if !agents["orchestrator"] || !agents["a"] || !agents["b"] {
+	if !agents["moderator"] || !agents["a"] || !agents["b"] {
 		t.Errorf("star history missing agents: %v", agents)
 	}
 }
 
 func TestHistoryMeshTopology(t *testing.T) {
 	records := []types.TurnRecord{
-		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
 		mkRecord(0, "x", "x-msg", false, ""),
 		mkRecord(1, "y", "y-msg", false, ""),
 	}
@@ -271,7 +271,7 @@ func TestHistoryMeshTopology(t *testing.T) {
 
 func TestHistoryWindowLargerThanRecords(t *testing.T) {
 	records := []types.TurnRecord{
-		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
 		mkRecord(0, "a", "msg a", false, ""),
 	}
 
@@ -317,7 +317,7 @@ func TestTotalCost(t *testing.T) {
 	records := []types.TurnRecord{
 		mkRecordWithCost(0, "a", "x", 0.001, 100),
 		mkRecordWithCost(1, "b", "x", 0.002, 200),
-		mkRecord(-1, "orchestrator", "seed", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
 	}
 
 	if c := TotalCost(records); c != 0.003 {
@@ -365,16 +365,16 @@ func TestLoadPythonProducedJSONL(t *testing.T) {
 
 			// Verify key fields are populated correctly.
 			first := records[0]
-			if first.AgentID != "orchestrator" {
-				t.Errorf("first agent_id: got %q, want orchestrator", first.AgentID)
+			if first.AgentID != "moderator" {
+				t.Errorf("first agent_id: got %q, want moderator", first.AgentID)
 			}
 			if first.Turn != -1 {
 				t.Errorf("first turn: got %d, want -1", first.Turn)
 			}
 
-			// Verify a non-orchestrator record has model populated.
+			// Verify a non-moderator record has model populated.
 			for _, r := range records {
-				if r.AgentID != "orchestrator" && r.Model != nil {
+				if r.AgentID != "moderator" && r.Model != nil {
 					t.Logf("model field present: %s -> %s", r.AgentID, *r.Model)
 					break
 				}
@@ -443,7 +443,7 @@ func TestGoMarshaledRecordJSONKeysForPython(t *testing.T) {
 func TestTranscriptWriteAll(t *testing.T) {
 	tm := newTestTranscript(t)
 
-	_ = tm.Append(mkRecord(-1, "orchestrator", "seed", false, ""))
+	_ = tm.Append(mkRecord(-1, "moderator", "seed", false, ""))
 	_ = tm.Append(mkRecord(0, "a", "msg", false, ""))
 
 	// WriteAll should succeed.

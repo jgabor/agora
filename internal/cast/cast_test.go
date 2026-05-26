@@ -63,7 +63,7 @@ func TestCastColor(t *testing.T) {
 		t.Errorf("expected color 6, got %s", col)
 	}
 
-	if col := c.Color("orchestrator"); col != "6" {
-		t.Errorf("expected orchestrator color 6, got %s", col)
+	if col := c.Color("moderator"); col != "6" {
+		t.Errorf("expected moderator color 6, got %s", col)
 	}
 }

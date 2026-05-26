@@ -33,7 +33,9 @@ func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, c *ca
 	shapeTitle := "Cast Preview"
 	shapeLines := []string{
 		fmt.Sprintf("Topology: %s", string(cfg.Topology)),
-		fmt.Sprintf("Consensus threshold: %d", cfg.ConsensusThreshold),
+	}
+	if cfg.ConsensusThreshold > 0 {
+		shapeLines = append(shapeLines, fmt.Sprintf("Consensus threshold: %d", cfg.ConsensusThreshold))
 	}
 	if r.IsRich() {
 		shapeTitle = "Run Shape"
@@ -239,7 +241,7 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 
 // TurnProgress prints progress for a single turn.
 func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns int) {
-	if record.AgentID != "orchestrator" {
+	if record.AgentID != "moderator" {
 		o.turnDurations = append(o.turnDurations, record.Elapsed)
 	}
 	o.renderTurnProgress(os.Stdout, record, turn, maxTurns)
@@ -425,7 +427,7 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 
 	actualTurns := 0
 	for _, r := range records {
-		if r.AgentID != "orchestrator" && r.AgentID != "synthesizer" {
+		if r.AgentID != "moderator" && r.AgentID != "synthesizer" {
 			actualTurns++
 		}
 	}
@@ -488,7 +490,7 @@ func finalConsensusStreak(records []types.TurnRecord) int {
 			streak++
 			continue
 		}
-		if records[i].AgentID != "orchestrator" {
+		if records[i].AgentID != "moderator" {
 			break
 		}
 	}
@@ -496,7 +498,7 @@ func finalConsensusStreak(records []types.TurnRecord) int {
 }
 
 func isInternalAgent(agentID string) bool {
-	return agentID == "orchestrator" || agentID == "synthesizer"
+	return agentID == "moderator" || agentID == "synthesizer"
 }
 
 func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.DeliberationConfig) [][]string {

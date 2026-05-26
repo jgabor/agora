@@ -489,7 +489,7 @@ func TestRenderTranscriptUsesRunStylePlainOutput(t *testing.T) {
 	records := []types.TurnRecord{
 		{
 			Turn:       -2,
-			AgentID:    "orchestrator",
+			AgentID:    "moderator",
 			Content:    "Evidence gathered.",
 			Transcript: metadata,
 			Evidence: &types.EvidenceBundle{
@@ -578,7 +578,7 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 		HaltedBy:  "max_turns",
 	}
 	records := []types.TurnRecord{
-		{Turn: 0, AgentID: "orchestrator", Tokens: types.TokenUsage{Total: &tokensA}, Cost: &costA, Elapsed: 0.5},
+		{Turn: 0, AgentID: "moderator", Tokens: types.TokenUsage{Total: &tokensA}, Cost: &costA, Elapsed: 0.5},
 		{Turn: 1, AgentID: "skeptic", Tokens: types.TokenUsage{Total: &tokensB}, Cost: &costB, Elapsed: 1.5},
 	}
 
@@ -598,7 +598,7 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 	assertContains(t, got, "Per-Agent Stats")
 	assertContains(t, got, "[A2 skeptic]")
 	assertContains(t, got, "$0.2") // Robust to truncation in narrow tables
-	assertNotContains(t, got, "[A? orchestrator]")
+	assertNotContains(t, got, "[A? moderator]")
 }
 
 func TestFinalStatsUsesSameBoundedMetricPresentationAsTurnProgress(t *testing.T) {

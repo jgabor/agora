@@ -219,7 +219,7 @@ func evidenceEnabled(req types.EvidenceRequest) bool {
 func countAgentTurns(records []types.TurnRecord) int {
 	count := 0
 	for _, record := range records {
-		if record.AgentID != "orchestrator" {
+		if record.AgentID != "moderator" {
 			count++
 		}
 	}

@@ -23,7 +23,7 @@ func HistoryForAgent(records []types.TurnRecord, agentID string, window int, top
 	default:
 		var predecessorID string
 		if turn == 0 {
-			predecessorID = "orchestrator"
+			predecessorID = "moderator"
 		} else {
 			predecessorIdx := (turn - 1) % numAgents
 			agentOrder := inferAgentOrder(records, numAgents)
@@ -56,7 +56,7 @@ func HistoryForAgent(records []types.TurnRecord, agentID string, window int, top
 func inferAgentOrder(records []types.TurnRecord, numAgents int) []string {
 	var seen []string
 	for _, r := range records {
-		if r.AgentID == "orchestrator" {
+		if r.AgentID == "moderator" {
 			continue
 		}
 		found := false

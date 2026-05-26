@@ -29,14 +29,14 @@ func (m *mockRunner) Run(ag types.AgentConfig, envelope map[string]any) (string,
 
 func TestFormatTranscript(t *testing.T) {
 	records := []types.TurnRecord{
-		{Turn: -1, AgentID: "orchestrator", Content: "Begin topic: test"},
+		{Turn: -1, AgentID: "moderator", Content: "Begin topic: test"},
 		{Turn: 0, AgentID: "agent-0", Content: "I think X is correct."},
 		{Turn: 1, AgentID: "agent-1", Content: "I disagree because Y."},
 	}
 
 	se := &synthesisEngine{}
 	result := se.formatTranscript(records)
-	expected := "[Turn -1] orchestrator: Begin topic: test\n[Turn 0] agent-0: I think X is correct.\n[Turn 1] agent-1: I disagree because Y."
+	expected := "[Turn -1] moderator: Begin topic: test\n[Turn 0] agent-0: I think X is correct.\n[Turn 1] agent-1: I disagree because Y."
 	if result != expected {
 		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, result)
 	}
@@ -44,7 +44,7 @@ func TestFormatTranscript(t *testing.T) {
 
 func TestSynthesize(t *testing.T) {
 	records := []types.TurnRecord{
-		{Turn: -1, AgentID: "orchestrator", Content: "seed"},
+		{Turn: -1, AgentID: "moderator", Content: "seed"},
 		{Turn: 0, AgentID: "agent-0", Content: "proposal"},
 		{Turn: 1, AgentID: "agent-1", Content: "critique"},
 	}

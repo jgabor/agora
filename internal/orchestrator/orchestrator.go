@@ -161,7 +161,7 @@ func (o *Orchestrator) collectEvidence() bool {
 	auditEvidence.ContextDocuments = nil
 	_ = o.transcript.Append(types.TurnRecord{
 		Turn:      -2,
-		AgentID:   "orchestrator",
+		AgentID:   "moderator",
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   bundle.Summary,
 		Evidence:  &auditEvidence,
@@ -198,10 +198,7 @@ func (o *Orchestrator) Synthesize() map[string]any {
 
 // synthesizeModel returns the model to use for synthesis (explicit override or first agent's model).
 func (o *Orchestrator) synthesizeModel() string {
-	if o.state.Config.SynthesisModel != nil {
-		return *o.state.Config.SynthesisModel
-	}
-	return o.state.Config.Agents[0].Model
+	return o.state.Config.EffectiveMetaModel()
 }
 
 func (o *Orchestrator) activity(phase string) func() {
@@ -218,7 +215,7 @@ func (o *Orchestrator) activity(phase string) func() {
 func (o *Orchestrator) emitSeed() {
 	seed := types.TurnRecord{
 		Turn:      -1,
-		AgentID:   "orchestrator",
+		AgentID:   "moderator",
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   fmt.Sprintf("Begin deliberating on the following topic: %s", o.state.Topic),
 	}

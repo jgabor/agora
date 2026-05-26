@@ -111,7 +111,7 @@ func (c *Cast) memberForAgent(index int, agent types.AgentConfig) types.CastMemb
 func (c *Cast) FallbackColor(agentID string) string {
 	normalized := strings.ReplaceAll(agentID, "-", "_")
 	switch normalized {
-	case "orchestrator", "synthesizer":
+	case "moderator", "synthesizer":
 		return "6"
 	case "strategist":
 		return "4"

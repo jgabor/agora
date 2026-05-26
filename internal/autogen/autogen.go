@@ -42,14 +42,14 @@ func GenerateDryRunConfig(topic string, level types.AutoLevel, model string) (*t
 		agents[i] = types.AgentConfig{
 			ID:           roles[i].id,
 			Model:        model,
-			SystemPrompt: agent.ReadOnlyHint + "\n\n" + roles[i].prompt,
+			SystemPrompt: agent.WithReadOnlySystemPrompt(roles[i].prompt),
 		}
 	}
 
 	cfg := &types.DeliberationConfig{
 		Topology:           types.TopologyRing,
 		Agents:             agents,
-		ConsensusThreshold: 0,
+		ConsensusThreshold: agentCount,
 	}
 
 	return cfg, nil
@@ -114,7 +114,7 @@ func buildSystemPrompt(topic string, level types.AutoLevel, model string, caps t
 	b.WriteString("- Agent IDs must be unique, lowercase with underscores\n")
 	b.WriteString("- System prompts should be 2-4 sentences each, describing a distinct perspective or role\n")
 	b.WriteString("- Choose a topology that creates meaningful adversarial tension\n")
-	b.WriteString("- Set consensus_threshold to 0 unless the topic demands convergence\n\n")
+	b.WriteString("- Set consensus_threshold to match the number of agents unless the topic demands immediate convergence (lower threshold)\n\n")
 	fmt.Fprintf(&b, "The model to use for all agents: %s\n", model)
 	fmt.Fprintf(&b, "Topic: %s\n", topic)
 

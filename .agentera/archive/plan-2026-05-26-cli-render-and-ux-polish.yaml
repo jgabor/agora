@@ -1,9 +1,9 @@
 header:
   level: full
   created: '2026-05-26'
-  status: active
-  reviewed: ongoing
-  critic_issues: 1 found, 1 addressed, 0 dismissed
+  status: complete
+  reviewed: '2026-05-26'
+  critic_issues: 7 found, 7 addressed, 0 dismissed
   title: CLI Render And UX Polish
 what: >-
   Fix seven UI/UX issues identified during an interactive e2e session: noisy NAME/PERSONA labels

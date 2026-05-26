@@ -89,8 +89,8 @@ func TestEmitSeed(t *testing.T) {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
 	r := records[0]
-	if r.AgentID != "orchestrator" {
-		t.Errorf("expected orchestrator, got %s", r.AgentID)
+	if r.AgentID != "moderator" {
+		t.Errorf("expected moderator, got %s", r.AgentID)
 	}
 	if r.Turn != -1 {
 		t.Errorf("expected turn -1, got %d", r.Turn)
@@ -220,7 +220,7 @@ func TestRunWritesAuditableEvidenceReferencesToTranscript(t *testing.T) {
 		t.Fatalf("evidence references: got %#v, want url/query/retrieved_at metadata", refs)
 	}
 	for _, record := range records {
-		if record.AgentID != "orchestrator" && record.Evidence != nil {
+		if record.AgentID != "moderator" && record.Evidence != nil {
 			t.Fatalf("agent record contains evidence unexpectedly: %#v", record)
 		}
 	}
@@ -373,7 +373,7 @@ func TestRunResumeWithPriorEvidenceDoesNotCollectAgain(t *testing.T) {
 	tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
 	if err := tm.Append(types.TurnRecord{
 		Turn:    -2,
-		AgentID: "orchestrator",
+		AgentID: "moderator",
 		Content: "prior research summary",
 		Evidence: &types.EvidenceBundle{SourceReferences: []types.SourceReference{{
 			Title: "prior source",
@@ -382,7 +382,7 @@ func TestRunResumeWithPriorEvidenceDoesNotCollectAgain(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("append prior evidence: %v", err)
 	}
-	if err := tm.Append(types.TurnRecord{Turn: -1, AgentID: "orchestrator", Content: "seed"}); err != nil {
+	if err := tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"}); err != nil {
 		t.Fatalf("append seed: %v", err)
 	}
 	if err := tm.Append(types.TurnRecord{Turn: 0, AgentID: "agent-0", Content: "prior turn"}); err != nil {
@@ -497,7 +497,7 @@ func TestExecuteTurn(t *testing.T) {
 	tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
 	_ = tm.Append(types.TurnRecord{
 		Turn:    -1,
-		AgentID: "orchestrator",
+		AgentID: "moderator",
 		Content: "seed message",
 	})
 
@@ -817,7 +817,7 @@ func writeContextFile(t *testing.T, root, rel, content string) string {
 func TestOrchestratorSynthesize(t *testing.T) {
 	t.Run("returns nil with one record or fewer", func(t *testing.T) {
 		tm := transcript.NewTranscriptManager("/tmp/test_synth.jsonl")
-		_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "orchestrator", Content: "seed"})
+		_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
 
 		state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
 		o := NewOrchestrator(state, tm, &mockRunner{})
@@ -829,7 +829,7 @@ func TestOrchestratorSynthesize(t *testing.T) {
 
 	t.Run("returns synthesis with multiple records", func(t *testing.T) {
 		tm := transcript.NewTranscriptManager("/tmp/test_synth.jsonl")
-		_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "orchestrator", Content: "seed"})
+		_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
 		_ = tm.Append(types.TurnRecord{Turn: 0, AgentID: "agent-0", Content: "proposal"})
 		_ = tm.Append(types.TurnRecord{Turn: 1, AgentID: "agent-1", Content: "critique"})
 

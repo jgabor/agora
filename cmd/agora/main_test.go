@@ -1517,7 +1517,7 @@ func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 	}}
 	metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	content := transcriptContent(t,
-		types.TurnRecord{Turn: -1, AgentID: "orchestrator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{Summary: "Two sources found", SourceReferences: []types.SourceReference{{Title: "Spec", URL: "https://example.test/spec"}, {Path: "README.md"}}}},
+		types.TurnRecord{Turn: -1, AgentID: "moderator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{Summary: "Two sources found", SourceReferences: []types.SourceReference{{Title: "Spec", URL: "https://example.test/spec"}, {Path: "README.md"}}}},
 		types.TurnRecord{Turn: 0, AgentID: "analyst", Model: &model, Timestamp: 2, Content: "First answer"},
 		types.TurnRecord{Turn: 1, AgentID: "critic", Model: &model, Timestamp: 3, Content: "Fallback answer", Consensus: true, ConsensusStatement: "We agree"},
 	)
@@ -1533,7 +1533,7 @@ func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 		"Transcript Evidence",
 		"RECORD 1",
 		"TURN -1",
-		"AGENT orchestrator",
+		"AGENT moderator",
 		"Evidence Summary",
 		"Two sources found",
 		"1. Spec (https://example.test/spec)",
@@ -1587,7 +1587,7 @@ func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
 	}
 	metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
 	content := transcriptContent(t,
-		types.TurnRecord{Turn: -1, AgentID: "orchestrator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{
+		types.TurnRecord{Turn: -1, AgentID: "moderator", Timestamp: 1, Transcript: metadata, Evidence: &types.EvidenceBundle{
 			Summary:          "Two sources found",
 			SourceReferences: []types.SourceReference{{Title: "Spec", URL: "https://example.test/spec"}, {Path: "README.md"}},
 			ContextDocuments: []types.ContextDocument{{Path: "secret-notes.md", Content: "full source text must not be exported"}},
@@ -1619,7 +1619,7 @@ func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
 	if doc.SchemaVersion != schemaVersion || doc.Command != "show" || doc.Data.DocumentType != "agora.transcript.show" || doc.Data.DocumentSchemaVersion != 1 {
 		t.Fatalf("show json document metadata: got %#v", doc)
 	}
-	if doc.Data.RecordCount != 3 || len(doc.Data.Records) != 3 || doc.Data.Records[0].AgentID != "orchestrator" || doc.Data.Records[1].AgentID != "analyst" || doc.Data.Records[2].AgentID != "critic" {
+	if doc.Data.RecordCount != 3 || len(doc.Data.Records) != 3 || doc.Data.Records[0].AgentID != "moderator" || doc.Data.Records[1].AgentID != "analyst" || doc.Data.Records[2].AgentID != "critic" {
 		t.Fatalf("show json record order: got %#v", doc.Data.Records)
 	}
 	if !doc.Data.Metadata.Available || len(doc.Data.Metadata.Cast) != 2 || doc.Data.Records[1].CastMember == nil || doc.Data.Records[1].CastMember.Name != "Solon" {

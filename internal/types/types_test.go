@@ -392,7 +392,7 @@ func TestComputeStats(t *testing.T) {
 	cost0005 := 0.0005
 
 	records := []TurnRecord{
-		{Turn: -1, AgentID: "orchestrator", Content: "seed", Elapsed: 0.1},
+		{Turn: -1, AgentID: "moderator", Content: "seed", Elapsed: 0.1},
 		{Turn: 0, AgentID: "a", Content: "x", Tokens: TokenUsage{Total: &total100}, Cost: &cost001, Elapsed: 1.0},
 		{Turn: 1, AgentID: "b", Content: "x", Tokens: TokenUsage{Total: &total200}, Cost: &cost002, Elapsed: 1.5},
 		{Turn: 2, AgentID: "a", Content: "x", Tokens: TokenUsage{Total: &total50}, Cost: &cost0005, Consensus: true, ConsensusStatement: "ok", Elapsed: 0.8},

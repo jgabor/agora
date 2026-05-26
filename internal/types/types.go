@@ -137,6 +137,7 @@ type DeliberationConfig struct {
 	Topology           Topology      `yaml:"topology" json:"topology"`
 	ConsensusThreshold int           `yaml:"consensus_threshold" json:"consensus_threshold"`
 	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
+	MetaModel          *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
 	ResearchEnabled    bool          `yaml:"research" json:"research"`
 	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
 }
@@ -168,7 +169,26 @@ func CloneDeliberationConfig(cfg *DeliberationConfig) *DeliberationConfig {
 		model := *cfg.SynthesisModel
 		clone.SynthesisModel = &model
 	}
+	if cfg.MetaModel != nil {
+		model := *cfg.MetaModel
+		clone.MetaModel = &model
+	}
 	return &clone
+}
+
+// EffectiveMetaModel returns the effective model for meta-tasks (convergence,
+// moderation, synthesis). Fallback: meta_model → synthesis_model → agent[0].model → "".
+func (c *DeliberationConfig) EffectiveMetaModel() string {
+	if c != nil && c.MetaModel != nil && *c.MetaModel != "" {
+		return *c.MetaModel
+	}
+	if c != nil && c.SynthesisModel != nil && *c.SynthesisModel != "" {
+		return *c.SynthesisModel
+	}
+	if c != nil && len(c.Agents) > 0 && c.Agents[0].Model != "" {
+		return c.Agents[0].Model
+	}
+	return ""
 }
 
 // Validate checks the full configuration for correctness.

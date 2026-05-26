@@ -86,7 +86,7 @@ func transcriptAgentID(agentID string) string {
 }
 
 func transcriptEventRecord(record types.TurnRecord) bool {
-	return strings.TrimSpace(record.AgentID) == "orchestrator" && record.Turn < 0
+	return strings.TrimSpace(record.AgentID) == "moderator" && record.Turn < 0
 }
 
 func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index int) string {
