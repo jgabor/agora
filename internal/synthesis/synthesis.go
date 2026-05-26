@@ -64,7 +64,7 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 			"key_arguments":        []any{},
 			"points_of_agreement":  []any{},
 			"unresolved_tensions":  []any{},
-			"recommended_decision": fmt.Sprintf("Synthesis failed: %v", err),
+			"recommended_decision": "Synthesis could not run: the model was unable to produce a response.",
 			"confidence":           "low",
 		}
 	}
@@ -75,7 +75,7 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 			"key_arguments":        []any{},
 			"points_of_agreement":  []any{},
 			"unresolved_tensions":  []any{},
-			"recommended_decision": fmt.Sprintf("Synthesis failed: %v", err),
+			"recommended_decision": "Synthesis could not produce a structured summary. The model response is available in the transcript.",
 			"confidence":           "low",
 		}
 	}

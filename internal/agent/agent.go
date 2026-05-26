@@ -63,6 +63,11 @@ type AgentRunner struct {
 	dryRun bool
 }
 
+// IsDryRun reports whether the runner operates in dry-run (simulated) mode.
+func (r *AgentRunner) IsDryRun() bool {
+	return r.dryRun
+}
+
 // NewAgentRunner creates a new AgentRunner.
 func NewAgentRunner(dryRun bool) *AgentRunner {
 	return &AgentRunner{dryRun: dryRun}

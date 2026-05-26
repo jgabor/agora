@@ -177,6 +177,10 @@ func (o *Orchestrator) Synthesize() map[string]any {
 	if len(o.transcript.Records()) <= 1 {
 		return nil
 	}
+	// Skip synthesis in dry-run mode — there is no real LLM response to summarize.
+	if ar, ok := o.runner.(*agent.AgentRunner); ok && ar.IsDryRun() {
+		return nil
+	}
 	stop := o.activity("Synthesis")
 	defer stop()
 	result := synthesis.Synthesize(o.runner, o.transcript.Records(), o.state.Topic, o.synthesizeModel())

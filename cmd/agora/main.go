@@ -278,6 +278,16 @@ func sessionAutoCaps(cmd *cobra.Command, caps types.LevelCaps) *session.AutoCaps
 	}
 }
 
+// isSynthesisError reports whether a synthesis result indicates a failure.
+func isSynthesisError(result map[string]any) bool {
+	if rec, ok := result["recommended_decision"]; ok {
+		if s, ok := rec.(string); ok {
+			return strings.HasPrefix(s, "Synthesis could not")
+		}
+	}
+	return false
+}
+
 func sessionHooks(outMgr *output.OutputManager) session.Hooks {
 	return session.Hooks{
 		OnTurn:     outMgr.TurnProgress,
@@ -292,7 +302,11 @@ func printSessionResult(outMgr *output.OutputManager, result session.Result, com
 	if result.Synthesis != nil {
 		outMgr.SynthesizeHeader()
 		outMgr.SynthesisResult(result.Synthesis)
-		outMgr.Success("Synthesis complete")
+		if isSynthesisError(result.Synthesis) {
+			outMgr.Info("Synthesis could not produce a structured result — see transcript for raw model output")
+		} else {
+			outMgr.Success("Synthesis complete")
+		}
 	}
 	outMgr.Success(completeMsg)
 	outMgr.Success(fmt.Sprintf("Transcript: %s", result.OutputPath))

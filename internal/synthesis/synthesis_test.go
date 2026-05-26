@@ -79,7 +79,7 @@ func TestSynthesize(t *testing.T) {
 		if result["confidence"] != "low" {
 			t.Errorf("expected confidence=low on error, got %v", result["confidence"])
 		}
-		if !strings.Contains(result["recommended_decision"].(string), "Synthesis failed") {
+		if !strings.Contains(result["recommended_decision"].(string), "Synthesis could not") {
 			t.Errorf("expected error message in recommendation, got %v", result["recommended_decision"])
 		}
 	})

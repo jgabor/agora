@@ -57,7 +57,7 @@ tasks:
   - number: 2
     name: Suppress raw JSON synthesis error in dry-run mode
     depends_on: []
-    status: pending
+    status: complete
     acceptance:
       - GIVEN a deliberation runs with --dry-run WHEN synthesis completes THEN no raw JSON decoder error is shown to the user.
       - GIVEN a deliberation runs live WHEN synthesis truly fails on LLM output THEN an informative message is shown instead of a raw Go error.
