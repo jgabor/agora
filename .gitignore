@@ -3,4 +3,4 @@ build/
 *.log
 *.jsonl
 transcripts/
-.coverage
+coverage.out
