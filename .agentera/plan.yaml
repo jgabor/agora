@@ -1,0 +1,105 @@
+header:
+  level: full
+  created: '2026-05-26'
+  status: active
+  reviewed: ongoing
+  critic_issues: 1 found, 1 addressed, 0 dismissed
+  title: CLI Render And UX Polish
+what: >-
+  Fix seven UI/UX issues identified during an interactive e2e session: noisy NAME/PERSONA labels
+  in agent display, raw JSON synthesis error surfaced to user, 11/10 turn count mismatch, [A?]
+  internal agents leaked into per-agent stats, list table # column mixing IDs and sequential
+  numbers, long slug text wrapping breaking table layout in list, and validation output having
+  redundant tree root nesting.
+why: >-
+  These issues make the CLI feel unpolished and reduce trust. Raw JSON errors look like crashes,
+  NAME/PERSONA labels are visually noisy compared to the already-existing clean rich rendering
+  path, and mixed ID types in the table column are confusing. Fixing them before the next
+  release raises the quality bar without changing deliberation behavior.
+constraints: >-
+  Keep Go-only implementation, existing CLI visual identity, and the current rich/plain render
+  architecture. Do not change the deliberation engine or transcript schema. Do not add new
+  dependencies. Do not modify the orchestrator loop or agent runner behavior — only the output
+  rendering layer.
+scope:
+  included:
+    - Agent display format in turn cards (replace NAME/PERSONA labels with clean inline format)
+    - Synthesis error suppression in dry-run mode (user-friendly message or skip)
+    - Turn count denominator fix (orchestrator/synthesizer turns excluded from max_turns)
+    - Per-agent stats filtering (hide internal [A?] agents)
+    - List table # column consistency (always show sequential integers)
+    - Long slug wrapping in list table cells
+    - Validation tree root redundancy
+  excluded:
+    - Deliberation engine changes
+    - Transcript schema changes
+    - New dependencies
+    - Terminal pager/TUI mode
+    - Color scheme or branding redesign
+  deferred:
+    - Agent response text word-break at box edge (renderTextBlock wrapping)
+design: >-
+  All fixes are in the output rendering layer (internal/output/) and one in the
+  orchestration layer (internal/orchestrator/ for turn counting). The approach is
+  surgical: change the format string or rendering logic without refactoring the
+  underlying data structures. Each fix has its own acceptance criteria and is
+  independently testable.
+tasks:
+  - number: 1
+    name: Agent display format — remove NAME/PERSONA labels in turn card
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN a deliberation is running in rich mode WHEN a turn card renders THEN the Agent line shows the badge, name, and persona without NAME/PERSONA label prefixes.
+      - GIVEN a deliberation is running in plain mode WHEN a turn card renders THEN the Agent line uses the same clean format without NAME/PERSONA labels.
+      - GIVEN a transcript is shown with `show` WHEN agent identities appear THEN the format is consistent with the live output format.
+      - GIVEN the Per-Agent Stats table WHEN it renders THEN agent names use the same clean format without NAME/PERSONA labels.
+  - number: 2
+    name: Suppress raw JSON synthesis error in dry-run mode
+    depends_on: []
+    status: pending
+    acceptance:
+      - GIVEN a deliberation runs with --dry-run WHEN synthesis completes THEN no raw JSON decoder error is shown to the user.
+      - GIVEN a deliberation runs live WHEN synthesis truly fails on LLM output THEN an informative message is shown instead of a raw Go error.
+      - GIVEN synthesis output is tested WHEN no syntheses attempted THEN the synthesis section is omitted or shows "Synthesis skipped".
+  - number: 3
+    name: Fix turn count 11/10 mismatch
+    depends_on: []
+    status: pending
+    acceptance:
+      - GIVEN a deliberation completes all planned turns WHEN the summary shows turns completed THEN the count matches correctly (e.g. 10/10 not 11/10).
+      - GIVEN a deliberation halts early WHEN the summary shows turns completed THEN the count correctly reflects actual vs planned turns.
+      - GIVEN turns are counted in the progress bar WHEN the deliberation runs THEN the bar does not exceed 100%.
+  - number: 4
+    name: Filter [A?] internal agents from per-agent stats
+    depends_on: []
+    status: pending
+    acceptance:
+      - GIVEN a deliberation completes WHEN the Per-Agent Stats table renders THEN orchestrator and synthesizer rows are not shown.
+      - GIVEN the internal agents are omitted WHEN total cost/tokens match THEN the internal agents' zero values are excluded from the count.
+  - number: 5
+    name: Fix list table # column inconsistency
+    depends_on: []
+    status: pending
+    acceptance:
+      - GIVEN `agora list` runs WHEN the table renders THEN the # column shows sequential integers for every row.
+      - GIVEN transcripts are listed WHEN the first column displays THEN no raw Unix millisecond IDs appear in the # column.
+  - number: 6
+    name: Fix long slug wrapping in list table
+    depends_on: []
+    status: pending
+    acceptance:
+      - GIVEN a transcript has a long slug WHEN `agora list` runs THEN the slug text is truncated or wrapped cleanly without breaking the single-row table layout.
+      - GIVEN the slug is truncated WHEN inspected THEN it shows an ellipsis or other clear truncation indicator.
+  - number: 7
+    name: Remove redundant tree root in validation output
+    depends_on: []
+    status: pending
+    acceptance:
+      - GIVEN `agora validate` runs on a valid config WHEN the output renders THEN the box title "Configuration Valid" is not repeated as a tree root node.
+      - GIVEN `agora validate` runs on an invalid config WHEN the output renders THEN error information remains clear and complete.
+overall_acceptance:
+  - GIVEN all seven fixes are applied WHEN the full e2e-rmux script runs THEN all existing checks pass without regressions.
+  - GIVEN the fixes are applied WHEN a normal auto deliberation runs THEN the output is cleaner and more polished than before.
+  - GIVEN the output is reviewed visually WHEN each command runs THEN no raw error messages, redundant labels, or inconsistent formatting is visible.
+surprises: []

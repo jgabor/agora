@@ -1468,7 +1468,7 @@ func TestShowCommandResolvesTranscriptSlug(t *testing.T) {
 	if err != nil {
 		t.Fatalf("show command: %v", err)
 	}
-	for _, want := range []string{"TURN 1/1", "AGENT [A1 analyst]", "NAME Solon", "PERSONA analyst", "AGENT CONTENT", "slug answer"} {
+	for _, want := range []string{"TURN 1/1", "AGENT [A1 analyst] Solon analyst", "AGENT CONTENT", "slug answer"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("show output missing %q:\n%s", want, out)
 		}
@@ -1539,16 +1539,12 @@ func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 		"1. Spec (https://example.test/spec)",
 		"2. README.md (README.md)",
 		"TURN 1/2 (50%)",
-		"AGENT [A1 analyst]",
-		"NAME Solon",
-		"PERSONA analyst",
+		"AGENT [A1 analyst] Solon analyst",
 		"MODEL test/model",
 		"AGENT CONTENT",
 		"First answer",
 		"TURN 2/2 (100%)",
-		"AGENT [A2 critic]",
-		"NAME Aspasia",
-		"PERSONA critic",
+		"AGENT [A2 critic] Aspasia critic",
 		"Fallback answer",
 		"[CONSENSUS] We agree",
 	} {

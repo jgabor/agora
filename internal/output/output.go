@@ -157,10 +157,10 @@ func agentDisplay(badge string, identity *types.AgentIdentity) string {
 func castDisplay(badge string, member types.CastMember) string {
 	parts := []string{badge}
 	if member.Name != "" {
-		parts = append(parts, labelValue("NAME", member.Name))
+		parts = append(parts, member.Name)
 	}
 	if member.Persona != "" {
-		parts = append(parts, labelValue("PERSONA", member.Persona))
+		parts = append(parts, member.Persona)
 	}
 	return strings.Join(parts, " ")
 }

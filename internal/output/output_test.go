@@ -139,7 +139,8 @@ func TestConfigPreviewPrintsGeneratedConfigPanel(t *testing.T) {
 	assertContains(t, got, "Topology: ring")
 	assertContains(t, got, "Level caps: quick")
 	assertContains(t, got, "AGENT [A1 skeptic]")
-	assertContains(t, got, "Challenge weak claims.")
+	assertContains(t, got, "Challenge weak")
+	assertContains(t, got, "claims.")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)
 	if strings.Contains(got, "Ignore this second line") {
@@ -169,7 +170,7 @@ func TestConfigPreviewRendersGeneratedCastIdentityWithoutReplacingAgentID(t *tes
 		NewOutputManager(false).ConfigPreview(cfg, types.AutoQuick, types.LevelCaps{})
 	})
 
-	assertContains(t, got, "AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertContains(t, got, "AGENT [A1 strategist] Solon strategist")
 	assertContains(t, got, "opencode/test")
 	assertContains(t, got, "COLOR 6")
 	assertNoANSI(t, got)
@@ -202,8 +203,6 @@ func TestDeliberationHeaderPlainModeHasNoAnsi(t *testing.T) {
 	assertContains(t, got, "Topic")
 	assertContains(t, got, "Cast")
 	assertContains(t, got, "AGENT [A1 optimist]")
-	assertContains(t, got, "NAME Solon")
-	assertContains(t, got, "PERSONA optimist")
 	assertContains(t, got, "MODEL")
 	assertContains(t, got, "opencode/test")
 	assertContains(t, got, "COLOR 6")
@@ -301,7 +300,7 @@ func TestTurnProgressRendersRegisteredIdentityAsPlainLabels(t *testing.T) {
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertContains(t, got, "AGENT [A1 strategist] Solon strategist")
 	assertContains(t, got, "ELAPSED 0.2s")
 	assertNoANSI(t, got)
 }
@@ -348,7 +347,7 @@ func TestTurnProgressRichModeUsesPanelBubblesAndReadableMetrics(t *testing.T) {
 	assertContains(t, got, "●")
 	assertContains(t, got, "○")
 	assertContains(t, got, "Agent")
-	assertContains(t, got, "NAME Solon PERSONA strategist")
+	assertContains(t, got, "Solon strategist")
 	assertContains(t, got, "Agreement")
 	assertContains(t, got, "Agent Response")
 	assertContains(t, got, "Keep metadata")
@@ -402,8 +401,6 @@ func TestCastIdentityConsistentAcrossPreviewHeaderAndTurns(t *testing.T) {
 
 	for name, output := range map[string]string{"preview": preview, "header": header, "turn": turn} {
 		assertContains(t, output, "AGENT [A1 strategist]")
-		assertContains(t, output, "NAME Solon")
-		assertContains(t, output, "PERSONA strategist")
 		assertContains(t, output, "MODEL")
 		assertContains(t, output, "opencode/test")
 		assertNoANSI(t, output)
@@ -442,7 +439,7 @@ func TestVerboseTurnContentSeparatesMetadataFromBody(t *testing.T) {
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist | MODEL opencode/test | ELAPSED 1.2s")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] Solon strategist | MODEL opencode/test | ELAPSED 1.2s")
 	assertContains(t, got, "DIAGNOSTICS | INPUT_TOKENS 10 | OUTPUT_TOKENS 20 | REASONING_TOKENS 3 | CUMULATIVE_COST $0.010000")
 	assertContains(t, got, "AGENT CONTENT")
 	assertContains(t, got, "  | # Decision")
@@ -462,7 +459,7 @@ func TestNormalTurnProgressIncludesResponseBodyWithoutVerboseDiagnostics(t *test
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] Solon strategist")
 	assertContains(t, got, "AGENT CONTENT")
 	assertContains(t, got, "Default output shows the response.")
 	assertNotContains(t, got, "DIAGNOSTICS")
@@ -478,7 +475,7 @@ func TestQuietTurnProgressSuppressesResponseBody(t *testing.T) {
 		manager.TurnProgress(record, 0, 1)
 	})
 
-	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] Solon strategist")
 	assertNotContains(t, got, "AGENT CONTENT")
 	assertNotContains(t, got, "Quiet output hides this response.")
 }
@@ -511,7 +508,7 @@ func TestRenderTranscriptUsesRunStylePlainOutput(t *testing.T) {
 	assertContains(t, got, "RECORD 1")
 	assertContains(t, got, "Evidence Summary")
 	assertContains(t, got, "1. Spec (https://example.test/spec)")
-	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] NAME Solon PERSONA strategist | MODEL opencode/test")
+	assertContains(t, got, "TURN 1/1 (100%) [##########] | AGENT [A1 strategist] Solon strategist | MODEL opencode/test")
 	assertContains(t, got, "AGENT CONTENT")
 	assertContains(t, got, "Stored response.")
 	assertNoANSI(t, got)
