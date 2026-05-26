@@ -62,6 +62,7 @@ type OutputManager struct {
 	state           *types.DeliberationState
 	totalCost       float64
 	consensusStreak int
+	turnDurations   []float64
 }
 
 // NewOutputManager creates a new OutputManager.
@@ -171,7 +172,7 @@ func (o *OutputManager) Activity(activity string) func() {
 		activity = "Working"
 	}
 	label := fmt.Sprintf("Working: %s", activity)
-	if !o.renderer.IsRich() || !stdoutIsTerminal() {
+	if !stdoutIsTerminal() {
 		fmt.Printf("[INFO] %s\n", label)
 		return func() {}
 	}

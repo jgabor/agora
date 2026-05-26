@@ -597,7 +597,7 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 	assertContains(t, got, "Total cost")
 	assertContains(t, got, "$0.300000")
 	assertContains(t, got, "Halted by")
-	assertContains(t, got, "max_turns")
+	assertContains(t, got, "Completed: all planned turns finished")
 	assertContains(t, got, "Per-Agent Stats")
 	assertContains(t, got, "[A2 skeptic]")
 	assertContains(t, got, "$0.2") // Robust to truncation in narrow tables

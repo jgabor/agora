@@ -296,7 +296,7 @@ func printSessionResult(outMgr *output.OutputManager, result session.Result, com
 	}
 	outMgr.Success(completeMsg)
 	outMgr.Success(fmt.Sprintf("Transcript: %s", result.OutputPath))
-	outMgr.Info(fmt.Sprintf("Halted by: %s", result.HaltedBy))
+	outMgr.Success(outMgr.HaltedByDisplay(result.HaltedBy))
 }
 
 // --- stats --------------------------------------------------------

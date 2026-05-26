@@ -239,6 +239,9 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 
 // TurnProgress prints progress for a single turn.
 func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns int) {
+	if record.AgentID != "orchestrator" {
+		o.turnDurations = append(o.turnDurations, record.Elapsed)
+	}
 	o.renderTurnProgress(os.Stdout, record, turn, maxTurns)
 }
 
@@ -285,6 +288,14 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
 		metadata += " | " + labelValue("CONSENSUS", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold))
+	}
+	if len(o.turnDurations) > 0 && maxTurns > 0 {
+		remaining := maxTurns - turn - 1
+		avg := avgDuration(o.turnDurations)
+		if remaining > 0 {
+			eta := avg * float64(remaining)
+			metadata += " | " + labelValue("ETA", fmt.Sprintf("~%.0fs", eta))
+		}
 	}
 
 	turnValue := fmt.Sprintf("%d", turn+1)
@@ -366,6 +377,14 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 	}
 	lines = append(lines, richMetricLine("Elapsed", elapsed, "7"))
 	lines = append(lines, richMetricLine("Tokens", tokensTotal, "7"))
+	if len(o.turnDurations) > 0 && maxTurns > 0 {
+		remaining := maxTurns - turn - 1
+		avg := avgDuration(o.turnDurations)
+		if remaining > 0 {
+			eta := avg * float64(remaining)
+			lines = append(lines, "", richMetricLine("Pace", fmt.Sprintf("%.0fs avg · ~%.0fs remaining", avg, eta), "7"))
+		}
+	}
 	lines = append(lines, richMetricLine("Cost", costValue, "7"))
 	if o.state != nil && o.state.StartTime > 0 && o.state.TimeLimit > 0 {
 		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
@@ -421,7 +440,7 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 	if state.Config != nil && state.Config.ConsensusThreshold > 0 {
 		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(o.renderer, finalConsensusStreak(records), state.Config.ConsensusThreshold)})
 	}
-	rows = append(rows, []string{"Halted by", state.HaltedBy})
+	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(state.HaltedBy), haltColor(state.HaltedBy))})
 	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 
 	if len(stats.PerAgent) > 0 {
@@ -442,6 +461,17 @@ func finalDurationValue(r Renderer, value float64, bound int) string {
 		return fmt.Sprintf("%.1fs", value)
 	}
 	return boundedSecondsMetricValue(r, value, bound)
+}
+
+func avgDuration(durations []float64) float64 {
+	if len(durations) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, d := range durations {
+		sum += d
+	}
+	return sum / float64(len(durations))
 }
 
 func finalCostValue(r Renderer, value float64, bound *float64) string {
@@ -499,6 +529,48 @@ func sortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// formatHaltedBy returns a human-readable summary of why deliberation stopped.
+func formatHaltedBy(reason string) string {
+	switch {
+	case strings.HasPrefix(reason, "consensus"):
+		return "Converged: all agents agreed"
+	case strings.HasPrefix(reason, "max_turns"):
+		return "Completed: all planned turns finished"
+	case strings.HasPrefix(reason, "time_limit"):
+		return "Interrupted: time limit reached"
+	case strings.HasPrefix(reason, "budget_exceeded"):
+		return "Interrupted: budget exhausted"
+	case reason == "user_interrupt":
+		return "Interrupted by user"
+	case strings.HasPrefix(reason, "research_error:"):
+		return "Research failed: " + strings.TrimSpace(strings.TrimPrefix(reason, "research_error:"))
+	case strings.HasPrefix(reason, "error:"):
+		return "Failed: " + strings.TrimSpace(strings.TrimPrefix(reason, "error:"))
+	default:
+		return reason
+	}
+}
+
+// haltColor returns a renderer color tag for a halt reason.
+// 2=green (success), 3=yellow (interruption), 1=red (failure).
+func haltColor(reason string) string {
+	switch {
+	case strings.HasPrefix(reason, "consensus"), strings.HasPrefix(reason, "max_turns"):
+		return "2"
+	case strings.HasPrefix(reason, "time_limit"), strings.HasPrefix(reason, "budget_exceeded"), reason == "user_interrupt":
+		return "3"
+	case strings.HasPrefix(reason, "error:"), strings.HasPrefix(reason, "research_error:"):
+		return "1"
+	default:
+		return "6"
+	}
+}
+
+// HaltedByDisplay returns a humanized, colored halt reason string for inline use.
+func (o *OutputManager) HaltedByDisplay(haltedBy string) string {
+	return o.renderer.Styled(formatHaltedBy(haltedBy), haltColor(haltedBy))
 }
 
 func agentStatsRow(label string, s types.AgentTurnStats) []string {
