@@ -235,8 +235,8 @@ func progressColor(percent int) string {
 	}
 }
 
-// agentCastTree renders a nested tree of agents with metadata; used in config panels.
-func agentCastTree(r Renderer, agents []types.AgentConfig, c *cast.Cast, includeContext bool, width int) string {
+// agentCastTree renders a nested tree of agents with model metadata; used in config panels.
+func agentCastTree(r Renderer, agents []types.AgentConfig, c *cast.Cast, width int) string {
 	root := tree.Root("ensemble").
 		Enumerator(tree.RoundedEnumerator).
 		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))).
@@ -264,14 +264,6 @@ func agentCastTree(r Renderer, agents []types.AgentConfig, c *cast.Cast, include
 
 		if member.ProviderModel != "" {
 			agentNode.Child(r.Muted("model " + member.ProviderModel))
-		}
-		if member.Color != "" {
-			agentNode.Child(r.Muted("color " + member.Color))
-		}
-		if includeContext {
-			if context := firstPromptLine(agent.SystemPrompt); context != "" {
-				agentNode.Child(r.Muted("context ") + renderInlineText(context, width-8))
-			}
 		}
 
 		root.Child(agentNode)
@@ -301,7 +293,7 @@ func richDeliberationHeaderAtWidth(r Renderer, width, contentWidth int,
 	settingsTitle string, agents []types.AgentConfig, c *cast.Cast,
 ) string {
 	castWidth, settingsWidth := splitWidths(contentWidth, 2, 0.62)
-	castLines = append(castLines, agentCastTree(r, agents, c, true, castWidth))
+	castLines = append(castLines, agentCastTree(r, agents, c, castWidth))
 	castBlock := lipgloss.NewStyle().Width(castWidth).Render(sectionBlock(r, "Cast", castLines, castWidth))
 	settingsBlock := lipgloss.NewStyle().Width(settingsWidth).Render(sectionBlock(r, settingsTitle, settings, settingsWidth))
 	body := lipgloss.JoinVertical(

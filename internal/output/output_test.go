@@ -139,8 +139,6 @@ func TestConfigPreviewPrintsGeneratedConfigPanel(t *testing.T) {
 	assertContains(t, got, "Topology: ring")
 	assertContains(t, got, "Level caps: quick")
 	assertContains(t, got, "AGENT [A1 skeptic]")
-	assertContains(t, got, "Challenge weak")
-	assertContains(t, got, "claims.")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)
 	if strings.Contains(got, "Ignore this second line") {
@@ -172,7 +170,6 @@ func TestConfigPreviewRendersGeneratedCastIdentityWithoutReplacingAgentID(t *tes
 
 	assertContains(t, got, "AGENT [A1 strategist] Solon strategist")
 	assertContains(t, got, "opencode/test")
-	assertContains(t, got, "COLOR 6")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)
 }
@@ -205,7 +202,6 @@ func TestDeliberationHeaderPlainModeHasNoAnsi(t *testing.T) {
 	assertContains(t, got, "AGENT [A1 optimist]")
 	assertContains(t, got, "MODEL")
 	assertContains(t, got, "opencode/test")
-	assertContains(t, got, "COLOR 6")
 	assertContains(t, got, "Run Settings")
 	assertContains(t, got, "Consensus threshold: 2")
 	assertNoANSI(t, got)
@@ -409,8 +405,6 @@ func TestCastIdentityConsistentAcrossPreviewHeaderAndTurns(t *testing.T) {
 			t.Fatalf("%s should only render the first system prompt line", name)
 		}
 	}
-	assertContains(t, preview, "CONTEXT Plan the smallest safe path.")
-	assertContains(t, header, "CONTEXT Plan the smallest safe path.")
 	assertOrder(t, preview, "[A1 strategist]", "[A2 skeptic]")
 	assertOrder(t, header, "[A1 strategist]", "[A2 skeptic]")
 	assertContains(t, fallback, "AGENT [A? legacy-agent]")

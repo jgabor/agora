@@ -26,6 +26,10 @@ decisions:
     status: rejected
     description: 'a final dedicated agent produces a summary after the timer stops. Win: human-readable artifact. Lose: extra
       model call, additional complexity, summary quality variance.'
+  - name: Ring topology + minimal orchestrator
+    status: chosen
+    description: 'agents arranged in a ring, each seeing predecessor and topic. Orchestrator sends structured envelope to opencode
+      run and appends response. No prompt engineering in orchestrator.'
   choice: Ring topology with annotated history objects, Python implementation, minimal orchestrator with structured JSON envelope,
     rich JSONL transcript to file, dual termination caps (time OR max turns), halt-on-failure, orchestrator seed message.
   reasoning: 'Ring topology preserves adversarial tension with trivial handoff logic ( predecessor = (i-1) mod N ). Python
@@ -34,6 +38,13 @@ decisions:
     Raw transcript avoids synthesis complexity. Dual caps prevent runaway cost. Halt-on-failure keeps semantics simple.'
   confidence: firm
   feeds_into: standalone (this is the project itself)
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Ring-topology Go orchestrator at internal/session/. JSONL transcripts via internal/transcript/. Dual termination
+      caps (max_turns, time_limit) at cmd/agora/main.go:174-175. Halt-on-failure at internal/session/runner.go.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 2
   date: '2026-05-04'
   question: Should Kumbaja migrate from Python to Go as the canonical implementation?
@@ -53,6 +64,12 @@ decisions:
     surface. The Python implementation remains accessible in git history if ever needed.
   confidence: firm
   feeds_into: README.md, .gitignore, CI setup
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Go implementation at cmd/agora/ and internal/. No Python source files remain. Go module at go.mod. All tests pass.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 3
   date: '2026-05-04'
   question: What should the project be named? "Kumbaja" was a codename.
@@ -60,7 +77,7 @@ decisions:
     is clinical, rigorous, terse. Naming principle: pronounceable, searchable, not a pun.'
   alternatives:
   - name: Classical arena
-    status: rejected
+    status: chosen
     description: 'Agora, Forum, Lyceum — ancient spaces of debate and judgment. Win condition: the name evokes deliberation
       without explanation.'
   - name: Coined word
@@ -73,6 +90,12 @@ decisions:
     its function.
   confidence: firm
   feeds_into: VISION.md
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Module path github.com/jgabor/agora in go.mod. Binary named agora at cmd/agora/. All CLI help text and docs use Agora.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 4
   date: '2026-05-04'
   question: Should Agora add an auto mode where the LLM procedurally generates agent configurations from the topic?
@@ -112,6 +135,13 @@ decisions:
     - YOLO: no caps, runs until consensus reached'
   confidence: provisional
   feeds_into: VISION.md, TODO.md
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: '--auto flag at cmd/agora/main.go:90-99. Auto level types at internal/types/types.go:24-28. Config generation
+      via internal/autogen/. Preview-before-confirm at cmd/agora/main.go:130. Synthesis always on for auto at main.go:179.'
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 5
   date: '2026-05-04'
   question: How should Agora support global user settings and a managed transcript store?
@@ -185,6 +215,13 @@ decisions:
     The `--file` flag on resume ensures scripts and existing workflows don''t break.'
   confidence: firm
   feeds_into: PLAN.md, TODO.md, config.go, transcript.go, cmd/agora/main.go
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Settings struct at internal/config/settings.go:7-22. applySettingsDefaults at cmd/agora/main.go:575,789-795.
+      'agora list' and 'agora resume' commands at cmd/agora/main.go:485-598. 'agora config' command at cmd/agora/config_cmd.go.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 6
   date: '2026-05-05'
   question: How should Agora provide agents with accurate, up-to-date information during deliberation?
@@ -218,6 +255,13 @@ decisions:
     replay in exchange for compact audit trails.'
   confidence: firm
   feeds_into: PLAN.md, TODO.md, internal/research, internal/orchestrator, internal/types, internal/config
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Evidence package at internal/evidence/ with collector.go, context.go, policy.go. Evidence request at
+      internal/evidence/evidence.go. '--research'/'--no-research' flags at cmd/agora/main.go:207-213,243-254.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 7
   date: '2026-05-06'
   question: How should Agora refactor terminal output to improve visual polish and maintainability?
@@ -249,34 +293,13 @@ decisions:
     different kind of scattered styling.
   confidence: firm
   feeds_into: PLAN.md, TODO.md, internal/output, go.mod
-- number: 8
-  date: '2026-05-06'
-  question: How should Agora add personality-rich agent identity to the CLI?
-  context: The user wants the CLI to feel more visually striking and dynamic, with fancy long-running indicators, metric progress
-    bars, and debate participants that have recognizable profile-like identity. Decision 7 already commits to a Charm v2 agent
-    theater renderer while preserving visible `agent_id`, semantic plain output, and testable fallbacks.
-  alternatives:
-  - name: Config-owned identity
-    status: rejected
-    description: 'Add display names, colors, avatars, and persona fields now. Win: user control. Lose: schema churn before the
-      visual system is proven.'
-  - name: Inferred cast identity prototype
-    status: chosen
-    description: 'Infer display identity, color, and deterministic pixel portraits from agent IDs, then validate through an
-      HTML visual rig plus terminal fixture before production integration. Win: strong identity without config migration.'
-  - name: Decorative runtime effects first
-    status: rejected
-    description: 'Start with spinners, progress bars, and animated turn output. Win: immediate motion. Lose: effects lack a
-      coherent cast identity foundation.'
-  choice: Prototype inferred cast identity first. Generate stable pixel portraits from agent IDs with no external assets or new
-    config fields, validate the visual language in both an interactive HTML rig and CLI fixture, then integrate the cast preview
-    before runtime effects.
-  reasoning: Cast preview is the right first slice because it defines the participant identity system reused by live turns, stats,
-    and synthesis. Generated portraits keep Agora self-contained and avoid premature config expansion. Prototype evidence should
-    prove the portraits are distinctive, readable at 40/80/120 columns, and safely replaceable by plain badges before production
-    code depends on them.
-  confidence: provisional
-  feeds_into: PLAN.md, TODO.md, internal/output, visual prototype
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Lipgloss v2 at internal/output/renderer_rich.go:24-198. Glamour v2 for prose at renderer_rich.go:177-198. Plain
+      fallback at internal/output/renderer_plain.go. Charm v2 deps in go.mod:6-7.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 - number: 9
   date: '2026-05-10'
   question: How should Agora scale research and local context caps across auto levels?
@@ -311,4 +334,12 @@ decisions:
     choose tighter or looser policies globally.
   confidence: firm
   feeds_into: README.md, internal/config/research_policy.go, internal/orchestrator/evidence.go, cmd/agora/main.go, cmd/agora/main_test.go, internal/config/config_test.go, internal/orchestrator/evidence_test.go
+  satisfaction:
+    state: user_confirmed_satisfied
+    evidence: Auto-level fallback caps at internal/evidence/policy.go:23-34. ResolveRequest merges settings overrides at
+      internal/evidence/policy.go:39-57. Soft caps via positive_or_default at internal/evidence/collector.go:65-67,91.
+      Caps tuning bound to TODO #6.
+    user_confirmation:
+      confirmed_by: user
+      confirmed_at: '2026-05-26'
 archive: []

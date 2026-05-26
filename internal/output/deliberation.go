@@ -75,10 +75,10 @@ func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, c *ca
 	agentLines := make([]string, 0, len(cfg.Agents))
 	if !r.IsRich() {
 		for _, a := range cfg.Agents {
-			agentLines = append(agentLines, agentCastLine(r, c, a, true))
+			agentLines = append(agentLines, agentCastLine(r, c, a))
 		}
 	} else {
-		agentLines = append(agentLines, agentCastTree(r, cfg.Agents, c, true, contentWidth))
+		agentLines = append(agentLines, agentCastTree(r, cfg.Agents, c, contentWidth))
 	}
 	agentsTitle := "Agents"
 	if r.IsRich() {
@@ -98,28 +98,19 @@ func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, c *ca
 	return r.Panel("Generated Config", sb.String(), width, "6")
 }
 
-func agentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig, includeContext bool) string {
+func agentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig) string {
 	member := c.Profile(agent.ID)
 	if r.IsRich() {
-		return richAgentCastLine(r, c, agent, includeContext)
+		return richAgentCastLine(r, c, agent)
 	}
 	line := fmt.Sprintf("AGENT %s", castDisplay(c.Badge(agent.ID), member))
 	if member.ProviderModel != "" {
 		line += fmt.Sprintf(" MODEL %s", member.ProviderModel)
 	}
-	if member.Color != "" {
-		line += fmt.Sprintf(" COLOR %s", member.Color)
-	}
-	if includeContext {
-		context := firstPromptLine(agent.SystemPrompt)
-		if context != "" {
-			line += fmt.Sprintf(" CONTEXT %s", context)
-		}
-	}
 	return line
 }
 
-func richAgentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig, includeContext bool) string {
+func richAgentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig) string {
 	member := c.Profile(agent.ID)
 	accent := member.Color
 	badge := r.Styled("● "+strings.Trim(c.Badge(agent.ID), "[]"), accent)
@@ -132,37 +123,14 @@ func richAgentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig, includ
 	}
 
 	lines := []string{strings.Join(parts, "  ")}
-	metadata := make([]string, 0, 3)
+	metadata := make([]string, 0, 2)
 	if member.ProviderModel != "" {
 		metadata = append(metadata, "model "+member.ProviderModel)
-	}
-	if member.Color != "" {
-		metadata = append(metadata, "color "+member.Color)
-	}
-	if includeContext {
-		context := firstPromptLine(agent.SystemPrompt)
-		if context != "" {
-			metadata = append(metadata, "context "+context)
-		}
 	}
 	if len(metadata) > 0 {
 		lines = append(lines, r.Muted(strings.Join(metadata, " · ")))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func renderInlineText(text string, width int) string {
-	if width <= 0 {
-		return strings.TrimSpace(text)
-	}
-	return strings.ReplaceAll(renderTextBlock(text, width), "\n", " ")
-}
-
-func firstPromptLine(prompt string) string {
-	if idx := strings.Index(prompt, "\n"); idx >= 0 {
-		prompt = prompt[:idx]
-	}
-	return strings.TrimSpace(prompt)
 }
 
 // --- deliberation header ---
@@ -187,7 +155,7 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 	castLines := make([]string, 0, len(state.Config.Agents))
 	if !r.IsRich() {
 		for _, a := range state.Config.Agents {
-			castLines = append(castLines, agentCastLine(r, c, a, true))
+			castLines = append(castLines, agentCastLine(r, c, a))
 		}
 	}
 
