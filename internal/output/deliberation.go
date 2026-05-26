@@ -425,7 +425,7 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 
 	actualTurns := 0
 	for _, r := range records {
-		if r.AgentID != "orchestrator" {
+		if r.AgentID != "orchestrator" && r.AgentID != "synthesizer" {
 			actualTurns++
 		}
 	}
@@ -495,12 +495,20 @@ func finalConsensusStreak(records []types.TurnRecord) int {
 	return streak
 }
 
+func isInternalAgent(agentID string) bool {
+	return agentID == "orchestrator" || agentID == "synthesizer"
+}
+
 func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.DeliberationConfig) [][]string {
 	rows := make([][]string, 0, len(perAgent))
 	seen := make(map[string]bool, len(perAgent))
 	if cfg != nil {
 		c := cast.New(cfg.Agents)
 		for _, agent := range cfg.Agents {
+			if isInternalAgent(agent.ID) {
+				seen[agent.ID] = true
+				continue
+			}
 			if s, ok := perAgent[agent.ID]; ok {
 				member := c.Profile(agent.ID)
 				rows = append(rows, agentStatsRow(castDisplay(c.Badge(agent.ID), member), s))
@@ -511,7 +519,7 @@ func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.Deliber
 
 	var unknown []string
 	for agentID := range perAgent {
-		if !seen[agentID] {
+		if !seen[agentID] && !isInternalAgent(agentID) {
 			unknown = append(unknown, agentID)
 		}
 	}
@@ -602,6 +610,9 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 			agentIDs := sortedKeys(pa)
 			agentRows := make([][]string, 0, len(agentIDs))
 			for _, agentID := range agentIDs {
+				if isInternalAgent(agentID) {
+					continue
+				}
 				s := pa[agentID]
 				if sm, ok := s.(map[string]any); ok {
 					agentRows = append(agentRows, []string{

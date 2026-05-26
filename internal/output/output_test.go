@@ -598,7 +598,7 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 	assertContains(t, got, "Per-Agent Stats")
 	assertContains(t, got, "[A2 skeptic]")
 	assertContains(t, got, "$0.2") // Robust to truncation in narrow tables
-	assertContains(t, got, "[A? orchestrator]")
+	assertNotContains(t, got, "[A? orchestrator]")
 }
 
 func TestFinalStatsUsesSameBoundedMetricPresentationAsTurnProgress(t *testing.T) {

@@ -65,7 +65,7 @@ tasks:
   - number: 3
     name: Fix turn count 11/10 mismatch
     depends_on: []
-    status: pending
+    status: complete
     acceptance:
       - GIVEN a deliberation completes all planned turns WHEN the summary shows turns completed THEN the count matches correctly (e.g. 10/10 not 11/10).
       - GIVEN a deliberation halts early WHEN the summary shows turns completed THEN the count correctly reflects actual vs planned turns.
@@ -73,7 +73,7 @@ tasks:
   - number: 4
     name: Filter [A?] internal agents from per-agent stats
     depends_on: []
-    status: pending
+    status: complete
     acceptance:
       - GIVEN a deliberation completes WHEN the Per-Agent Stats table renders THEN orchestrator and synthesizer rows are not shown.
       - GIVEN the internal agents are omitted WHEN total cost/tokens match THEN the internal agents' zero values are excluded from the count.
