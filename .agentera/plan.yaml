@@ -87,7 +87,7 @@ tasks:
   - number: 6
     name: Fix long slug wrapping in list table
     depends_on: []
-    status: pending
+    status: complete
     acceptance:
       - GIVEN a transcript has a long slug WHEN `agora list` runs THEN the slug text is truncated or wrapped cleanly without breaking the single-row table layout.
       - GIVEN the slug is truncated WHEN inspected THEN it shows an ellipsis or other clear truncation indicator.

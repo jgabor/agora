@@ -151,15 +151,25 @@ func truncatePlain(s string, maxLen int) string {
 	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
+	if maxLen <= 0 {
+		return ""
+	}
+	const ellipsis = "…"
+	ellipsisLen := utf8.RuneCountInString(ellipsis)
+	if maxLen <= ellipsisLen {
+		return ellipsis
+	}
+	targetLen := maxLen - ellipsisLen
 	var trimmed strings.Builder
 	count := 0
 	for _, r := range s {
-		if count >= maxLen {
+		if count >= targetLen {
 			break
 		}
 		trimmed.WriteRune(r)
 		count++
 	}
+	trimmed.WriteString(ellipsis)
 	return trimmed.String()
 }
 
