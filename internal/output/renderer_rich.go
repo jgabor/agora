@@ -265,6 +265,9 @@ func agentCastTree(r Renderer, agents []types.AgentConfig, c *cast.Cast, width i
 		if member.ProviderModel != "" {
 			agentNode.Child(r.Muted("model " + member.ProviderModel))
 		}
+		if agent.Identity != nil && agent.Identity.Affiliation != "" {
+			agentNode.Child(r.Muted("context " + agent.Identity.Affiliation))
+		}
 
 		root.Child(agentNode)
 	}

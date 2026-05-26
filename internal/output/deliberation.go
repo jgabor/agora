@@ -107,6 +107,9 @@ func agentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig) string {
 	if member.ProviderModel != "" {
 		line += fmt.Sprintf(" MODEL %s", member.ProviderModel)
 	}
+	if agent.Identity != nil && agent.Identity.Affiliation != "" {
+		line += fmt.Sprintf(" CONTEXT %s", agent.Identity.Affiliation)
+	}
 	return line
 }
 
@@ -123,9 +126,12 @@ func richAgentCastLine(r Renderer, c *cast.Cast, agent types.AgentConfig) string
 	}
 
 	lines := []string{strings.Join(parts, "  ")}
-	metadata := make([]string, 0, 2)
+	metadata := make([]string, 0, 3)
 	if member.ProviderModel != "" {
 		metadata = append(metadata, "model "+member.ProviderModel)
+	}
+	if agent.Identity != nil && agent.Identity.Affiliation != "" {
+		metadata = append(metadata, "context "+agent.Identity.Affiliation)
 	}
 	if len(metadata) > 0 {
 		lines = append(lines, r.Muted(strings.Join(metadata, " · ")))
