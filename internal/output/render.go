@@ -282,8 +282,7 @@ func RenderConfigSummary(cfg *types.DeliberationConfig) string {
 		shape.Child("synthesis " + *cfg.SynthesisModel)
 	}
 
-	root := tree.Root("valid configuration").
-		RootStyle(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))).
+	root := tree.New().
 		Enumerator(tree.RoundedEnumerator).
 		EnumeratorStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("2"))).
 		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
