@@ -116,6 +116,22 @@ Optional (all have sensible defaults):
 
 With `--auto`, the level supplies default time and max-turn caps. Explicit `--time` or `--max-turns` values override those caps.
 
+### Scripting and CI
+
+When stdin is not a terminal, `--auto` requires explicit approval before config generation runs:
+
+- `--yes` — auto-approve the generated cast and proceed
+- `AGORA_YES=1` — same as `--yes` (useful in scripts and CI)
+- `--dry-run` — preview only, no deliberation execution
+
+Example:
+
+```bash
+agora run --auto normal --yes --topic "Should we adopt feature X?"
+```
+
+Large `--window` values multiply per-turn context cost: evidence is delivered once per agent on first turn, and each turn includes up to `window` prior messages in history.
+
 By default, live output includes agent response bodies as turns complete. Use `--quiet` for the lower-noise metadata/progress-only stream, or `--verbose` to keep response bodies and add diagnostics such as token, cost, timing, and consensus metrics when available.
 
 ### `agora prime` — Inspect agent-operating context

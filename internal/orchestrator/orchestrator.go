@@ -106,7 +106,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			o.state.HaltedBy = fmt.Sprintf("error: %v", err)
 			break
 		}
-		o.consensusStreak = transcript.ConsecutiveConsensusCount(o.transcript.Records())
+		o.consensusStreak = transcript.ConsecutiveAgentConsensusCount(o.transcript.Records())
 
 		if o.onTurn != nil {
 			o.onTurn(turnRecord, o.state.Turn, o.state.MaxTurns)
@@ -233,6 +233,14 @@ func (o *Orchestrator) checkTerminationConditions() {
 
 	if o.state.Config.ConsensusThreshold > 0 &&
 		o.consensusStreak >= o.state.Config.ConsensusThreshold {
+		minTurns := o.state.Config.EffectiveMinRounds() * o.numAgents
+		if o.state.Turn < minTurns {
+			return
+		}
+		if !DeliverablePresent(o.transcript.Records(), o.state.DeliverableGate) {
+			return
+		}
+		o.state.FinalConsensusStreak = o.consensusStreak
 		o.state.Running = false
 		o.state.HaltedBy = fmt.Sprintf("consensus (%d consecutive agreements)", o.consensusStreak)
 		return
@@ -289,7 +297,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		return types.TurnRecord{}, false
 	}
 
-	cleanedContent, hasConsensus, consensusStmt := agent.ExtractConsensus(content)
+	cleanedContent, hasConsensus, consensusStmt, consensusIgnored := agent.ExtractConsensus(content)
 
 	var tokens types.TokenUsage
 	var cost *float64
@@ -308,6 +316,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		Cost:               cost,
 		Consensus:          hasConsensus,
 		ConsensusStatement: consensusStmt,
+		ConsensusIgnored:   consensusIgnored,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
 }

@@ -290,6 +290,29 @@ func TestHistoryRingEmptyTurn0(t *testing.T) {
 	}
 }
 
+func TestConsecutiveAgentConsensusCount(t *testing.T) {
+	records := []types.TurnRecord{
+		mkRecord(0, "a", "x", true, "ok"),
+		mkRecord(1, "b", "x", true, "ok"),
+		mkRecord(2, "synthesizer", "{}", false, ""),
+	}
+	if n := ConsecutiveAgentConsensusCount(records); n != 2 {
+		t.Errorf("with trailing synthesizer: got %d, want 2", n)
+	}
+}
+
+func TestAgentTurnCount(t *testing.T) {
+	records := []types.TurnRecord{
+		mkRecord(-2, "moderator", "evidence", false, ""),
+		mkRecord(-1, "moderator", "seed", false, ""),
+		mkRecord(0, "a", "x", false, ""),
+		mkRecord(1, "synthesizer", "{}", false, ""),
+	}
+	if n := AgentTurnCount(records); n != 1 {
+		t.Errorf("agent turns: got %d, want 1", n)
+	}
+}
+
 func TestConsecutiveConsensusCount(t *testing.T) {
 	var records []types.TurnRecord
 	if n := ConsecutiveConsensusCount(records); n != 0 {

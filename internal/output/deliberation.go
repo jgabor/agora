@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jgabor/agora/internal/cast"
+	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -291,7 +292,10 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}
 	writeFormat(w, "TURN %s | %s\n", turnValue, metadata)
 
-	if record.Consensus {
+	if record.ConsensusIgnored {
+		writeFormat(w, "  %s consensus marker ignored: statement expresses disagreement\n",
+			o.renderer.Styled("[WARNING]", "3"))
+	} else if record.Consensus {
 		label := o.renderer.Styled("✓ CONSENSUS", "2")
 		if !o.renderer.IsRich() {
 			label = "[CONSENSUS]"
@@ -399,12 +403,8 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 	stats := types.ComputeStats(records)
 	duration := float64(time.Now().UnixNano())/1e9 - state.StartTime
 
-	actualTurns := 0
-	for _, r := range records {
-		if r.AgentID != "moderator" && r.AgentID != "synthesizer" {
-			actualTurns++
-		}
-	}
+	actualTurns := transcript.AgentTurnCount(records)
+	consensusStreak := finalConsensusStreak(records, state)
 
 	fmt.Println()
 	rows := [][]string{
@@ -414,7 +414,7 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 		{"Total cost", finalCostValue(o.renderer, stats.TotalCost, state.Budget)},
 	}
 	if state.Config != nil && state.Config.ConsensusThreshold > 0 {
-		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(o.renderer, finalConsensusStreak(records), state.Config.ConsensusThreshold)})
+		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(o.renderer, consensusStreak, state.Config.ConsensusThreshold)})
 	}
 	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(state.HaltedBy), haltColor(state.HaltedBy))})
 	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
@@ -457,22 +457,15 @@ func finalCostValue(r Renderer, value float64, bound *float64) string {
 	return boundedCostMetricValue(r, value, *bound)
 }
 
-func finalConsensusStreak(records []types.TurnRecord) int {
-	streak := 0
-	for i := len(records) - 1; i >= 0; i-- {
-		if records[i].Consensus {
-			streak++
-			continue
-		}
-		if records[i].AgentID != "moderator" {
-			break
-		}
+func finalConsensusStreak(records []types.TurnRecord, state *types.DeliberationState) int {
+	if state != nil && state.FinalConsensusStreak > 0 {
+		return state.FinalConsensusStreak
 	}
-	return streak
+	return transcript.ConsecutiveAgentConsensusCount(records)
 }
 
 func isInternalAgent(agentID string) bool {
-	return agentID == "moderator" || agentID == "synthesizer"
+	return transcript.IsInternalAgent(agentID)
 }
 
 func finalAgentRows(perAgent map[string]types.AgentTurnStats, cfg *types.DeliberationConfig) [][]string {

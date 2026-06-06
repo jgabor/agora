@@ -400,8 +400,8 @@ func TestComputeStats(t *testing.T) {
 
 	stats := ComputeStats(records)
 
-	if stats.TotalTurns != 4 {
-		t.Errorf("total_turns: got %d, want 4", stats.TotalTurns)
+	if stats.TotalTurns != 3 {
+		t.Errorf("total_turns: got %d, want 3 agent turns", stats.TotalTurns)
 	}
 	if stats.TotalTokens != 350 {
 		t.Errorf("total_tokens: got %d, want 350", stats.TotalTokens)

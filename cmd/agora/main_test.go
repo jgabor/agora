@@ -16,6 +16,7 @@ import (
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/evidence"
 	"github.com/jgabor/agora/internal/output"
+	"github.com/jgabor/agora/internal/session"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -175,7 +176,8 @@ func TestConfigGetAllShowsDefaults(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Global Settings",
-		"settings.yaml",
+		"settings",
+		"path",
 		"default_model",
 		"opencode-",
 		"go/deepseek-",
@@ -2155,6 +2157,59 @@ func TestRequireAutoApprovalTTYInteractiveSkips(t *testing.T) {
 	err := requireAutoApprovalForNonTTY(false, false)
 	if err != nil {
 		t.Fatalf("expected nil for TTY stdin, got: %v", err)
+	}
+}
+
+func TestSynthesisUnresolvedAfterConsensus(t *testing.T) {
+	result := session.Result{
+		HaltedBy:   "consensus (3 consecutive agreements)",
+		OutputPath: "/tmp/transcript.jsonl",
+		Synthesis: map[string]any{
+			"confidence": "high",
+			"unresolved_tensions": []any{
+				"The internal friction in Law 2 between aggressive compute and minimalist code.",
+			},
+		},
+	}
+	if !synthesisUnresolvedAfterConsensus(result) {
+		t.Fatal("expected unresolved synthesis after consensus halt")
+	}
+
+	quiet := session.Result{
+		HaltedBy: "consensus (3 consecutive agreements)",
+		Synthesis: map[string]any{
+			"confidence": "high",
+			"unresolved_tensions": []any{
+				"None identified; the linguistic architect provided a finalized version.",
+			},
+		},
+	}
+	if synthesisUnresolvedAfterConsensus(quiet) {
+		t.Fatal("expected no warning when tensions are none identified")
+	}
+
+	noneSemicolon := session.Result{
+		HaltedBy: "consensus (3 consecutive agreements)",
+		Synthesis: map[string]any{
+			"confidence": "high",
+			"unresolved_tensions": []any{
+				"None; the deliberation reached a unanimous consensus on the final wording.",
+			},
+		},
+	}
+	if synthesisUnresolvedAfterConsensus(noneSemicolon) {
+		t.Fatal("expected no warning when tension item begins with none")
+	}
+}
+
+func TestRequireAutoApprovalNonTTYAcceptsEnvYes(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	t.Setenv("AGORA_YES", "1")
+	if err := requireAutoApprovalForNonTTY(false, false); err != nil {
+		t.Fatalf("expected nil for AGORA_YES=1, got: %v", err)
 	}
 }
 

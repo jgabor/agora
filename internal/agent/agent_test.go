@@ -16,7 +16,7 @@ import (
 
 func TestExtractConsensusPresent(t *testing.T) {
 	content := "System A is superior [CONSENSUS: System A wins]"
-	cleaned, hasConsensus, statement := ExtractConsensus(content)
+	cleaned, hasConsensus, statement, _ := ExtractConsensus(content)
 
 	if !hasConsensus {
 		t.Error("expected hasConsensus=true")
@@ -34,7 +34,7 @@ func TestExtractConsensusPresent(t *testing.T) {
 
 func TestExtractConsensusMissing(t *testing.T) {
 	content := "No consensus here."
-	_, hasConsensus, _ := ExtractConsensus(content)
+	_, hasConsensus, _, _ := ExtractConsensus(content)
 
 	if hasConsensus {
 		t.Error("expected hasConsensus=false")
@@ -58,7 +58,7 @@ func TestExtractConsensusCaseInsensitive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			_, hasConsensus, statement := ExtractConsensus(tt.content)
+			_, hasConsensus, statement, _ := ExtractConsensus(tt.content)
 			if !hasConsensus {
 				t.Error("expected hasConsensus=true")
 			}
@@ -98,7 +98,7 @@ func TestExtractConsensusMultiline(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			cleaned, hasConsensus, statement := ExtractConsensus(tt.content)
+			cleaned, hasConsensus, statement, _ := ExtractConsensus(tt.content)
 			if !hasConsensus {
 				t.Error("expected hasConsensus=true")
 			}
@@ -130,7 +130,7 @@ func TestExtractConsensusWhitespaceVariants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			_, hasConsensus, statement := ExtractConsensus(tt.content)
+			_, hasConsensus, statement, _ := ExtractConsensus(tt.content)
 			if !hasConsensus {
 				t.Errorf("expected hasConsensus=true for %q", tt.content)
 			}
@@ -159,7 +159,7 @@ func TestExtractConsensusFalsePositives(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			_, hasConsensus, _ := ExtractConsensus(tt.content)
+			_, hasConsensus, _, _ := ExtractConsensus(tt.content)
 			if hasConsensus {
 				t.Errorf("expected hasConsensus=false for %q", tt.content)
 			}
@@ -173,7 +173,7 @@ func TestExtractConsensusFalsePositives(t *testing.T) {
 
 func TestExtractConsensusMultipleMarkers(t *testing.T) {
 	content := "[CONSENSUS: first] text [CONSENSUS: second]"
-	cleaned, hasConsensus, _ := ExtractConsensus(content)
+	cleaned, hasConsensus, _, _ := ExtractConsensus(content)
 	if !hasConsensus {
 		t.Error("expected hasConsensus=true")
 	}
@@ -223,7 +223,7 @@ func TestExtractConsensusRegexEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			_, hasConsensus, statement := ExtractConsensus(tt.content)
+			_, hasConsensus, statement, _ := ExtractConsensus(tt.content)
 			if hasConsensus != tt.has {
 				t.Errorf("hasConsensus: got %v, want %v", hasConsensus, tt.has)
 			}
@@ -675,7 +675,7 @@ func TestParseOpenCodeOutputPartialJSON(t *testing.T) {
 
 func TestExtractConsensusMultilineWhitespace(t *testing.T) {
 	content := "  [CONSENSUS:  \n  multi  \n  line  ]  "
-	_, hasConsensus, statement := ExtractConsensus(content)
+	_, hasConsensus, statement, _ := ExtractConsensus(content)
 	if !hasConsensus {
 		t.Fatal("expected hasConsensus=true")
 	}
@@ -684,6 +684,28 @@ func TestExtractConsensusMultilineWhitespace(t *testing.T) {
 	want := "multi  \n  line"
 	if statement != want {
 		t.Errorf("statement: got %q, want %q", statement, want)
+	}
+}
+
+func TestExtractConsensusRejectsContradictoryStatement(t *testing.T) {
+	content := "[CONSENSUS: I do not agree with the current integration because it weakens the mandate.]\nI find a critical tension."
+	_, hasConsensus, _, ignored := ExtractConsensus(content)
+	if hasConsensus {
+		t.Fatal("expected contradictory consensus to be rejected")
+	}
+	if !ignored {
+		t.Fatal("expected ignored=true when marker expresses disagreement")
+	}
+}
+
+func TestExtractConsensusRejectsBodyDisagreementWithoutEndorsement(t *testing.T) {
+	content := "[CONSENSUS: The discussion was productive.]\nI find a critical tension in the current proposals."
+	_, hasConsensus, _, ignored := ExtractConsensus(content)
+	if hasConsensus {
+		t.Fatal("expected body disagreement without endorsement to reject consensus")
+	}
+	if !ignored {
+		t.Fatal("expected ignored=true")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/llmutil"
+	"github.com/jgabor/agora/internal/orchestrator"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -50,6 +51,7 @@ func GenerateDryRunConfig(topic string, level types.AutoLevel, model string) (*t
 		Topology:           types.TopologyRing,
 		Agents:             agents,
 		ConsensusThreshold: agentCount,
+		MinRounds:          2,
 	}
 
 	return cfg, nil
@@ -87,9 +89,23 @@ func GenerateConfig(topic string, level types.AutoLevel, model string, runner ag
 	if err := validateCaps(cfg, caps); err != nil {
 		return nil, fmt.Errorf("auto config generation failed: %w", err)
 	}
+	applyAutoDefaults(cfg, topic)
 	agent.ApplyReadOnlyPromptGuard(cfg)
 
 	return cfg, nil
+}
+
+func applyAutoDefaults(cfg *types.DeliberationConfig, topic string) {
+	if cfg.ConsensusThreshold <= 0 && len(cfg.Agents) > 0 {
+		cfg.ConsensusThreshold = len(cfg.Agents)
+	}
+	if cfg.MinRounds <= 0 {
+		if orchestrator.ParseDeliverableGate(topic) != nil {
+			cfg.MinRounds = 2
+		} else {
+			cfg.MinRounds = 1
+		}
+	}
 }
 
 // buildSystemPrompt constructs the system prompt for the config designer agent.
@@ -100,6 +116,7 @@ func buildSystemPrompt(topic string, level types.AutoLevel, model string, caps t
 	b.WriteString("Return ONLY valid YAML with this structure:\n")
 	b.WriteString("topology: <ring|star|mesh>\n")
 	b.WriteString("consensus_threshold: <number>\n")
+	b.WriteString("min_rounds: <number>\n")
 	b.WriteString("agents:\n")
 	b.WriteString("  - id: <lowercase_with_underscores>\n")
 	b.WriteString("    model: <model from context>\n")
@@ -114,7 +131,10 @@ func buildSystemPrompt(topic string, level types.AutoLevel, model string, caps t
 	b.WriteString("- Agent IDs must be unique, lowercase with underscores\n")
 	b.WriteString("- System prompts should be 2-4 sentences each, describing a distinct perspective or role\n")
 	b.WriteString("- Choose a topology that creates meaningful adversarial tension\n")
-	b.WriteString("- Set consensus_threshold to match the number of agents unless the topic demands immediate convergence (lower threshold)\n\n")
+	b.WriteString("- Include at least one adversarial or critic role when the topic involves synthesis, rewriting, or merging frameworks\n")
+	b.WriteString("- Include a finalist or linguistic_architect role that produces the canonical draft; agents must not mark CONSENSUS until the draft is endorsed verbatim\n")
+	b.WriteString("- Set consensus_threshold to match the number of agents\n")
+	b.WriteString("- Set min_rounds to 2 for synthesis or rewrite topics, otherwise 1; consensus only halts after min_rounds full rounds\n\n")
 	fmt.Fprintf(&b, "The model to use for all agents: %s\n", model)
 	fmt.Fprintf(&b, "Topic: %s\n", topic)
 

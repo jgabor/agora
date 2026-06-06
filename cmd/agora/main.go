@@ -108,6 +108,10 @@ var runCmd = &cobra.Command{
 			if cmd.Flags().Changed("max-turns") {
 				levelCaps.MaxTurns = runFlags.MaxTurns
 			}
+			if err := requireAutoApprovalForNonTTY(runFlags.Yes, runFlags.DryRun); err != nil {
+				return err
+			}
+
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 
 			if runFlags.DryRun {
@@ -126,10 +130,6 @@ var runCmd = &cobra.Command{
 			}
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
-
-			if err := requireAutoApprovalForNonTTY(runFlags.Yes, runFlags.DryRun); err != nil {
-				return err
-			}
 
 			if !runFlags.Yes {
 				if !confirmProceed() {
@@ -187,7 +187,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		printSessionResult(outMgr, result, fmt.Sprintf("Deliberation complete (%d turns)", result.Stats.TotalTurns))
+		printSessionResult(outMgr, result, fmt.Sprintf("Deliberation complete (%d agent turns)", result.Stats.TotalTurns))
 
 		return nil
 	},
@@ -307,10 +307,59 @@ func printSessionResult(outMgr *output.OutputManager, result session.Result, com
 		} else {
 			outMgr.Success("Synthesis complete")
 		}
+		if synthesisUnresolvedAfterConsensus(result) {
+			outMgr.Warning(fmt.Sprintf(
+				"Deliberation converged but synthesis reports unresolved tensions. Consider: agora resume %s --topic \"...\"",
+				result.OutputPath,
+			))
+		}
 	}
 	outMgr.Success(completeMsg)
 	outMgr.Success(fmt.Sprintf("Transcript: %s", result.OutputPath))
 	outMgr.Success(outMgr.HaltedByDisplay(result.HaltedBy))
+}
+
+func synthesisUnresolvedAfterConsensus(result session.Result) bool {
+	if result.Synthesis == nil || !strings.HasPrefix(result.HaltedBy, "consensus") {
+		return false
+	}
+	if confidence, ok := result.Synthesis["confidence"].(string); ok && strings.EqualFold(confidence, "low") {
+		return true
+	}
+	tensions, ok := result.Synthesis["unresolved_tensions"].([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range tensions {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		if isBenignUnresolvedTension(text) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func isBenignUnresolvedTension(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return true
+	}
+	benignPrefixes := []string{
+		"none",
+		"no unresolved",
+		"not identified",
+		"nothing unresolved",
+	}
+	for _, prefix := range benignPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(lower, "none identified")
 }
 
 // --- stats --------------------------------------------------------
@@ -627,6 +676,10 @@ var resumeCmd = &cobra.Command{
 			if cmd.Flags().Changed("max-turns") {
 				levelCaps.MaxTurns = resumeFlags.MaxTurns
 			}
+			if err := requireAutoApprovalForNonTTY(resumeFlags.Yes, resumeFlags.DryRun); err != nil {
+				return err
+			}
+
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
 
 			if resumeFlags.DryRun {
@@ -645,10 +698,6 @@ var resumeCmd = &cobra.Command{
 			}
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
-
-			if err := requireAutoApprovalForNonTTY(resumeFlags.Yes, resumeFlags.DryRun); err != nil {
-				return err
-			}
 
 			if !resumeFlags.Yes {
 				if !confirmProceed() {
@@ -702,7 +751,7 @@ var resumeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		printSessionResult(outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d total turns)", result.Stats.TotalTurns))
+		printSessionResult(outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d agent turns)", result.Stats.TotalTurns))
 
 		return nil
 	},
@@ -910,13 +959,18 @@ var stdinIsTerminal = func() bool {
 }
 
 func requireAutoApprovalForNonTTY(yes, dryRun bool) error {
-	if yes || dryRun {
+	if yes || dryRun || envAutoYes() {
 		return nil
 	}
 	if stdinIsTerminal() {
 		return nil
 	}
-	return fmt.Errorf("stdin is not a terminal: --auto requires --yes (auto-approve config) or --dry-run (preview only, no execution)")
+	return fmt.Errorf("stdin is not a terminal: --auto requires --yes (auto-approve config), AGORA_YES=1, or --dry-run (preview only, no execution). Example: agora run --auto normal --yes --topic \"...\"")
+}
+
+func envAutoYes() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv("AGORA_YES")))
+	return value == "1" || value == "true" || value == "yes"
 }
 
 func confirmProceed() bool {

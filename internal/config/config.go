@@ -14,6 +14,7 @@ type rawConfig struct {
 	Topology           string              `yaml:"topology"`
 	Agents             []types.AgentConfig `yaml:"agents"`
 	ConsensusThreshold int                 `yaml:"consensus_threshold"`
+	MinRounds          int                 `yaml:"min_rounds"`
 	SynthesisModel     *string             `yaml:"synthesis_model"`
 	Research           *bool               `yaml:"research"`
 	Context            []string            `yaml:"context"`
@@ -72,6 +73,7 @@ func loadConfigFromBytes(data []byte, settings Settings) (*types.DeliberationCon
 		Agents:             agents,
 		Topology:           topology,
 		ConsensusThreshold: raw.ConsensusThreshold,
+		MinRounds:          raw.MinRounds,
 		SynthesisModel:     raw.SynthesisModel,
 		ContextPaths:       append([]string(nil), raw.Context...),
 	}

@@ -221,6 +221,11 @@ func (o *OutputManager) Success(message string) {
 	fmt.Printf("%s %s\n", o.renderer.StatusLabel("SUCCESS", "✓", "2"), message)
 }
 
+// Warning prints a warning message.
+func (o *OutputManager) Warning(message string) {
+	fmt.Printf("%s %s\n", o.renderer.StatusLabel("WARNING", "!", "3"), message)
+}
+
 // Delimiter prints a horizontal rule.
 func (o *OutputManager) Delimiter() {
 	var line string

@@ -123,15 +123,16 @@ func buildState(req RunRequest, existingTurns int) *types.DeliberationState {
 		turn = existingTurns
 	}
 	return &types.DeliberationState{
-		Config:      req.Config,
-		Topic:       req.Topic,
-		Window:      req.Window,
-		MaxTurns:    maxTurns,
-		TimeLimit:   req.TimeLimit,
-		Budget:      req.Budget,
-		FullContext: req.FullContext,
-		Turn:        turn,
-		Evidence:    req.Evidence,
+		Config:          req.Config,
+		Topic:           req.Topic,
+		Window:          req.Window,
+		MaxTurns:        maxTurns,
+		TimeLimit:       req.TimeLimit,
+		Budget:          req.Budget,
+		FullContext:     req.FullContext,
+		Turn:            turn,
+		Evidence:        req.Evidence,
+		DeliverableGate: orchestrator.ParseDeliverableGate(req.Topic),
 	}
 }
 
@@ -217,13 +218,7 @@ func evidenceEnabled(req types.EvidenceRequest) bool {
 }
 
 func countAgentTurns(records []types.TurnRecord) int {
-	count := 0
-	for _, record := range records {
-		if record.AgentID != "moderator" {
-			count++
-		}
-	}
-	return count
+	return types.AgentTurnCount(records)
 }
 
 func metadataFromRecords(records []types.TurnRecord) *types.TranscriptMetadata {

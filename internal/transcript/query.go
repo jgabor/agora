@@ -2,6 +2,11 @@ package transcript
 
 import "github.com/jgabor/agora/internal/types"
 
+// IsInternalAgent reports whether agentID is orchestrator/system, not deliberation cast.
+func IsInternalAgent(agentID string) bool {
+	return types.IsInternalAgent(agentID)
+}
+
 // HistoryForAgent builds the history envelope for the next agent turn
 // from the given records using the specified topology and window.
 func HistoryForAgent(records []types.TurnRecord, agentID string, window int, topology types.Topology, numAgents int, turn int) []map[string]string {
@@ -56,7 +61,7 @@ func HistoryForAgent(records []types.TurnRecord, agentID string, window int, top
 func inferAgentOrder(records []types.TurnRecord, numAgents int) []string {
 	var seen []string
 	for _, r := range records {
-		if r.AgentID == "moderator" {
+		if IsInternalAgent(r.AgentID) {
 			continue
 		}
 		found := false
@@ -80,6 +85,28 @@ func inferAgentOrder(records []types.TurnRecord, numAgents int) []string {
 func ConsecutiveConsensusCount(records []types.TurnRecord) int {
 	count := 0
 	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Consensus {
+			count++
+		} else {
+			break
+		}
+	}
+	return count
+}
+
+// AgentTurnCount returns deliberation agent turns, excluding internal system agents.
+func AgentTurnCount(records []types.TurnRecord) int {
+	return types.AgentTurnCount(records)
+}
+
+// ConsecutiveAgentConsensusCount counts trailing consensus=true records from
+// deliberation agents only, skipping internal agents such as synthesizer.
+func ConsecutiveAgentConsensusCount(records []types.TurnRecord) int {
+	count := 0
+	for i := len(records) - 1; i >= 0; i-- {
+		if IsInternalAgent(records[i].AgentID) {
+			continue
+		}
 		if records[i].Consensus {
 			count++
 		} else {

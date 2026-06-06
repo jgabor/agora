@@ -136,10 +136,20 @@ type DeliberationConfig struct {
 	Agents             []AgentConfig `yaml:"agents" json:"agents"`
 	Topology           Topology      `yaml:"topology" json:"topology"`
 	ConsensusThreshold int           `yaml:"consensus_threshold" json:"consensus_threshold"`
+	MinRounds          int           `yaml:"min_rounds" json:"min_rounds"`
 	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
 	MetaModel          *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
 	ResearchEnabled    bool          `yaml:"research" json:"research"`
 	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
+}
+
+// EffectiveMinRounds returns the minimum full agent rounds before consensus halt.
+// Zero means one round (default).
+func (c *DeliberationConfig) EffectiveMinRounds() int {
+	if c == nil || c.MinRounds <= 0 {
+		return 1
+	}
+	return c.MinRounds
 }
 
 // NewTranscriptMetadata captures the run setup needed to replay a transcript.
@@ -209,6 +219,9 @@ func (c *DeliberationConfig) Validate() error {
 	if c.ConsensusThreshold < 0 {
 		return fmt.Errorf("consensus_threshold must be >= 0")
 	}
+	if c.MinRounds < 0 {
+		return fmt.Errorf("min_rounds must be >= 0")
+	}
 	switch c.Topology {
 	case TopologyRing, TopologyStar, TopologyMesh:
 	case "":
@@ -251,7 +264,29 @@ type TurnRecord struct {
 	Cost               *float64            `yaml:"cost,omitempty" json:"cost,omitempty"`
 	Consensus          bool                `yaml:"consensus" json:"consensus"`
 	ConsensusStatement string              `yaml:"consensus_statement" json:"consensus_statement"`
+	ConsensusIgnored   bool                `yaml:"consensus_ignored,omitempty" json:"consensus_ignored,omitempty"`
 	Elapsed            float64             `yaml:"elapsed" json:"elapsed"`
+}
+
+// DeliverableGate describes a topic-required artifact before consensus halt.
+type DeliverableGate struct {
+	MinItems int `yaml:"min_items" json:"min_items"`
+}
+
+// IsInternalAgent reports whether agentID is orchestrator/system, not deliberation cast.
+func IsInternalAgent(agentID string) bool {
+	return agentID == "moderator" || agentID == "synthesizer"
+}
+
+// AgentTurnCount returns deliberation agent turns, excluding internal system agents.
+func AgentTurnCount(records []TurnRecord) int {
+	count := 0
+	for _, r := range records {
+		if !IsInternalAgent(r.AgentID) {
+			count++
+		}
+	}
+	return count
 }
 
 // DeliberationStats holds statistics computed from deliberation records.
@@ -290,10 +325,12 @@ type DeliberationState struct {
 	FullContext bool
 	Evidence    EvidenceRequest
 
-	Turn      int
-	StartTime float64
-	Running   bool
-	HaltedBy  string
+	Turn                 int
+	StartTime            float64
+	Running              bool
+	HaltedBy             string
+	FinalConsensusStreak int
+	DeliverableGate      *DeliverableGate
 }
 
 // EvidenceRequest captures the resolved pre-deliberation evidence policy.
@@ -333,7 +370,7 @@ type EvidenceBundle struct {
 func ComputeStats(records []TurnRecord) DeliberationStats {
 	stats := DeliberationStats{
 		Records:    records,
-		TotalTurns: len(records),
+		TotalTurns: AgentTurnCount(records),
 		PerAgent:   make(map[string]AgentTurnStats),
 	}
 
@@ -341,6 +378,9 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 	var durationCount int
 
 	for _, r := range records {
+		if IsInternalAgent(r.AgentID) {
+			continue
+		}
 		stats.TotalTokens += IntVal(r.Tokens.Total)
 		if r.Cost != nil {
 			stats.TotalCost += *r.Cost

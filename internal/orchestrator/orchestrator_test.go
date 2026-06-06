@@ -409,6 +409,7 @@ func TestCheckTerminationConditions(t *testing.T) {
 		elapsedOffset    float64
 		consensusStreak  int
 		consensusThresh  int
+		turn             int
 		budget           *float64
 		transcriptCost   float64
 		expectHalted     bool
@@ -437,6 +438,7 @@ func TestCheckTerminationConditions(t *testing.T) {
 			elapsedOffset:    5,
 			consensusStreak:  3,
 			consensusThresh:  3,
+			turn:             2,
 			expectHalted:     true,
 			expectHaltReason: "consensus (3 consecutive agreements)",
 		},
@@ -463,6 +465,9 @@ func TestCheckTerminationConditions(t *testing.T) {
 			state := newTestState(cfg)
 			state.TimeLimit = tt.timeLimit
 			state.Budget = tt.budget
+			if tt.turn > 0 {
+				state.Turn = tt.turn
+			}
 
 			// Simulate elapsed time by back-dating StartTime.
 			state.StartTime = float64(time.Now().UnixNano())/1e9 - tt.elapsedOffset
@@ -608,8 +613,8 @@ func TestRunSkipsRunnerErrorAndContinues(t *testing.T) {
 	if runner.callCount != 3 {
 		t.Errorf("expected 3 runner calls, got %d", runner.callCount)
 	}
-	if stats.TotalTurns != 3 {
-		t.Errorf("expected seed plus 2 successful records, got %d", stats.TotalTurns)
+	if stats.TotalTurns != 2 {
+		t.Errorf("expected 2 successful agent records, got %d", stats.TotalTurns)
 	}
 	for _, record := range tm.Records() {
 		if strings.Contains(record.Content, "[ERROR]") || strings.Contains(record.Content, "malformed llm response") {
@@ -723,9 +728,8 @@ func TestRunMaxTurnsTenBackwardCompat(t *testing.T) {
 	if state.HaltedBy != "max_turns (10)" {
 		t.Errorf("expected halt reason 'max_turns (10)', got %q", state.HaltedBy)
 	}
-	// 10 agent turns + 1 seed record = 11 total records.
-	if stats.TotalTurns != 11 {
-		t.Errorf("expected 11 total records (10 agent + 1 seed), got %d", stats.TotalTurns)
+	if stats.TotalTurns != 10 {
+		t.Errorf("expected 10 agent turns, got %d", stats.TotalTurns)
 	}
 	// Turn counter should be exactly 10.
 	if state.Turn != 10 {

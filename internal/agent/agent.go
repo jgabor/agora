@@ -130,7 +130,7 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 // enforcement happens through opencode's permission config.
 const ReadOnlyHint = "You are operating in a read-only sandbox. Your tools are limited to reading, searching, and exploring files."
 
-const ConsensusHint = "If you fully agree with the direction of the deliberation, include [CONSENSUS: your statement] in your response."
+const ConsensusHint = "Only include [CONSENSUS: your statement] when you fully endorse the proposed final answer or deliverable as written—not merely the discussion process, your own critique, or a recommendation to refine later."
 
 const ModeratorPrompt = "You are a discussion moderator. Your role is to keep deliberation productive by asking clarifying questions when agents are unclear, redirecting agents that go off-topic, and introducing new angles or perspectives when the conversation reaches a stalemate. Only interject when necessary — when agents are repeating themselves, stuck, or drifting off course. Your goal is to move the group toward consensus without dominating the discussion."
 
@@ -424,12 +424,37 @@ func dryRunMetadata() *types.RunMetadata {
 
 var consensusPattern = regexp.MustCompile(`(?si)\[CONSENSUS\s*:\s*(.*?)\]`)
 
+var consensusRejectionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\bdo not agree\b`),
+	regexp.MustCompile(`(?i)\bdon't agree\b`),
+	regexp.MustCompile(`(?i)\bcannot agree\b`),
+	regexp.MustCompile(`(?i)\bcan not agree\b`),
+	regexp.MustCompile(`(?i)\bi disagree\b`),
+	regexp.MustCompile(`(?i)\bnot agree with\b`),
+	regexp.MustCompile(`(?i)\breject(?:s|ed|ing)?\b`),
+	regexp.MustCompile(`(?i)\brefine the laws\b`),
+}
+
+var consensusBodyRejectionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\bi do not agree\b`),
+	regexp.MustCompile(`(?i)\bi don't agree\b`),
+	regexp.MustCompile(`(?i)\bcritical tension\b`),
+}
+
+var consensusEndorsementPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\bi agree\b`),
+	regexp.MustCompile(`(?i)\bendorse\b`),
+	regexp.MustCompile(`(?i)\badopt\b`),
+	regexp.MustCompile(`(?i)\baccept\b`),
+}
+
 // ExtractConsensus extracts a [CONSENSUS: <statement>] marker from an agent response.
-// Returns the cleaned text, whether consensus was found, and the statement.
-func ExtractConsensus(content string) (cleaned string, hasConsensus bool, statement string) {
+// Returns the cleaned text, whether consensus was found, the statement, and whether
+// a marker was present but rejected as contradictory.
+func ExtractConsensus(content string) (cleaned string, hasConsensus bool, statement string, ignored bool) {
 	loc := consensusPattern.FindStringSubmatchIndex(content)
 	if loc == nil {
-		return content, false, ""
+		return content, false, "", false
 	}
 
 	consensusStatement := strings.TrimSpace(content[loc[2]:loc[3]])
@@ -437,5 +462,29 @@ func ExtractConsensus(content string) (cleaned string, hasConsensus bool, statem
 	cleanedText := consensusPattern.ReplaceAllString(content, "")
 	cleanedText = strings.TrimSpace(cleanedText)
 
-	return cleanedText, true, consensusStatement
+	if consensusRejected(consensusStatement, cleanedText) {
+		return cleanedText, false, "", true
+	}
+
+	return cleanedText, true, consensusStatement, false
+}
+
+func consensusRejected(statement, body string) bool {
+	if matchesAnyPattern(statement, consensusRejectionPatterns) {
+		return true
+	}
+	if matchesAnyPattern(body, consensusBodyRejectionPatterns) &&
+		!matchesAnyPattern(statement, consensusEndorsementPatterns) {
+		return true
+	}
+	return false
+}
+
+func matchesAnyPattern(text string, patterns []*regexp.Regexp) bool {
+	for _, pattern := range patterns {
+		if pattern.MatchString(text) {
+			return true
+		}
+	}
+	return false
 }
