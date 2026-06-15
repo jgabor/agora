@@ -1,7 +1,6 @@
 package transcript
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -362,100 +361,37 @@ func TestTotalTokensWithNil(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Python JSONL compatibility — load a Python-produced transcript
+// Legacy transcript JSONL compatibility
 // ---------------------------------------------------------------------------
 
-func TestLoadPythonProducedJSONL(t *testing.T) {
-	// participants.jsonl is a Python-produced transcript in the project root.
-	paths := []string{
-		filepath.Join("..", "participants.jsonl"),
-		"participants.jsonl",
-		filepath.Join("..", "..", "participants.jsonl"),
+func TestLoadLegacyTranscriptJSONL(t *testing.T) {
+	path := filepath.Join("testdata", "legacy-deliberation.jsonl")
+	tm := NewTranscriptManager(path)
+	records, err := tm.LoadExisting()
+	if err != nil {
+		t.Fatalf("load legacy JSONL %q: %v", path, err)
 	}
-	found := false
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			found = true
-			tm := NewTranscriptManager(p)
-			records, err := tm.LoadExisting()
-			if err != nil {
-				t.Fatalf("load python JSONL %q: %v", p, err)
-			}
-			if len(records) == 0 {
-				t.Fatalf("expected records in python JSONL %q", p)
-			}
-			t.Logf("loaded %d records from Python-produced %q", len(records), p)
+	if len(records) != 3 {
+		t.Fatalf("record count: got %d, want 3", len(records))
+	}
 
-			// Verify key fields are populated correctly.
-			first := records[0]
-			if first.AgentID != "moderator" {
-				t.Errorf("first agent_id: got %q, want moderator", first.AgentID)
-			}
-			if first.Turn != -1 {
-				t.Errorf("first turn: got %d, want -1", first.Turn)
-			}
+	first := records[0]
+	if first.AgentID != "moderator" {
+		t.Errorf("first agent_id: got %q, want moderator", first.AgentID)
+	}
+	if first.Turn != -1 {
+		t.Errorf("first turn: got %d, want -1", first.Turn)
+	}
 
-			// Verify a non-moderator record has model populated.
-			for _, r := range records {
-				if r.AgentID != "moderator" && r.Model != nil {
-					t.Logf("model field present: %s -> %s", r.AgentID, *r.Model)
-					break
-				}
-			}
-
+	var sawModel bool
+	for _, r := range records {
+		if r.AgentID != "moderator" && r.Model != nil && *r.Model != "" {
+			sawModel = true
 			break
 		}
 	}
-	if !found {
-		t.Skip("participants.jsonl not found")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// JSON marshal parity — Go-encoded record must be parseable as Python-like JSON
-// ---------------------------------------------------------------------------
-
-func TestGoMarshaledRecordJSONKeysForPython(t *testing.T) {
-	model := "openai/gpt-4"
-	total := 100
-	cost := 0.001
-	record := types.TurnRecord{
-		Turn:               0,
-		AgentID:            "test_agent",
-		Model:              &model,
-		Timestamp:          1.0,
-		Content:            "hello",
-		Tokens:             types.TokenUsage{Total: &total},
-		Cost:               &cost,
-		Consensus:          true,
-		ConsensusStatement: "agreed",
-		Elapsed:            2.5,
-	}
-
-	data, err := json.Marshal(record)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	// Python expects these snake_case keys.
-	if _, ok := m["agent_id"]; !ok {
-		t.Error("missing agent_id")
-	}
-	if _, ok := m["consensus_statement"]; !ok {
-		t.Error("missing consensus_statement")
-	}
-	// Verify tokens is an object, not a scalar.
-	if tokens, ok := m["tokens"].(map[string]any); !ok {
-		t.Error("tokens is not an object")
-	} else {
-		if _, ok := tokens["total"]; !ok {
-			t.Error("missing tokens.total")
-		}
+	if !sawModel {
+		t.Fatal("expected at least one non-moderator record with model populated")
 	}
 }
 

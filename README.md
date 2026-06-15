@@ -204,9 +204,10 @@ Displays transcript records in order using the same turn cards and agent respons
 
 ```
 agora resume --config PATH --topic TEXT TRANSCRIPT|SLUG [flags]
-
-Same optional flags as run, except evidence flags are rejected on resume. Loads prior records from a transcript slug or explicit path and continues from the last turn. Live output uses the same modes as `run`: default shows response bodies, `--quiet` suppresses live response bodies for metadata/progress only, and `--verbose` shows response bodies plus diagnostics/metrics. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context.
+agora resume --config PATH --topic TEXT --file PATH/TO/transcript.jsonl [flags]
 ```
+
+Same optional flags as run, except evidence flags are rejected on resume. Loads prior records from a transcript slug, explicit positional path, or `--file` override and continues from the last turn. Live output uses the same modes as `run`: default shows response bodies, `--quiet` suppresses live response bodies for metadata/progress only, and `--verbose` shows response bodies plus diagnostics/metrics. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context.
 
 ### `agora stats` — Show transcript statistics
 
@@ -330,6 +331,8 @@ JSONL, one turn per line. The first written record embeds a `transcript` metadat
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow (mage targets, hooks, optional e2e, and README contract tests).
+
 ```bash
 go build ./...              # Build
 go test ./... -v -cover     # Test
@@ -338,5 +341,9 @@ go vet ./...                # Lint
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.26.2+
 - [OpenCode](https://opencode.ai) — the LLM agent runner
+
+## License
+
+MIT — see [LICENSE](LICENSE).

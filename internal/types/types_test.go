@@ -526,27 +526,29 @@ func TestIntVal(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// JSON marshal parity — Go-marshaled TurnRecord key names must match Python
+// TurnRecord JSON wire format
 // ---------------------------------------------------------------------------
 
-func TestTurnRecordJSONKeysMatchPython(t *testing.T) {
-	// These are the JSON key names expected by the Python side based on
-	// participants.jsonl and the Python TurnRecord model.
+func TestTurnRecordJSONMarshalUsesCanonicalKeys(t *testing.T) {
 	expectedKeys := []string{
 		"turn", "agent_id", "model", "timestamp", "content",
 		"tokens", "cost", "consensus", "consensus_statement", "elapsed",
 	}
 
+	total := 100
 	model := "m"
 	cost := 0.001
 	record := TurnRecord{
-		Turn:      0,
-		AgentID:   "test",
-		Model:     &model,
-		Timestamp: 1.0,
-		Content:   "hello",
-		Cost:      &cost,
-		Elapsed:   1.0,
+		Turn:               0,
+		AgentID:            "test",
+		Model:              &model,
+		Timestamp:          1.0,
+		Content:            "hello",
+		Tokens:             TokenUsage{Total: &total},
+		Cost:               &cost,
+		Consensus:          true,
+		ConsensusStatement: "agreed",
+		Elapsed:            1.0,
 	}
 
 	data, err := json.Marshal(record)
@@ -563,5 +565,13 @@ func TestTurnRecordJSONKeysMatchPython(t *testing.T) {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing key %q in JSON: %s", key, data)
 		}
+	}
+
+	tokens, ok := m["tokens"].(map[string]any)
+	if !ok {
+		t.Fatal("tokens is not an object")
+	}
+	if _, ok := tokens["total"]; !ok {
+		t.Error("missing tokens.total")
 	}
 }

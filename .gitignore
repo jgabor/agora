@@ -2,5 +2,6 @@
 build/
 *.log
 *.jsonl
+!internal/transcript/testdata/*.jsonl
 transcripts/
 coverage.out

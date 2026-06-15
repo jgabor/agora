@@ -1,4 +1,4 @@
-last_audit: 2026-05-07 (plan-level freshness checkpoint)
+last_audit: 2026-06-15 (public-release documentation checkpoint)
 conventions:
   doc_root: .
   style: technical, concise, evidence-backed; README uses command examples and tables
@@ -41,15 +41,27 @@ mapping:
 index:
   - document: README
     path: README.md
-    last_updated: 2026-05-16
+    last_updated: 2026-06-15
     status: current
   - document: Changelog
     path: CHANGELOG.md
-    last_updated: 2026-05-16
+    last_updated: 2026-06-15
     status: current
   - document: TODO
     path: TODO.md
-    last_updated: 2026-05-16
+    last_updated: 2026-06-15
+    status: current
+  - document: Contributing
+    path: CONTRIBUTING.md
+    last_updated: 2026-06-15
+    status: current
+  - document: Security
+    path: SECURITY.md
+    last_updated: 2026-06-15
+    status: current
+  - document: License
+    path: LICENSE
+    last_updated: 2026-06-15
     status: current
   - document: Vision
     path: .agentera/vision.yaml
@@ -60,11 +72,18 @@ index:
     last_updated: 2026-05-06
     status: current
 coverage:
-  documented: 5/5 discovered documentation artifacts indexed
-  undocumented: docs/ is empty; AGENTS.md, CONTRIBUTING.md, and DESIGN.md are absent
-  stale: none found during 2026-05-07 audit
-  tests: 11 Go test files; CI runs go test ./... -race -coverprofile=coverage.out
+  documented: 8/8 discovered documentation artifacts indexed
+  undocumented: AGENTS.md and DESIGN.md are absent
+  stale: none found during 2026-06-15 audit
+  tests: CI runs go test ./... -race -coverprofile=coverage.out
 audit_log:
+  - date: 2026-06-15
+    label: public-release documentation checkpoint
+    findings:
+      - type: freshness
+        severity: info
+        description: Added LICENSE, CONTRIBUTING.md, and SECURITY.md; cut CHANGELOG 0.3.0; trimmed TODO.md to open items; removed completed deepen-cast plan doc and empty docs/plans/; updated README Go version and resume --file documentation; fixed mage build comment and added mage e2e target.
+        resolution: Human-facing release docs aligned with CLI version 0.3.0.
   - date: 2026-05-07
     label: plan-level freshness checkpoint
     findings:

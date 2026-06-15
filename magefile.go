@@ -42,7 +42,7 @@ func installDir() string {
 
 var Default = Build
 
-// Build compiles agora into ./bin with size-optimized flags.
+// Build compiles agora into build/agora with size-optimized flags.
 func Build() error {
 	if err := os.MkdirAll("build", 0o755); err != nil {
 		return err
@@ -92,6 +92,11 @@ type Check mg.Namespace
 func (Check) All() error {
 	mg.Deps(Lint, Vet, Test)
 	return nil
+}
+
+// E2E runs the optional rmux-based terminal smoke test in scripts/e2e-rmux.sh.
+func E2E() error {
+	return sh.RunV("./scripts/e2e-rmux.sh")
 }
 
 // Clean removes build artifacts.

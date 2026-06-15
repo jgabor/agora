@@ -11,7 +11,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// ExtractConsensus — positive cases (semantic parity with Python)
+// ExtractConsensus — positive cases
 // ---------------------------------------------------------------------------
 
 func TestExtractConsensusPresent(t *testing.T) {
@@ -42,7 +42,7 @@ func TestExtractConsensusMissing(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ExtractConsensus — semantic parity: case-insensitive
+// ExtractConsensus — case-insensitive matching
 // ---------------------------------------------------------------------------
 
 func TestExtractConsensusCaseInsensitive(t *testing.T) {
@@ -70,7 +70,7 @@ func TestExtractConsensusCaseInsensitive(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ExtractConsensus — semantic parity: multiline
+// ExtractConsensus — multiline markers
 // ---------------------------------------------------------------------------
 
 func TestExtractConsensusMultiline(t *testing.T) {
@@ -113,7 +113,7 @@ func TestExtractConsensusMultiline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ExtractConsensus — semantic parity: whitespace variants
+// ExtractConsensus — whitespace variants
 // ---------------------------------------------------------------------------
 
 func TestExtractConsensusWhitespaceVariants(t *testing.T) {
@@ -184,11 +184,11 @@ func TestExtractConsensusMultipleMarkers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ExtractConsensus — semantic parity: regex edge cases (Python re.DOTALL/I)
+// ExtractConsensus — DOTALL and case-insensitive regex edge cases
 // ---------------------------------------------------------------------------
 
 func TestExtractConsensusRegexEdgeCases(t *testing.T) {
-	// These cases must match Python's re.DOTALL (s flag) + re.IGNORECASE (i flag).
+	// DOTALL matching with trimmed capture groups.
 	tests := []struct {
 		label   string
 		content string
@@ -669,8 +669,7 @@ func TestParseOpenCodeOutputPartialJSON(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Semantic parity: multiline consensus with leading/trailing whitespace
-// (Python re.DOTALL + re.IGNORECASE behavior)
+// Multiline consensus with leading/trailing whitespace (DOTALL + case-insensitive)
 // ---------------------------------------------------------------------------
 
 func TestExtractConsensusMultilineWhitespace(t *testing.T) {
@@ -679,8 +678,7 @@ func TestExtractConsensusMultilineWhitespace(t *testing.T) {
 	if !hasConsensus {
 		t.Fatal("expected hasConsensus=true")
 	}
-	// Python's re.findall with trim: "multi  \n  line"
-	// Go's strings.TrimSpace trims leading/trailing whitespace from the capture.
+	// Trimmed capture preserves internal newlines and spacing.
 	want := "multi  \n  line"
 	if statement != want {
 		t.Errorf("statement: got %q, want %q", statement, want)
