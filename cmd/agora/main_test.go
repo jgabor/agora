@@ -1593,6 +1593,61 @@ func TestShowCommandReportsMalformedTranscriptRecord(t *testing.T) {
 	}
 }
 
+const malformedLedgerRecordLine = `{"turn": -3, "agent_id": "ledger", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0}`
+
+func TestShowCommandRejectsMalformedLedgerRecord(t *testing.T) {
+	dir := t.TempDir()
+	writeSettings(t, "")
+	path := filepath.Join(dir, "bad-ledger.jsonl")
+	content := transcriptLine("a", "ok", 1) + malformedLedgerRecordLine + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	_, err := executeShowCommand(t, path)
+	if err == nil || !strings.Contains(err.Error(), "malformed transcript record") || !strings.Contains(err.Error(), "ledger") {
+		t.Fatalf("error: got %v, want malformed transcript record mentioning ledger", err)
+	}
+
+	if _, err := executeStatsCommand(t, formatText, path); err == nil || !strings.Contains(err.Error(), "malformed transcript record") {
+		t.Fatalf("stats error: got %v, want malformed transcript record for malformed ledger", err)
+	}
+}
+
+func TestResumeCommandWarnsAndContinuesOnMalformedLedgerRecord(t *testing.T) {
+	dir := t.TempDir()
+	writeSettings(t, "")
+	writeValidConfig(t, filepath.Join(dir, "config.yaml"))
+	source := filepath.Join(dir, "source.jsonl")
+	content := transcriptLine("a", "ok", 1) + malformedLedgerRecordLine + "\n"
+	if err := os.WriteFile(source, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+	t.Chdir(dir)
+
+	outputPath := filepath.Join(dir, "resume.jsonl")
+	restore := configureResumeGlobals(filepath.Join(dir, "config.yaml"), source, outputPath)
+	defer restore()
+
+	cmd := artifactCommand(t, outputPath)
+	if err := resumeCmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("resume should warn-and-continue on a malformed ledger record, got: %v", err)
+	}
+
+	records, err := loadTranscriptFile(outputPath)
+	if err != nil {
+		t.Fatalf("load resumed transcript: %v", err)
+	}
+	for i, r := range records {
+		if r.AgentID == types.LedgerAgentID || r.Turn == types.LedgerSentinelTurn {
+			t.Fatalf("malformed ledger record should have been dropped on resume; found at index %d: %#v", i, r)
+		}
+	}
+	if len(records) == 0 {
+		t.Fatal("resumed transcript should retain the well-formed source records")
+	}
+}
+
 func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 	dir := t.TempDir()
 	writeSettings(t, "")

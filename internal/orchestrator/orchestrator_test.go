@@ -1272,3 +1272,93 @@ func TestLedgerDisableFlagSkipsUpdate(t *testing.T) {
 		}
 	})
 }
+
+func TestLedgerPersistedToTranscript(t *testing.T) {
+	t.Run("pass_round_complete_appends_typed_ledger_record", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 2, nil)
+		path := t.TempDir() + "/transcript.jsonl"
+		tm := transcript.NewTranscriptManager(path)
+		ledgerJSON := twoAgentLedgerJSON(t, 1)
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+			{content: ledgerJSON},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		records := tm.Records()
+		var ledgerRec *types.TurnRecord
+		var ledgerIdx int
+		for i := range records {
+			if records[i].AgentID == types.LedgerAgentID {
+				ledgerRec = &records[i]
+				ledgerIdx = i
+				break
+			}
+		}
+		if ledgerRec == nil {
+			t.Fatalf("no ledger record appended; records: %#v", records)
+		}
+		if ledgerRec.Turn != types.LedgerSentinelTurn {
+			t.Errorf("ledger record turn: got %d, want %d", ledgerRec.Turn, types.LedgerSentinelTurn)
+		}
+		if ledgerRec.Ledger == nil {
+			t.Fatalf("ledger record missing Ledger payload: %#v", ledgerRec)
+		}
+		if ledgerRec.Ledger.Round != 1 || len(ledgerRec.Ledger.Positions) != 2 {
+			t.Errorf("persisted ledger content: round=%d positions=%d, want round=1 positions=2", ledgerRec.Ledger.Round, len(ledgerRec.Ledger.Positions))
+		}
+		if err := ledgerRec.Ledger.Validate(); err != nil {
+			t.Errorf("persisted ledger invalid: %v", err)
+		}
+		if ledgerRec.Content != "" {
+			t.Errorf("ledger record content not empty: %q (persisted shape must be typed, not essay)", ledgerRec.Content)
+		}
+		var lastAgentTurnIdx int
+		for i := len(records) - 1; i >= 0; i-- {
+			if !types.IsInternalAgent(records[i].AgentID) {
+				lastAgentTurnIdx = i
+				break
+			}
+		}
+		if ledgerIdx <= lastAgentTurnIdx {
+			t.Fatalf("ledger record at index %d should follow last agent turn at index %d", ledgerIdx, lastAgentTurnIdx)
+		}
+		loaded, err := transcript.LoadFileStrict(path)
+		if err != nil {
+			t.Fatalf("strict reload of persisted ledger record: %v", err)
+		}
+		if len(loaded) != len(records) {
+			t.Fatalf("strict reload: got %d records, want %d", len(loaded), len(records))
+		}
+	})
+
+	t.Run("fail_disabled_appends_no_ledger_record", func(t *testing.T) {
+		disabled := false
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 2, &disabled)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		for i, r := range tm.Records() {
+			if r.AgentID == types.LedgerAgentID || r.Turn == types.LedgerSentinelTurn {
+				t.Fatalf("disabled ledger must not persist a record; found at index %d: %#v", i, r)
+			}
+			if r.Ledger != nil {
+				t.Fatalf("disabled ledger must not attach a Ledger payload; found at index %d: %#v", i, r)
+			}
+		}
+		if o.currentLedger != nil {
+			t.Fatalf("currentLedger: got %+v, want nil when ledger disabled", o.currentLedger)
+		}
+	})
+}

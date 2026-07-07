@@ -527,6 +527,67 @@ func TestRenderTranscriptUsesRunStyleRichOutput(t *testing.T) {
 	}
 }
 
+func TestRenderTranscriptRendersLedgerSnapshotDistinctly(t *testing.T) {
+	t.Run("pass_ledger_record_renders_summary", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("TERM", "dumb")
+		cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "skeptic", Model: "test/model"}}}
+		metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
+		ledger := types.NewDebateLedger(1, 1715000005.0)
+		ledger.Positions = []types.AgentPosition{
+			{AgentID: "skeptic", Text: "position", Turn: 0},
+			{AgentID: "optimist", Text: "position", Turn: 1},
+		}
+		ledger.Agreements = []types.AgreementPoint{{Text: "we agree", Endorsers: []string{"skeptic", "optimist"}}}
+		ledger.Cruxes = []types.OpenCrux{{Topic: "open question", RaisedAt: 1}}
+		ledger.Draft = types.DraftProposal{Status: types.DraftStatusDraft, Text: "draft proposal"}
+		records := []types.TurnRecord{
+			{Turn: -1, AgentID: "moderator", Content: "seed", Transcript: metadata},
+			{Turn: 0, AgentID: "skeptic", Model: ptrString("test/model"), Content: "position 0"},
+			{
+				Turn:      types.LedgerSentinelTurn,
+				AgentID:   types.LedgerAgentID,
+				Timestamp: 1715000005.0,
+				Ledger:    ledger,
+			},
+		}
+
+		var out bytes.Buffer
+		RenderTranscript(&out, records)
+		got := out.String()
+
+		assertContains(t, got, "Ledger Snapshot")
+		assertContains(t, got, "Round 1")
+		assertContains(t, got, "positions 2")
+		assertContains(t, got, "agreements 1")
+		assertContains(t, got, "cruxes 1")
+		assertContains(t, got, "draft "+string(types.DraftStatusDraft))
+		assertContains(t, got, "AGENT ledger")
+		assertNoANSI(t, got)
+	})
+
+	t.Run("fail_non_ledger_records_do_not_render_ledger_snapshot", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("TERM", "dumb")
+		cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "skeptic", Model: "test/model"}}}
+		metadata := types.NewTranscriptMetadata(cfg, cast.New(cfg.Agents).Members())
+		records := []types.TurnRecord{
+			{Turn: -1, AgentID: "moderator", Content: "seed", Transcript: metadata},
+			{Turn: 0, AgentID: "skeptic", Model: ptrString("test/model"), Content: "position 0"},
+		}
+
+		var out bytes.Buffer
+		RenderTranscript(&out, records)
+		got := out.String()
+
+		if strings.Contains(got, "Ledger Snapshot") {
+			t.Fatalf("non-ledger transcript should not render a ledger snapshot:\n%s", got)
+		}
+	})
+}
+
+func ptrString(s string) *string { return &s }
+
 func TestPrintStatsPrintsSummaryAndAgentTables(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	stats := StatsDict{

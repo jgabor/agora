@@ -277,6 +277,7 @@ type TurnRecord struct {
 	Timestamp          float64             `yaml:"timestamp" json:"timestamp"`
 	Content            string              `yaml:"content" json:"content"`
 	Evidence           *EvidenceBundle     `yaml:"evidence,omitempty" json:"evidence,omitempty"`
+	Ledger             *DebateLedger       `yaml:"ledger,omitempty" json:"ledger,omitempty"`
 	Tokens             TokenUsage          `yaml:"tokens" json:"tokens"`
 	Cost               *float64            `yaml:"cost,omitempty" json:"cost,omitempty"`
 	Consensus          bool                `yaml:"consensus" json:"consensus"`
@@ -292,7 +293,7 @@ type DeliverableGate struct {
 
 // IsInternalAgent reports whether agentID is orchestrator/system, not deliberation cast.
 func IsInternalAgent(agentID string) bool {
-	return agentID == "moderator" || agentID == "synthesizer"
+	return agentID == "moderator" || agentID == "synthesizer" || agentID == LedgerAgentID
 }
 
 // AgentTurnCount returns deliberation agent turns, excluding internal system agents.

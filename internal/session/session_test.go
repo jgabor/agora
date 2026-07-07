@@ -169,3 +169,107 @@ func readTranscript(t *testing.T, path string) []types.TurnRecord {
 	}
 	return records
 }
+
+func TestResumeSeedsLedgerFromSourceAndContinues(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/resume.jsonl"
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "a", Model: model}, {ID: "b", Model: model}},
+	}
+	sourceLedger := types.NewDebateLedger(1, 1715000000.0)
+	sourceLedger.Positions = []types.AgentPosition{
+		{AgentID: "a", Text: "prior position a", Turn: 0},
+		{AgentID: "b", Text: "prior position b", Turn: 1},
+	}
+	sourceRecords := []types.TurnRecord{
+		{Turn: -1, AgentID: "moderator", Content: "seed"},
+		{Turn: 0, AgentID: "a", Model: &model, Content: "prior turn a"},
+		{Turn: 1, AgentID: "b", Model: &model, Content: "prior turn b"},
+		{Turn: types.LedgerSentinelTurn, AgentID: types.LedgerAgentID, Timestamp: 1715000005.0, Ledger: sourceLedger},
+	}
+
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic:      "resume topic",
+			Config:     cfg,
+			OutputPath: outputPath,
+			Window:     2,
+			MaxTurns:   2,
+			TimeLimit:  60,
+			DryRun:     true,
+		},
+		SourceRecords: sourceRecords,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if result.Stats.TotalTurns < 4 {
+		t.Fatalf("total turns: got %d, want at least 4 (2 prior + 2 resumed)", result.Stats.TotalTurns)
+	}
+
+	loaded := readTranscript(t, outputPath)
+	var sourceLedgerCopied, resumedLedger *types.TurnRecord
+	for i := range loaded {
+		if loaded[i].AgentID == types.LedgerAgentID {
+			if sourceLedgerCopied == nil {
+				sourceLedgerCopied = &loaded[i]
+			} else {
+				resumedLedger = &loaded[i]
+			}
+		}
+	}
+	if sourceLedgerCopied == nil {
+		t.Fatal("source ledger record should be copied into the resumed transcript")
+	}
+	if sourceLedgerCopied.Ledger == nil || sourceLedgerCopied.Ledger.Round != 1 {
+		t.Fatalf("copied source ledger: %#v, want round=1", sourceLedgerCopied.Ledger)
+	}
+	if resumedLedger == nil {
+		t.Fatal("resumed run should persist a fresh ledger after its first completed round, proving the seed fed continuity")
+	}
+	if resumedLedger.Ledger == nil {
+		t.Fatalf("resumed ledger record missing payload: %#v", resumedLedger)
+	}
+}
+
+func TestResumeLegacySourceNoLedgerInjection(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/resume.jsonl"
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "a", Model: model}, {ID: "b", Model: model}},
+	}
+	disabled := false
+	sourceRecords := []types.TurnRecord{
+		{Turn: -1, AgentID: "moderator", Content: "legacy seed"},
+		{Turn: 0, AgentID: "a", Model: &model, Content: "legacy turn a"},
+		{Turn: 1, AgentID: "b", Model: &model, Content: "legacy turn b"},
+	}
+
+	_, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic:      "legacy resume topic",
+			Config:     cfg,
+			OutputPath: outputPath,
+			Window:     2,
+			MaxTurns:   2,
+			TimeLimit:  60,
+			DryRun:     true,
+			Ledger:     &disabled,
+		},
+		SourceRecords: sourceRecords,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("legacy resume should not fail: %v", err)
+	}
+
+	loaded := readTranscript(t, outputPath)
+	for i, r := range loaded {
+		if r.AgentID == types.LedgerAgentID || r.Turn == types.LedgerSentinelTurn || r.Ledger != nil {
+			t.Fatalf("legacy resume must not inject ledger records; found at index %d: %#v", i, r)
+		}
+	}
+}

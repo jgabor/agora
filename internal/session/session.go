@@ -189,6 +189,9 @@ func execute(
 	runner := agent.NewAgentRunner(dryRun)
 	orch := orchestrator.NewOrchestrator(state, tm, runner)
 	orch.SetLedgerUpdater(ledger.NewUpdater(runner))
+	if seed := lastLedgerFromRecords(tm.Records()); seed != nil {
+		orch.SetCurrentLedger(seed)
+	}
 	if evidenceEnabled(evidenceReq) {
 		orch.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 	}
@@ -219,6 +222,20 @@ func execute(
 
 func evidenceEnabled(req types.EvidenceRequest) bool {
 	return req.ResearchEnabled || len(req.ContextPaths) > 0
+}
+
+// lastLedgerFromRecords returns a deep-cloned copy of the most recent ledger
+// snapshot carried by a transcript record, or nil when no record carries one.
+// Resume uses it to seed the orchestrator's currentLedger so a resumed
+// deliberation starts with continuity from the prior ledger without making an
+// extra model call.
+func lastLedgerFromRecords(records []types.TurnRecord) *types.DebateLedger {
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Ledger != nil {
+			return types.CloneDebateLedger(records[i].Ledger)
+		}
+	}
+	return nil
 }
 
 func countAgentTurns(records []types.TurnRecord) int {

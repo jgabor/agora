@@ -734,7 +734,7 @@ var resumeCmd = &cobra.Command{
 		readOnlyCleanup, _ := agent.WriteReadOnlyConfig(".")
 		defer readOnlyCleanup()
 
-		sourceRecords, err := loadTranscriptFile(sourcePath)
+		sourceRecords, err := loadTranscriptFileLenient(sourcePath)
 		if err != nil {
 			return fmt.Errorf("loading source transcript: %w", err)
 		}
@@ -1012,6 +1012,13 @@ func confirmProceed() bool {
 
 func loadTranscriptFile(path string) ([]types.TurnRecord, error) {
 	return transcript.LoadFileStrict(path)
+}
+
+// loadTranscriptFileLenient loads a transcript for resume: malformed ledger
+// records emit a warning to stderr and are skipped so resume continues with
+// best-effort state, while records that fail JSON parsing still fail loading.
+func loadTranscriptFileLenient(path string) ([]types.TurnRecord, error) {
+	return transcript.LoadFileLenient(path, os.Stderr)
 }
 
 func statsToDict(s types.DeliberationStats) map[string]any {

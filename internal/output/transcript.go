@@ -28,6 +28,10 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 		}
 
 		record.AgentID = transcriptAgentID(record.AgentID)
+		if transcriptLedgerRecord(record) {
+			writeLine(w, o.renderTranscriptLedger(record, i+1))
+			continue
+		}
 		if transcriptEventRecord(record) {
 			writeLine(w, o.renderTranscriptEvent(record, i+1))
 			continue
@@ -63,7 +67,7 @@ func transcriptMaxTurn(records []types.TurnRecord) int {
 	maxTurn := -1
 	count := 0
 	for _, record := range records {
-		if transcriptEventRecord(record) {
+		if transcriptEventRecord(record) || transcriptLedgerRecord(record) {
 			continue
 		}
 		count++
@@ -87,6 +91,39 @@ func transcriptAgentID(agentID string) string {
 
 func transcriptEventRecord(record types.TurnRecord) bool {
 	return strings.TrimSpace(record.AgentID) == "moderator" && record.Turn < 0
+}
+
+func transcriptLedgerRecord(record types.TurnRecord) bool {
+	return record.Ledger != nil || strings.TrimSpace(record.AgentID) == types.LedgerAgentID
+}
+
+func (o *OutputManager) renderTranscriptLedger(record types.TurnRecord, index int) string {
+	r := o.renderer
+	width := outputWidth()
+	round := 0
+	positions := 0
+	agreements := 0
+	cruxes := 0
+	draftStatus := string(types.DraftStatusNone)
+	if record.Ledger != nil {
+		round = record.Ledger.Round
+		positions = len(record.Ledger.Positions)
+		agreements = len(record.Ledger.Agreements)
+		cruxes = len(record.Ledger.Cruxes)
+		draftStatus = string(record.Ledger.Draft.Status)
+		if draftStatus == "" {
+			draftStatus = string(types.DraftStatusNone)
+		}
+	}
+	metadata := []string{
+		fmt.Sprintf("RECORD %d", index),
+		fmt.Sprintf("TURN %d", record.Turn),
+		fmt.Sprintf("AGENT %s", transcriptAgentID(record.AgentID)),
+	}
+	summary := fmt.Sprintf("Ledger · Round %d: positions %d, agreements %d, cruxes %d, draft %s",
+		round, positions, agreements, cruxes, draftStatus)
+	body := strings.Join([]string{strings.Join(metadata, " · "), summary}, "\n")
+	return r.Panel("Ledger Snapshot", body, width, o.agentColorFor(record.AgentID))
 }
 
 func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index int) string {

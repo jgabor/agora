@@ -1,6 +1,8 @@
 package transcript
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -525,5 +527,149 @@ func TestTranscriptWriteAll(t *testing.T) {
 	}
 	if len(loaded) != 2 {
 		t.Errorf("reload: got %d, want 2", len(loaded))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ledger record loading (strict + lenient)
+// ---------------------------------------------------------------------------
+
+func validLedgerRecordLine(t *testing.T, round int) string {
+	t.Helper()
+	l := types.NewDebateLedger(round, 1715000005.0)
+	l.Positions = []types.AgentPosition{
+		{AgentID: "skeptic", Text: "position", Turn: 0},
+		{AgentID: "optimist", Text: "position", Turn: 1},
+	}
+	return marshalLine(t, types.TurnRecord{
+		Turn:      types.LedgerSentinelTurn,
+		AgentID:   types.LedgerAgentID,
+		Timestamp: 1715000005.0,
+		Ledger:    l,
+	})
+}
+
+func marshalLine(t *testing.T, rec types.TurnRecord) string {
+	t.Helper()
+	data, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+	return string(data)
+}
+
+func TestLoadFileStrictRejectsMalformedLedgerRecord(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+	}{
+		{
+			name: "ledger_sentinel_missing_ledger_field",
+			line: `{"turn": -3, "agent_id": "ledger", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0}`,
+		},
+		{
+			name: "ledger_sentinel_wrong_agent_id",
+			line: `{"turn": -3, "agent_id": "moderator", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0}`,
+		},
+		{
+			name: "ledger_sentinel_invalid_ledger_round",
+			line: `{"turn": -3, "agent_id": "ledger", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0, "ledger": {"round": -1, "positions": [], "agreements": [], "cruxes": [], "draft": {"status": "none"}, "updated_at": 0}}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/strict_fail", func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "transcript.jsonl")
+			content := validLedgerRecordLine(t, 0) + "\n" + tc.line + "\n"
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("write transcript: %v", err)
+			}
+			_, err := LoadFileStrict(path)
+			if err == nil || !strings.Contains(err.Error(), "malformed transcript record") || !strings.Contains(err.Error(), "ledger") {
+				t.Fatalf("error: got %v, want malformed transcript record mentioning ledger", err)
+			}
+		})
+	}
+}
+
+func TestLoadFileStrictLoadsValidLedgerRecordInOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	content := marshalLine(t, mkRecord(-1, "moderator", "seed", false, "")) + "\n" +
+		marshalLine(t, mkRecord(0, "skeptic", "turn 0", false, "")) + "\n" +
+		validLedgerRecordLine(t, 1) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+	loaded, err := LoadFileStrict(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(loaded) != 3 {
+		t.Fatalf("record count: got %d, want 3", len(loaded))
+	}
+	if loaded[2].Turn != types.LedgerSentinelTurn || loaded[2].AgentID != types.LedgerAgentID {
+		t.Fatalf("ledger record not at expected index 2: %#v", loaded[2])
+	}
+	if loaded[2].Ledger == nil || loaded[2].Ledger.Round != 1 {
+		t.Fatalf("ledger payload: got %#v, want round=1", loaded[2].Ledger)
+	}
+	if loaded[1].AgentID == types.LedgerAgentID {
+		t.Fatalf("agent turn should not be misclassified as ledger: %#v", loaded[1])
+	}
+}
+
+func TestLoadFileLenientWarnsOnMalformedLedgerRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	malformedLedger := `{"turn": -3, "agent_id": "ledger", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0}`
+	content := validLedgerRecordLine(t, 0) + "\n" + malformedLedger + "\n" + marshalLine(t, mkRecord(0, "skeptic", "after", false, "")) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+	var warn bytes.Buffer
+	loaded, err := LoadFileLenient(path, &warn)
+	if err != nil {
+		t.Fatalf("lenient load: got error %v, want warn-and-continue", err)
+	}
+	if len(loaded) != 2 {
+		t.Fatalf("loaded records: got %d, want 2 (valid ledger + agent turn, malformed skipped)", len(loaded))
+	}
+	if loaded[0].AgentID != types.LedgerAgentID || loaded[1].AgentID != "skeptic" {
+		t.Fatalf("loaded order: got %#v, want ledger then agent", loaded)
+	}
+	warning := warn.String()
+	if !strings.Contains(warning, "warning") || !strings.Contains(warning, "ledger") {
+		t.Fatalf("warning: got %q, want a ledger-record warning", warning)
+	}
+}
+
+func TestLoadFileLenientFailsOnNonLedgerMalformed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	content := marshalLine(t, mkRecord(0, "skeptic", "ok", false, "")) + "\nnot-json\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+	var warn bytes.Buffer
+	_, err := LoadFileLenient(path, &warn)
+	if err == nil || !strings.Contains(err.Error(), "malformed transcript record") {
+		t.Fatalf("error: got %v, want malformed transcript record (resume must still fail non-ledger JSON errors)", err)
+	}
+}
+
+func TestLoadFileLenientLegacyTranscriptNoWarnings(t *testing.T) {
+	path := filepath.Join("testdata", "legacy-deliberation.jsonl")
+	var warn bytes.Buffer
+	loaded, err := LoadFileLenient(path, &warn)
+	if err != nil {
+		t.Fatalf("lenient load legacy JSONL %q: %v", path, err)
+	}
+	if len(loaded) != 3 {
+		t.Fatalf("record count: got %d, want 3", len(loaded))
+	}
+	for _, r := range loaded {
+		if r.Ledger != nil || r.AgentID == types.LedgerAgentID {
+			t.Fatalf("legacy transcript should contain no ledger records: %#v", r)
+		}
+	}
+	if warn.Len() > 0 {
+		t.Fatalf("legacy transcript should load without warnings: %q", warn.String())
 	}
 }

@@ -257,7 +257,9 @@ func (o *Orchestrator) updateLedgerIfRoundComplete() {
 	defer stop()
 
 	if o.isDryRun() {
-		o.SetCurrentLedger(o.ledgerUpdater.UpdateDryRun(o.transcript.Records(), o.state.Topic))
+		ledger := o.ledgerUpdater.UpdateDryRun(o.transcript.Records(), o.state.Topic)
+		o.SetCurrentLedger(ledger)
+		persistLedgerRecord(o.transcript, ledger)
 		return
 	}
 
@@ -267,6 +269,29 @@ func (o *Orchestrator) updateLedgerIfRoundComplete() {
 		return
 	}
 	o.SetCurrentLedger(ledger)
+	persistLedgerRecord(o.transcript, ledger)
+}
+
+// persistLedgerRecord appends a typed ledger snapshot as a TurnRecord using the
+// LedgerSentinelTurn (-3) / LedgerAgentID ("ledger") sentinel convention, the
+// next sentinel beyond -2 (evidence). A nil ledger is a no-op so a failed or
+// empty update never writes a malformed record. The persisted Ledger is a deep
+// clone so later mutations of o.currentLedger cannot retroactively alter the
+// transcript snapshot.
+func persistLedgerRecord(tm *transcript.TranscriptManager, ledger *types.DebateLedger) {
+	if ledger == nil {
+		return
+	}
+	clone := types.CloneDebateLedger(ledger)
+	if clone == nil {
+		return
+	}
+	_ = tm.Append(types.TurnRecord{
+		Turn:      types.LedgerSentinelTurn,
+		AgentID:   types.LedgerAgentID,
+		Timestamp: float64(time.Now().UnixNano()) / 1e9,
+		Ledger:    clone,
+	})
 }
 
 func (o *Orchestrator) activity(phase string) func() {
