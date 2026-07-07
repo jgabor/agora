@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -573,5 +574,557 @@ func TestTurnRecordJSONMarshalUsesCanonicalKeys(t *testing.T) {
 	}
 	if _, ok := tokens["total"]; !ok {
 		t.Error("missing tokens.total")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DebateLedger JSON round-trip
+// ---------------------------------------------------------------------------
+
+func TestDebateLedgerJSONRoundTrip(t *testing.T) {
+	t.Run("populated ledger round-trips exactly", func(t *testing.T) {
+		original := &DebateLedger{
+			Round:     2,
+			UpdatedAt: 1715000000.0,
+			Positions: []AgentPosition{
+				{AgentID: "skeptic", Text: "The cost model is unbounded", Turn: 3},
+				{AgentID: "optimist", Text: "Caps already bound it", Turn: 4},
+			},
+			Agreements: []AgreementPoint{
+				{Text: "Caps exist", Endorsers: []string{"skeptic", "optimist"}},
+			},
+			Cruxes: []OpenCrux{
+				{
+					Topic:    "Cap enforcement",
+					RaisedAt: 3,
+					Views: []PositionalView{
+						{AgentID: "skeptic", Stance: "soft caps let runs abort early"},
+						{AgentID: "optimist", Stance: "soft caps are the right default"},
+					},
+				},
+			},
+			Draft: DraftProposal{
+				Status:    DraftStatusDraft,
+				Text:      "Adopt auto-level fallback caps with soft overflow.",
+				Proposer:  "optimist",
+				Endorsers: []string{"optimist", "skeptic"},
+			},
+		}
+
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+
+		if !strings.Contains(string(data), `"draft":{"status":"draft"`) {
+			t.Errorf("draft status should always serialize, got %s", data)
+		}
+
+		var decoded DebateLedger
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		if !reflect.DeepEqual(*original, decoded) {
+			t.Errorf("round-trip mismatch\noriginal: %+v\ndecoded:  %+v", *original, decoded)
+		}
+	})
+
+	t.Run("malformed draft status fails validation after unmarshal", func(t *testing.T) {
+		raw := `{"round":1,"positions":[],"agreements":[],"cruxes":[],"draft":{"status":"bogus"},"updated_at":1.0}`
+		var decoded DebateLedger
+		if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+			t.Fatalf("unmarshal should succeed (status is a free string): %v", err)
+		}
+		err := decoded.Validate()
+		if err == nil {
+			t.Fatal("expected validation error for bogus draft status, got nil")
+		}
+		if !strings.Contains(err.Error(), "draft status") {
+			t.Errorf("error should mention 'draft status', got %q", err.Error())
+		}
+	})
+
+	t.Run("no-draft ledger round-trips with explicit status", func(t *testing.T) {
+		original := NewDebateLedger(0, 1.0)
+		data, err := json.Marshal(original)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if !strings.Contains(string(data), `"draft":{"status":"none"}`) {
+			t.Errorf("no-draft should serialize as status:none, got %s", data)
+		}
+		var decoded DebateLedger
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if decoded.Draft.Status != DraftStatusNone {
+			t.Errorf("round-trip no-draft status: got %q, want %q", decoded.Draft.Status, DraftStatusNone)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// DebateLedger no-draft report
+// ---------------------------------------------------------------------------
+
+func TestDebateLedgerNoDraftReport(t *testing.T) {
+	t.Run("no-draft ledger reports no endorsable proposal", func(t *testing.T) {
+		l := NewDebateLedger(1, 1715000000.0)
+		if l.HasEndorsableProposal() {
+			t.Errorf("no-draft ledger should not report an endorsable proposal")
+		}
+		if l.Draft.Status != DraftStatusNone {
+			t.Errorf("draft status: got %q, want %q", l.Draft.Status, DraftStatusNone)
+		}
+	})
+
+	t.Run("incomplete draft does not report endorsable", func(t *testing.T) {
+		l := &DebateLedger{
+			Round: 1,
+			Draft: DraftProposal{Status: DraftStatusDraft, Text: ""},
+		}
+		if l.HasEndorsableProposal() {
+			t.Errorf("draft with status but no text should not be endorsable")
+		}
+	})
+
+	t.Run("nil ledger receiver reports no endorsable proposal", func(t *testing.T) {
+		var l *DebateLedger
+		if l.HasEndorsableProposal() {
+			t.Errorf("nil ledger should not report an endorsable proposal")
+		}
+	})
+}
+
+func TestDraftProposalHasEndorsableProposal(t *testing.T) {
+	tests := []struct {
+		name string
+		d    *DraftProposal
+		want bool
+	}{
+		{"none status", &DraftProposal{Status: DraftStatusNone}, false},
+		{"empty status lenient as none", &DraftProposal{Status: ""}, false},
+		{"draft with text", &DraftProposal{Status: DraftStatusDraft, Text: "t"}, true},
+		{"final with text", &DraftProposal{Status: DraftStatusFinal, Text: "t"}, true},
+		{"draft without text", &DraftProposal{Status: DraftStatusDraft, Text: ""}, false},
+		{"final without text", &DraftProposal{Status: DraftStatusFinal, Text: ""}, false},
+		{"nil receiver", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.d.HasEndorsableProposal(); got != tt.want {
+				t.Errorf("HasEndorsableProposal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DebateLedger empty state
+// ---------------------------------------------------------------------------
+
+func TestDebateLedgerEmptyState(t *testing.T) {
+	t.Run("empty ledger from constructor is valid", func(t *testing.T) {
+		l := NewDebateLedger(0, 0.0)
+		if err := l.Validate(); err != nil {
+			t.Errorf("empty ledger should validate, got %v", err)
+		}
+		if l.HasEndorsableProposal() {
+			t.Errorf("empty ledger should not report endorsable proposal")
+		}
+		if len(l.Positions) != 0 || len(l.Agreements) != 0 || len(l.Cruxes) != 0 {
+			t.Errorf("empty ledger should have empty slices")
+		}
+	})
+
+	t.Run("empty ledger with negative round fails validation", func(t *testing.T) {
+		l := &DebateLedger{
+			Round: -5,
+			Draft: DraftProposal{Status: DraftStatusNone},
+		}
+		err := l.Validate()
+		if err == nil {
+			t.Fatal("expected error for negative round")
+		}
+		if !strings.Contains(err.Error(), "round") {
+			t.Errorf("error should mention 'round', got %q", err.Error())
+		}
+	})
+
+	t.Run("nil ledger fails validation", func(t *testing.T) {
+		var l *DebateLedger
+		err := l.Validate()
+		if err == nil {
+			t.Fatal("expected error for nil ledger")
+		}
+		if !strings.Contains(err.Error(), "nil") {
+			t.Errorf("error should mention 'nil', got %q", err.Error())
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// DebateLedger Validate (table-driven)
+// ---------------------------------------------------------------------------
+
+func TestDebateLedgerValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		ledger  *DebateLedger
+		wantErr string
+	}{
+		{
+			name:    "valid populated ledger",
+			ledger:  &DebateLedger{Round: 1, Draft: DraftProposal{Status: DraftStatusNone}},
+			wantErr: "",
+		},
+		{
+			name: "valid with positions and agreements",
+			ledger: &DebateLedger{
+				Round: 1,
+				Positions: []AgentPosition{
+					{AgentID: "a", Text: "pa", Turn: 1},
+					{AgentID: "b", Text: "pb", Turn: 2},
+				},
+				Agreements: []AgreementPoint{{Text: "agree", Endorsers: []string{"a", "b"}}},
+				Draft:      DraftProposal{Status: DraftStatusNone},
+			},
+			wantErr: "",
+		},
+		{
+			name: "duplicate position agent_id",
+			ledger: &DebateLedger{
+				Round: 1,
+				Positions: []AgentPosition{
+					{AgentID: "a", Text: "pa", Turn: 1},
+					{AgentID: "a", Text: "pa2", Turn: 2},
+				},
+				Draft: DraftProposal{Status: DraftStatusNone},
+			},
+			wantErr: "duplicate agent_id",
+		},
+		{
+			name: "empty position agent_id",
+			ledger: &DebateLedger{
+				Round:     1,
+				Positions: []AgentPosition{{AgentID: "", Text: "x", Turn: 1}},
+				Draft:     DraftProposal{Status: DraftStatusNone},
+			},
+			wantErr: "agent_id must be non-empty",
+		},
+		{
+			name: "empty agreement text",
+			ledger: &DebateLedger{
+				Round:      1,
+				Agreements: []AgreementPoint{{Text: "", Endorsers: []string{"a"}}},
+				Draft:      DraftProposal{Status: DraftStatusNone},
+			},
+			wantErr: "text must be non-empty",
+		},
+		{
+			name: "empty crux topic",
+			ledger: &DebateLedger{
+				Round:  1,
+				Cruxes: []OpenCrux{{Topic: "", RaisedAt: 1}},
+				Draft:  DraftProposal{Status: DraftStatusNone},
+			},
+			wantErr: "topic must be non-empty",
+		},
+		{
+			name: "bogus draft status",
+			ledger: &DebateLedger{
+				Round: 1,
+				Draft: DraftProposal{Status: DraftStatus("bogus"), Text: "x"},
+			},
+			wantErr: "draft status",
+		},
+		{
+			name: "draft status without text",
+			ledger: &DebateLedger{
+				Round: 1,
+				Draft: DraftProposal{Status: DraftStatusDraft, Text: ""},
+			},
+			wantErr: "must have non-empty text",
+		},
+		{
+			name: "none draft with no text is valid",
+			ledger: &DebateLedger{
+				Round: 1,
+				Draft: DraftProposal{Status: DraftStatusNone, Text: ""},
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.ledger.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q should contain %q", err.Error(), tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CloneDebateLedger deep-copy semantics
+// ---------------------------------------------------------------------------
+
+func TestCloneDebateLedger(t *testing.T) {
+	t.Run("deep copy does not alias slices", func(t *testing.T) {
+		original := &DebateLedger{
+			Round: 1,
+			Positions: []AgentPosition{
+				{AgentID: "a", Text: "t1", Turn: 1},
+			},
+			Agreements: []AgreementPoint{
+				{Text: "x", Endorsers: []string{"a", "b"}},
+			},
+			Cruxes: []OpenCrux{
+				{Topic: "c", Views: []PositionalView{{AgentID: "a", Stance: "s"}}, RaisedAt: 1},
+			},
+			Draft: DraftProposal{Status: DraftStatusDraft, Text: "d", Endorsers: []string{"a"}},
+		}
+		clone := CloneDebateLedger(original)
+		if clone == original {
+			t.Fatal("clone should not equal original pointer")
+		}
+
+		clone.Positions[0].Text = "mutated"
+		clone.Agreements[0].Endorsers[0] = "z"
+		clone.Cruxes[0].Views[0].Stance = "mutated"
+		clone.Draft.Endorsers[0] = "z"
+
+		if original.Positions[0].Text != "t1" {
+			t.Errorf("original aliasing detected in Positions")
+		}
+		if original.Agreements[0].Endorsers[0] != "a" {
+			t.Errorf("original aliasing detected in Agreements Endorsers")
+		}
+		if original.Cruxes[0].Views[0].Stance != "s" {
+			t.Errorf("original aliasing detected in Cruxes Views")
+		}
+		if original.Draft.Endorsers[0] != "a" {
+			t.Errorf("original aliasing detected in Draft Endorsers")
+		}
+	})
+
+	t.Run("nil returns nil", func(t *testing.T) {
+		if got := CloneDebateLedger(nil); got != nil {
+			t.Errorf("CloneDebateLedger(nil) should return nil, got %+v", got)
+		}
+	})
+
+	t.Run("clone of empty ledger is valid and equal", func(t *testing.T) {
+		original := NewDebateLedger(0, 1.0)
+		clone := CloneDebateLedger(original)
+		if !reflect.DeepEqual(original, clone) {
+			t.Errorf("empty clone should equal original\norig: %+v\nclone: %+v", original, clone)
+		}
+		if err := clone.Validate(); err != nil {
+			t.Errorf("cloned empty ledger should validate: %v", err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// LedgerRecord persistence (malformed-persistence unit)
+// ---------------------------------------------------------------------------
+
+func TestLedgerRecordPersistence(t *testing.T) {
+	t.Run("well-formed ledger record round-trips and validates", func(t *testing.T) {
+		ledger := &DebateLedger{
+			Round:     1,
+			UpdatedAt: 1715000010.0,
+			Positions: []AgentPosition{
+				{AgentID: "a", Text: "pos-a", Turn: 1},
+			},
+			Agreements: []AgreementPoint{
+				{Text: "agree-1", Endorsers: []string{"a", "b"}},
+			},
+			Cruxes: []OpenCrux{
+				{Topic: "crux-1", RaisedAt: 1, Views: []PositionalView{{AgentID: "a", Stance: "s1"}}},
+			},
+			Draft: DraftProposal{Status: DraftStatusNone},
+		}
+		rec := NewLedgerRecord(ledger, 1715000010.0)
+
+		if err := rec.Validate(); err != nil {
+			t.Fatalf("record should validate: %v", err)
+		}
+
+		data, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var decoded LedgerRecord
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if !reflect.DeepEqual(*rec, decoded) {
+			t.Errorf("round-trip mismatch\noriginal: %+v\ndecoded:  %+v", *rec, decoded)
+		}
+		if decoded.Turn != LedgerSentinelTurn {
+			t.Errorf("sentinel turn: got %d, want %d", decoded.Turn, LedgerSentinelTurn)
+		}
+		if decoded.AgentID != LedgerAgentID {
+			t.Errorf("sentinel agent_id: got %q, want %q", decoded.AgentID, LedgerAgentID)
+		}
+	})
+
+	t.Run("wrong-sentinel turn fails validation", func(t *testing.T) {
+		rec := &LedgerRecord{
+			Turn:      0,
+			AgentID:   LedgerAgentID,
+			Timestamp: 1.0,
+			Ledger:    DebateLedger{Round: 0, Draft: DraftProposal{Status: DraftStatusNone}},
+		}
+		err := rec.Validate()
+		if err == nil {
+			t.Fatal("expected error for wrong sentinel turn")
+		}
+		if !strings.Contains(err.Error(), "turn must be") {
+			t.Errorf("error should mention sentinel turn, got %q", err.Error())
+		}
+	})
+
+	t.Run("wrong agent_id fails validation", func(t *testing.T) {
+		rec := &LedgerRecord{
+			Turn:      LedgerSentinelTurn,
+			AgentID:   "not-ledger",
+			Timestamp: 1.0,
+			Ledger:    DebateLedger{Round: 0, Draft: DraftProposal{Status: DraftStatusNone}},
+		}
+		err := rec.Validate()
+		if err == nil {
+			t.Fatal("expected error for wrong agent_id")
+		}
+		if !strings.Contains(err.Error(), "agent_id must be") {
+			t.Errorf("error should mention agent_id, got %q", err.Error())
+		}
+	})
+
+	t.Run("invalid inner ledger fails record validation", func(t *testing.T) {
+		rec := &LedgerRecord{
+			Turn:      LedgerSentinelTurn,
+			AgentID:   LedgerAgentID,
+			Timestamp: 1.0,
+			Ledger: DebateLedger{
+				Round: -1,
+				Draft: DraftProposal{Status: DraftStatusNone},
+			},
+		}
+		err := rec.Validate()
+		if err == nil {
+			t.Fatal("expected error from invalid inner ledger")
+		}
+		if !strings.Contains(err.Error(), "ledger record:") {
+			t.Errorf("error should wrap inner ledger error, got %q", err.Error())
+		}
+	})
+
+	t.Run("nil record fails validation", func(t *testing.T) {
+		var r *LedgerRecord
+		err := r.Validate()
+		if err == nil {
+			t.Fatal("expected error for nil record")
+		}
+		if !strings.Contains(err.Error(), "nil") {
+			t.Errorf("error should mention nil, got %q", err.Error())
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// NewLedgerRecord sentinel and clone behavior
+// ---------------------------------------------------------------------------
+
+func TestNewLedgerRecord(t *testing.T) {
+	t.Run("nil ledger produces valid empty record", func(t *testing.T) {
+		rec := NewLedgerRecord(nil, 1.0)
+		if rec.Turn != LedgerSentinelTurn {
+			t.Errorf("turn: got %d, want %d", rec.Turn, LedgerSentinelTurn)
+		}
+		if rec.AgentID != LedgerAgentID {
+			t.Errorf("agent_id: got %q, want %q", rec.AgentID, LedgerAgentID)
+		}
+		if err := rec.Validate(); err != nil {
+			t.Errorf("nil-ledger record should validate: %v", err)
+		}
+		if rec.Ledger.HasEndorsableProposal() {
+			t.Errorf("empty ledger should not report endorsable proposal")
+		}
+		if rec.Ledger.Draft.Status != DraftStatusNone {
+			t.Errorf("nil-ledger record should have explicit no-draft status, got %q", rec.Ledger.Draft.Status)
+		}
+	})
+
+	t.Run("record does not alias source ledger", func(t *testing.T) {
+		source := &DebateLedger{
+			Round:     1,
+			Positions: []AgentPosition{{AgentID: "a", Text: "orig", Turn: 1}},
+		}
+		rec := NewLedgerRecord(source, 1.0)
+		rec.Ledger.Positions[0].Text = "mutated"
+		if source.Positions[0].Text != "orig" {
+			t.Errorf("source ledger aliased through NewLedgerRecord")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// CloneLedgerRecord deep-copy semantics
+// ---------------------------------------------------------------------------
+
+func TestCloneLedgerRecord(t *testing.T) {
+	t.Run("clone does not alias inner ledger slices", func(t *testing.T) {
+		rec := &LedgerRecord{
+			Turn:      LedgerSentinelTurn,
+			AgentID:   LedgerAgentID,
+			Timestamp: 1.0,
+			Ledger: DebateLedger{
+				Round:     1,
+				Positions: []AgentPosition{{AgentID: "a", Text: "orig", Turn: 1}},
+				Draft:     DraftProposal{Status: DraftStatusDraft, Text: "d", Endorsers: []string{"a"}},
+			},
+		}
+		clone := CloneLedgerRecord(rec)
+		clone.Ledger.Positions[0].Text = "mutated"
+		clone.Ledger.Draft.Endorsers[0] = "z"
+		if rec.Ledger.Positions[0].Text != "orig" {
+			t.Errorf("original record aliased through CloneLedgerRecord Positions")
+		}
+		if rec.Ledger.Draft.Endorsers[0] != "a" {
+			t.Errorf("original record aliased through CloneLedgerRecord Draft Endorsers")
+		}
+	})
+
+	t.Run("nil returns nil", func(t *testing.T) {
+		if got := CloneLedgerRecord(nil); got != nil {
+			t.Errorf("CloneLedgerRecord(nil) should return nil, got %+v", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ledger sentinel constants
+// ---------------------------------------------------------------------------
+
+func TestLedgerSentinels(t *testing.T) {
+	if LedgerSentinelTurn != -3 {
+		t.Errorf("LedgerSentinelTurn: got %d, want -3 (next after -1 seed, -2 evidence)", LedgerSentinelTurn)
+	}
+	if LedgerAgentID != "ledger" {
+		t.Errorf("LedgerAgentID: got %q, want %q", LedgerAgentID, "ledger")
 	}
 }

@@ -1,4 +1,16 @@
 // Package types defines domain types for the Agora deliberation system.
+//
+// The debate ledger (DebateLedger, LedgerRecord, and related types) captures
+// the compact per-round state each agent receives in its per-turn envelope:
+// every active agent's most recent stated position, the points agents have
+// agreed on, the cruxes currently open, and the current draft proposal (or an
+// explicit no-draft status). Ledger snapshots persist as typed transcript
+// records (LedgerRecord) using Turn = LedgerSentinelTurn (-3) and
+// AgentID = LedgerAgentID ("ledger"), the next sentinel beyond -1 (seed) and
+// -2 (evidence). Per Decision 1, the orchestrator treats the ledger as opaque
+// DATA injected into the envelope and must not compose prompts from ledger
+// contents; per Decision 6, transcripts persist references-only typed state,
+// not full prose.
 package types
 
 import (
@@ -420,4 +432,230 @@ func IntVal(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+// LedgerSentinelTurn is the transcript turn number reserved for ledger records.
+// The convention reserves negative turn numbers for orchestrator-system
+// records: -1 for seed, -2 for evidence, and -3 for ledger snapshots persisted
+// after each completed deliberation round.
+const LedgerSentinelTurn = -3
+
+// LedgerAgentID is the agent_id sentinel written into transcript records that
+// carry a ledger snapshot, distinguishing them from agent turns, seed (-1), and
+// evidence (-2) records.
+const LedgerAgentID = "ledger"
+
+// DraftStatus enumerates the lifecycle states of the current draft proposal.
+type DraftStatus string
+
+const (
+	DraftStatusNone  DraftStatus = "none"
+	DraftStatusDraft DraftStatus = "draft"
+	DraftStatusFinal DraftStatus = "final"
+)
+
+// AgentPosition captures an active agent's most recently stated position.
+type AgentPosition struct {
+	AgentID string `yaml:"agent_id" json:"agent_id"`
+	Text    string `yaml:"text" json:"text"`
+	Turn    int    `yaml:"turn" json:"turn"`
+}
+
+// AgreementPoint names a point two or more agents have agreed on.
+type AgreementPoint struct {
+	Text      string   `yaml:"text" json:"text"`
+	Endorsers []string `yaml:"endorsers" json:"endorsers"`
+}
+
+// PositionalView captures one agent's stance on a crux.
+type PositionalView struct {
+	AgentID string `yaml:"agent_id" json:"agent_id"`
+	Stance  string `yaml:"stance" json:"stance"`
+}
+
+// OpenCrux describes an unresolved disagreement currently in play.
+type OpenCrux struct {
+	Topic    string           `yaml:"topic" json:"topic"`
+	Views    []PositionalView `yaml:"views" json:"views"`
+	RaisedAt int              `yaml:"raised_at" json:"raised_at"`
+}
+
+// DraftProposal is the current draft proposal, or an explicit no-draft status.
+// Status == DraftStatusNone (or "") is the explicit no-draft signal; the field
+// is always serialized so consumers can distinguish "no draft" from a missing
+// or stale value.
+type DraftProposal struct {
+	Status    DraftStatus `yaml:"status" json:"status"`
+	Text      string      `yaml:"text,omitempty" json:"text,omitempty"`
+	Proposer  string      `yaml:"proposer,omitempty" json:"proposer,omitempty"`
+	Endorsers []string    `yaml:"endorsers,omitempty" json:"endorsers,omitempty"`
+}
+
+// HasEndorsableProposal reports whether the draft is in a state a consumer may
+// treat as halt-permittable. A no-draft or incomplete draft returns false.
+func (d *DraftProposal) HasEndorsableProposal() bool {
+	if d == nil {
+		return false
+	}
+	if d.Status == DraftStatusNone || d.Status == "" {
+		return false
+	}
+	return d.Text != ""
+}
+
+// DebateLedger is the compact per-round debate state injected into each
+// agent's per-turn envelope. It captures every active agent's most recent
+// stated position, the points agents have agreed on, the cruxes currently
+// open, and the current draft proposal (or an explicit no-draft status).
+// Per Decision 1, the orchestrator treats the ledger as opaque DATA injected
+// into the envelope and must not compose prompts from ledger contents;
+// per Decision 6, transcripts persist references-only typed state, not full
+// prose.
+type DebateLedger struct {
+	Round      int              `yaml:"round" json:"round"`
+	Positions  []AgentPosition  `yaml:"positions" json:"positions"`
+	Agreements []AgreementPoint `yaml:"agreements" json:"agreements"`
+	Cruxes     []OpenCrux       `yaml:"cruxes" json:"cruxes"`
+	Draft      DraftProposal    `yaml:"draft" json:"draft"`
+	UpdatedAt  float64          `yaml:"updated_at" json:"updated_at"`
+}
+
+// NewDebateLedger returns a valid empty ledger suitable as an initial state.
+// The draft is set to DraftStatusNone so the no-draft status is explicit.
+func NewDebateLedger(round int, updatedAt float64) *DebateLedger {
+	return &DebateLedger{
+		Round:     round,
+		Draft:     DraftProposal{Status: DraftStatusNone},
+		UpdatedAt: updatedAt,
+	}
+}
+
+// HasEndorsableProposal reports whether this ledger's current draft permits
+// halting. Returns false when no draft exists (the explicit no-draft state).
+func (l *DebateLedger) HasEndorsableProposal() bool {
+	if l == nil {
+		return false
+	}
+	return l.Draft.HasEndorsableProposal()
+}
+
+// CloneDebateLedger returns a deep copy of the ledger, suitable for persisting
+// into a transcript record without aliasing caller-owned slices.
+func CloneDebateLedger(l *DebateLedger) *DebateLedger {
+	if l == nil {
+		return nil
+	}
+	clone := *l
+	clone.Positions = append([]AgentPosition(nil), l.Positions...)
+	clone.Agreements = append([]AgreementPoint(nil), l.Agreements...)
+	for i := range clone.Agreements {
+		clone.Agreements[i].Endorsers = append([]string(nil), l.Agreements[i].Endorsers...)
+	}
+	clone.Cruxes = append([]OpenCrux(nil), l.Cruxes...)
+	for i := range clone.Cruxes {
+		clone.Cruxes[i].Views = append([]PositionalView(nil), l.Cruxes[i].Views...)
+	}
+	clone.Draft.Endorsers = append([]string(nil), l.Draft.Endorsers...)
+	return &clone
+}
+
+// Validate checks the ledger for internal consistency. An empty ledger (no
+// positions, agreements, or cruxes) is a valid initial state and does not
+// produce an error.
+func (l *DebateLedger) Validate() error {
+	if l == nil {
+		return fmt.Errorf("ledger is nil")
+	}
+	if l.Round < 0 {
+		return fmt.Errorf("ledger round must be >= 0, got %d", l.Round)
+	}
+	seenPositions := make(map[string]bool)
+	for i, p := range l.Positions {
+		if p.AgentID == "" {
+			return fmt.Errorf("position %d: agent_id must be non-empty", i)
+		}
+		if seenPositions[p.AgentID] {
+			return fmt.Errorf("position %d: duplicate agent_id '%s'", i, p.AgentID)
+		}
+		seenPositions[p.AgentID] = true
+	}
+	for i, a := range l.Agreements {
+		if a.Text == "" {
+			return fmt.Errorf("agreement %d: text must be non-empty", i)
+		}
+	}
+	for i, c := range l.Cruxes {
+		if c.Topic == "" {
+			return fmt.Errorf("crux %d: topic must be non-empty", i)
+		}
+	}
+	switch l.Draft.Status {
+	case DraftStatusNone, DraftStatusDraft, DraftStatusFinal, "":
+	default:
+		return fmt.Errorf("draft status '%s' is not one of: none, draft, final", l.Draft.Status)
+	}
+	if l.Draft.Status != DraftStatusNone && l.Draft.Status != "" && l.Draft.Text == "" {
+		return fmt.Errorf("draft with status '%s' must have non-empty text", l.Draft.Status)
+	}
+	return nil
+}
+
+// LedgerRecord is the typed transcript record that persists a ledger snapshot.
+// It is a sibling of TurnRecord: it carries a DebateLedger rather than agent
+// prose, so show and resume can replay typed ledger state without re-parsing
+// essays. The orchestrator writes one LedgerRecord per completed round using
+// Turn = LedgerSentinelTurn (-3) and AgentID = LedgerAgentID ("ledger"), the
+// next sentinel beyond -1 (seed) and -2 (evidence).
+type LedgerRecord struct {
+	Turn      int          `yaml:"turn" json:"turn"`
+	AgentID   string       `yaml:"agent_id" json:"agent_id"`
+	Timestamp float64      `yaml:"timestamp" json:"timestamp"`
+	Ledger    DebateLedger `yaml:"ledger" json:"ledger"`
+}
+
+// NewLedgerRecord constructs a transcript record carrying a deep clone of the
+// given ledger snapshot, using the LedgerSentinelTurn (-3) and LedgerAgentID
+// ("ledger") convention. A nil ledger is replaced with a valid empty ledger.
+func NewLedgerRecord(l *DebateLedger, timestamp float64) *LedgerRecord {
+	ledger := CloneDebateLedger(l)
+	if ledger == nil {
+		ledger = NewDebateLedger(0, timestamp)
+	}
+	return &LedgerRecord{
+		Turn:      LedgerSentinelTurn,
+		AgentID:   LedgerAgentID,
+		Timestamp: timestamp,
+		Ledger:    *ledger,
+	}
+}
+
+// Validate checks the ledger record for sentinel and content consistency.
+func (r *LedgerRecord) Validate() error {
+	if r == nil {
+		return fmt.Errorf("ledger record is nil")
+	}
+	if r.Turn != LedgerSentinelTurn {
+		return fmt.Errorf("ledger record turn must be %d (LedgerSentinelTurn), got %d", LedgerSentinelTurn, r.Turn)
+	}
+	if r.AgentID != LedgerAgentID {
+		return fmt.Errorf("ledger record agent_id must be %q, got %q", LedgerAgentID, r.AgentID)
+	}
+	if err := r.Ledger.Validate(); err != nil {
+		return fmt.Errorf("ledger record: %w", err)
+	}
+	return nil
+}
+
+// CloneLedgerRecord returns a deep copy of the ledger record.
+func CloneLedgerRecord(r *LedgerRecord) *LedgerRecord {
+	if r == nil {
+		return nil
+	}
+	ledger := CloneDebateLedger(&r.Ledger)
+	return &LedgerRecord{
+		Turn:      r.Turn,
+		AgentID:   r.AgentID,
+		Timestamp: r.Timestamp,
+		Ledger:    *ledger,
+	}
 }
