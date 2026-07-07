@@ -12,6 +12,7 @@ import (
 
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/evidence"
+	"github.com/jgabor/agora/internal/ledger"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 )
@@ -965,4 +966,309 @@ func TestExecuteTurnInjectsLedgerWhenEnabledExplicit(t *testing.T) {
 	if _, hasLedger := runner.envelopes[0]["ledger"]; !hasLedger {
 		t.Fatalf("envelope should contain ledger when explicitly enabled: %#v", runner.envelopes[0])
 	}
+}
+
+func newLedgerTestState(cfg *types.DeliberationConfig, maxTurns int, ledgerEnabled *bool) *types.DeliberationState {
+	return &types.DeliberationState{
+		Config:              cfg,
+		Topic:               "test topic",
+		Window:              2,
+		MaxTurns:            maxTurns,
+		TimeLimit:           0,
+		Running:             true,
+		StartTime:           float64(time.Now().UnixNano()) / 1e9,
+		LedgerUpdateEnabled: ledgerEnabled,
+	}
+}
+
+func twoAgentLedgerJSON(t *testing.T, round int) string {
+	t.Helper()
+	return fmt.Sprintf(`{"round":%d,"positions":[{"agent_id":"agent-0","text":"agent response","turn":0},{"agent_id":"agent-1","text":"agent response","turn":1}],"agreements":[],"cruxes":[],"draft":{"status":"none"}}`, round)
+}
+
+func threeAgentLedgerJSON(t *testing.T, round int) string {
+	t.Helper()
+	return fmt.Sprintf(`{"round":%d,"positions":[{"agent_id":"agent-0","text":"agent response","turn":0},{"agent_id":"agent-1","text":"agent response","turn":1},{"agent_id":"agent-2","text":"agent response","turn":2}],"agreements":[],"cruxes":[],"draft":{"status":"none"}}`, round)
+}
+
+func countLedgerUpdaterCalls(agents []types.AgentConfig) int {
+	calls := 0
+	for _, ag := range agents {
+		if ag.ID == "ledger-updater" {
+			calls++
+		}
+	}
+	return calls
+}
+
+func TestLedgerRoundBoundaryUpdate(t *testing.T) {
+	t.Run("pass", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 4, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		ledgerJSON := twoAgentLedgerJSON(t, 1)
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+			{content: ledgerJSON},
+			{content: "agent 0 turn 2"},
+			{content: "agent 1 turn 3"},
+			{content: ledgerJSON},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if state.HaltedBy != "max_turns (4)" {
+			t.Fatalf("HaltedBy: got %q, want max_turns (4)", state.HaltedBy)
+		}
+		if o.currentLedger == nil || o.currentLedger.Round != 1 {
+			t.Fatalf("currentLedger: got %+v, want Round=1 after round-boundary update", o.currentLedger)
+		}
+		if len(runner.envelopes) < 4 {
+			t.Fatalf("runner envelopes: got %d, want at least 4", len(runner.envelopes))
+		}
+		injected, ok := runner.envelopes[3]["ledger"].(*types.DebateLedger)
+		if !ok || injected == nil {
+			t.Fatalf("envelope[3] ledger: got %#v, want injected *DebateLedger before next-round turn", runner.envelopes[3]["ledger"])
+		}
+		if injected.Round != 1 {
+			t.Errorf("envelope[3] ledger.Round: got %d, want 1", injected.Round)
+		}
+	})
+
+	t.Run("fail_updater_returns_error_skips_set_and_runs_to_completion", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 4, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+			{content: "garbage not json"},
+			{content: "agent 0 turn 2"},
+			{content: "agent 1 turn 3"},
+			{content: "garbage not json"},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if state.HaltedBy != "max_turns (4)" {
+			t.Fatalf("HaltedBy: got %q, want max_turns (4); failed ledger update must not halt", state.HaltedBy)
+		}
+		if len(runner.envelopes) != 6 {
+			t.Fatalf("runner calls: got %d, want 6 (4 turns + 2 failed updates)", len(runner.envelopes))
+		}
+		for i, env := range runner.envelopes {
+			if _, has := env["ledger"]; has {
+				t.Fatalf("envelope[%d] should not contain ledger when Update failed", i)
+			}
+		}
+		if o.currentLedger != nil {
+			t.Fatalf("currentLedger: got %+v, want nil after failed updates", o.currentLedger)
+		}
+	})
+}
+
+func TestLedgerRound0Empty(t *testing.T) {
+	t.Run("pass_two_agents_one_turn_no_update", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 1, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if o.currentLedger != nil {
+			t.Fatalf("currentLedger: got %+v, want nil before first round completes", o.currentLedger)
+		}
+		if len(runner.envelopes) != 1 {
+			t.Fatalf("runner envelopes: got %d, want 1", len(runner.envelopes))
+		}
+		if _, has := runner.envelopes[0]["ledger"]; has {
+			t.Fatalf("envelope[0] should not contain ledger before first round completes: %#v", runner.envelopes[0])
+		}
+	})
+
+	t.Run("fail_four_agents_three_turns_no_round_complete_no_update", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(4)}
+		state := newLedgerTestState(cfg, 3, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if o.currentLedger != nil {
+			t.Fatalf("currentLedger: got %+v, want nil when round never completes", o.currentLedger)
+		}
+		for i, env := range runner.envelopes {
+			if _, has := env["ledger"]; has {
+				t.Fatalf("envelope[%d] should not contain ledger when round never completes", i)
+			}
+		}
+		if got := countLedgerUpdaterCalls(runner.agents); got != 0 {
+			t.Fatalf("ledger-updater calls: got %d, want 0 when round never completes", got)
+		}
+	})
+}
+
+func TestLedgerMidRoundInterrupt(t *testing.T) {
+	t.Run("pass_halt_mid_round_2_keeps_round_1_ledger_no_partial", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(3)}
+		state := newLedgerTestState(cfg, 5, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		ledgerJSON := threeAgentLedgerJSON(t, 1)
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+			{content: "agent 2 turn 2"},
+			{content: ledgerJSON},
+			{content: "agent 0 turn 3"},
+			{content: "agent 1 turn 4"},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if state.HaltedBy != "max_turns (5)" {
+			t.Fatalf("HaltedBy: got %q, want max_turns (5)", state.HaltedBy)
+		}
+		if o.currentLedger == nil {
+			t.Fatal("currentLedger: got nil, want non-nil after round 1 completed before mid-round-2 halt")
+		}
+		if o.currentLedger.Round != 1 {
+			t.Errorf("currentLedger.Round: got %d, want 1 (only round 1 completed; no partial mid-round-2 update)", o.currentLedger.Round)
+		}
+		if got := countLedgerUpdaterCalls(runner.agents); got != 1 {
+			t.Fatalf("ledger-updater calls: got %d, want 1 (no partial mid-round-2 update)", got)
+		}
+	})
+
+	t.Run("fail_max_turns_below_round_size_no_update", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(3)}
+		state := newLedgerTestState(cfg, 2, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if o.currentLedger != nil {
+			t.Fatalf("currentLedger: got %+v, want nil when MaxTurns<round-size", o.currentLedger)
+		}
+		if got := countLedgerUpdaterCalls(runner.agents); got != 0 {
+			t.Fatalf("ledger-updater calls: got %d, want 0 when round never completes", got)
+		}
+	})
+}
+
+func TestLedgerDryRunPlaceholder(t *testing.T) {
+	t.Run("pass_real_dry_run_runner_takes_update_dry_run_path", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 2, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := agent.NewAgentRunner(true)
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if state.HaltedBy != "max_turns (2)" {
+			t.Fatalf("HaltedBy: got %q, want max_turns (2)", state.HaltedBy)
+		}
+		if o.currentLedger == nil {
+			t.Fatal("currentLedger: got nil, want non-nil (dry-run path should be detected via *agent.AgentRunner.IsDryRun)")
+		}
+		if o.currentLedger.Round != 1 {
+			t.Errorf("Round: got %d, want 1 (UpdateDryRun derives Round from last transcript turn after one completed round)", o.currentLedger.Round)
+		}
+		if len(o.currentLedger.Positions) != 2 {
+			t.Fatalf("Positions: got %d, want 2 (UpdateDryRun derives positions from latest record per active agent)", len(o.currentLedger.Positions))
+		}
+		if o.currentLedger.UpdatedAt != 0 {
+			t.Errorf("UpdatedAt: got %v, want 0 (UpdateDryRun leaves UpdatedAt at zero for determinism)", o.currentLedger.UpdatedAt)
+		}
+	})
+
+	t.Run("fail_non_dry_run_runner_takes_real_update_path_runner_invoked", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 4, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		ledgerJSON := twoAgentLedgerJSON(t, 1)
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+			{content: ledgerJSON},
+			{content: "agent 0 turn 2"},
+			{content: "agent 1 turn 3"},
+			{content: ledgerJSON},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if o.currentLedger == nil {
+			t.Fatal("currentLedger: got nil, want non-nil (real-path Update should set the ledger on JSON parse success)")
+		}
+		if got := countLedgerUpdaterCalls(runner.agents); got != 2 {
+			t.Fatalf("ledger-updater calls: got %d, want 2 (real path calls Update once per completed round)", got)
+		}
+		if o.currentLedger.UpdatedAt == 0 {
+			t.Errorf("UpdatedAt: got 0, want non-zero (Update stamps time.Now().Unix() after parsing)")
+		}
+	})
+}
+
+func TestLedgerDisableFlagSkipsUpdate(t *testing.T) {
+	t.Run("pass_disabled_suppresses_updater_call_and_envelope_inject", func(t *testing.T) {
+		disabled := false
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 4, &disabled)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if state.HaltedBy != "max_turns (4)" {
+			t.Fatalf("HaltedBy: got %q, want max_turns (4)", state.HaltedBy)
+		}
+		if o.currentLedger != nil {
+			t.Fatalf("currentLedger: got %+v, want nil when --no-ledger active", o.currentLedger)
+		}
+		if got := countLedgerUpdaterCalls(runner.agents); got != 0 {
+			t.Fatalf("ledger-updater calls: got %d, want 0 when --no-ledger active", got)
+		}
+		for i, env := range runner.envelopes {
+			if _, has := env["ledger"]; has {
+				t.Fatalf("envelope[%d] should not contain ledger when --no-ledger active", i)
+			}
+		}
+	})
+
+	t.Run("fail_default_enabled_triggers_updater_call_post_round", func(t *testing.T) {
+		cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+		state := newLedgerTestState(cfg, 4, nil)
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+		ledgerJSON := twoAgentLedgerJSON(t, 1)
+		runner := &recordingRunner{responses: []mockResponse{
+			{content: "agent 0 turn 0"},
+			{content: "agent 1 turn 1"},
+			{content: ledgerJSON},
+			{content: "agent 0 turn 2"},
+			{content: "agent 1 turn 3"},
+			{content: ledgerJSON},
+		}}
+		o := NewOrchestrator(state, tm, runner)
+		o.SetLedgerUpdater(ledger.NewUpdater(runner))
+		o.Run()
+
+		if o.currentLedger == nil {
+			t.Fatal("currentLedger: got nil, want non-nil when ledger enabled (default)")
+		}
+		if got := countLedgerUpdaterCalls(runner.agents); got == 0 {
+			t.Fatal("ledger-updater calls: got 0, want ≥1 when ledger enabled (default)")
+		}
+	})
 }

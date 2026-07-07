@@ -816,6 +816,27 @@ func TestResolveLedgerPolicyAllUnsetReturnsNil(t *testing.T) {
 	}
 }
 
+func TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-ledger", false, "No ledger")
+	if err := cmd.Flags().Set("no-ledger", "true"); err != nil {
+		t.Fatalf("set no-ledger: %v", err)
+	}
+	cfg := &types.DeliberationConfig{}
+	configEnabled := true
+	cfg.Ledger = &configEnabled
+	settingsEnabled := true
+	settings := config.Settings{DefaultLedgerEnabled: &settingsEnabled}
+
+	resolved := resolveLedgerPolicy(cmd, cfg, settings)
+	if resolved == nil {
+		t.Fatal("resolved: got nil, want &false (CLI --no-ledger must win triple-over-config-and-settings)")
+	}
+	if *resolved {
+		t.Fatal("resolved: got true, want false (CLI --no-ledger wins over config-enable AND settings-enable simultaneously per three-layer precedence)")
+	}
+}
+
 func TestParseTranscriptFilename(t *testing.T) {
 	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
 	if !ok {

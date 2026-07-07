@@ -10,6 +10,7 @@ import (
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/cast"
 	"github.com/jgabor/agora/internal/evidence"
+	"github.com/jgabor/agora/internal/ledger"
 	"github.com/jgabor/agora/internal/orchestrator"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
@@ -187,6 +188,7 @@ func execute(
 ) (Result, error) {
 	runner := agent.NewAgentRunner(dryRun)
 	orch := orchestrator.NewOrchestrator(state, tm, runner)
+	orch.SetLedgerUpdater(ledger.NewUpdater(runner))
 	if evidenceEnabled(evidenceReq) {
 		orch.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 	}

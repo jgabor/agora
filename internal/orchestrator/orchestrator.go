@@ -11,6 +11,7 @@ import (
 
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/evidence"
+	"github.com/jgabor/agora/internal/ledger"
 	"github.com/jgabor/agora/internal/synthesis"
 	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
@@ -40,6 +41,7 @@ type Orchestrator struct {
 	sharedEvidence  *types.EvidenceBundle
 	evidenceSent    map[string]bool
 	currentLedger   *types.DebateLedger
+	ledgerUpdater   *ledger.Updater
 }
 
 // NewOrchestrator creates a new Orchestrator.
@@ -56,6 +58,16 @@ func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptMa
 // SetEvidenceCollector registers a pre-deliberation evidence collector.
 func (o *Orchestrator) SetEvidenceCollector(collector evidence.Collector) {
 	o.evidence = collector
+}
+
+// SetLedgerUpdater registers a mid-deliberation ledger updater. When nil no
+// per-round ledger update fires; the orchestrator remains otherwise functional
+// so tests that don't exercise the ledger stay independent. When set, the
+// updater fires once per completed agent round (after the last agent in the
+// round completes its turn), gated by ledgerEnabled(LedgerUpdateEnabled) and
+// o.state.Running so a mid-round interrupt never produces a partial ledger.
+func (o *Orchestrator) SetLedgerUpdater(u *ledger.Updater) {
+	o.ledgerUpdater = u
 }
 
 // SetCurrentLedger sets the most recent ledger injected into each agent turn.
@@ -117,6 +129,8 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		if o.onTurn != nil {
 			o.onTurn(turnRecord, o.state.Turn, o.state.MaxTurns)
 		}
+
+		o.updateLedgerIfRoundComplete()
 
 		o.state.Turn++
 	}
@@ -205,6 +219,54 @@ func (o *Orchestrator) Synthesize() map[string]any {
 // synthesizeModel returns the model to use for synthesis (explicit override or first agent's model).
 func (o *Orchestrator) synthesizeModel() string {
 	return o.state.Config.EffectiveMetaModel()
+}
+
+// isDryRun reports whether the runner is in a simulated dry-run mode. Matches
+// the Synthesize path's *agent.AgentRunner type assertion.
+func (o *Orchestrator) isDryRun() bool {
+	if ar, ok := o.runner.(*agent.AgentRunner); ok && ar.IsDryRun() {
+		return true
+	}
+	return false
+}
+
+// updateLedgerIfRoundComplete fires the ledger updater once per completed
+// agent round (when o.state.Turn is the last agent in the round). The first
+// agent of the next round sees the freshly set currentLedger in its envelope.
+// When no updater is set, the disable flag is active, the round has not
+// completed, or the run was interrupted mid-round, the call is a no-op so the
+// prior ledger (if any) is preserved and no partial mid-round update is
+// produced. Dry-run mode routes through UpdateDryRun to avoid model calls;
+// real mode calls Update and logs (without halting) on failure so failed
+// updates are non-fatal and the next round retries using the prior ledger.
+func (o *Orchestrator) updateLedgerIfRoundComplete() {
+	if o.ledgerUpdater == nil {
+		return
+	}
+	if !ledgerEnabled(o.state.LedgerUpdateEnabled) {
+		return
+	}
+	if !o.state.Running {
+		return
+	}
+	if (o.state.Turn+1)%o.numAgents != 0 {
+		return
+	}
+
+	stop := o.activity("Ledger Update")
+	defer stop()
+
+	if o.isDryRun() {
+		o.SetCurrentLedger(o.ledgerUpdater.UpdateDryRun(o.transcript.Records(), o.state.Topic))
+		return
+	}
+
+	ledger, err := o.ledgerUpdater.Update(o.transcript.Records(), o.state.Topic, o.synthesizeModel())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ledger update: %v\n", err)
+		return
+	}
+	o.SetCurrentLedger(ledger)
 }
 
 func (o *Orchestrator) activity(phase string) func() {
