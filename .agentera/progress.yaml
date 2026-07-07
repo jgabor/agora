@@ -1,4 +1,68 @@
 cycles:
+- number: 62
+  timestamp: "2026-07-07 23:12"
+  type: implementation
+  phase: build
+  what: >-
+    Completed Task 3 of the debate ledger plan by injecting two new per-turn envelope fields and wiring a disable-ledger flag through
+    the project's three-layer precedence. In internal/orchestrator/orchestrator.go, added a currentLedger field with SetCurrentLedger,
+    and in executeTurn inject envelope["ledger"]=o.currentLedger only when the ledger is non-nil and not explicitly disabled (via new
+    ledgerEnabled helper, nil means enabled by default). In internal/transcript/query.go, refactored HistoryForAgent to split
+    topology-specific predecessor logic into historyForTopology and added appendSelfHistory, which scans records in reverse for the
+    agent own most recent prior turn (filtered to exclude current and sentinel turns), deduping against the predecessor window by
+    agent_id+content; the combined function now returns predecessor history plus at most one own-turn for ALL topologies. In
+    internal/types/types.go, added Ledger *bool to DeliberationConfig (with clone support) and LedgerUpdateEnabled *bool to
+    DeliberationState. In internal/config/config.go parsed ledger from YAML into rawConfig and DeliberationConfig. In
+    internal/config/settings.go added DefaultLedgerEnabled *bool. In internal/session/session.go added Ledger *bool to RunRequest
+    and wired it to state.LedgerUpdateEnabled in buildState. In cmd/agora/main.go added --no-ledger to sharedRunFlags (applying to both
+    agora run and agora resume), added resolveLedgerPolicy matching the --research/--no-research three-layer precedence pattern
+    (CLI > config > settings > default-enabled), and wired the resolved pointer into both run and resume session.RunRequest. In
+    cmd/agora/config_cmd.go added the default_ledger_enabled setting key def (bool type, default true) with parseBool helper, and
+    updated command_contract_test.go for the new flag and settings key. Task 3 status in .agentera/plan.yaml flipped from pending
+    to complete.
+  commit: ddcc7b8
+  inspiration: >-
+    Task 3 scope was strictly envelope injection + self-history + disable flag. Per Decision 1 (firm), the orchestrator treats the
+    ledger as opaque DATA injected into the envelope, never prompt-forged text, so envelope["ledger"] is the typed *DebateLedger
+    pointer. Per Decision 5 (firm), the disable flag follows the established three-layer precedence (CLI > config > settings),
+    matching resolveEvidencePolicy exactly. The currentLedger field is set externally (Task 4 wires it per round); for Task 3 only the
+    field, setter, and injection logic were added. Self-history dedup checks the agent own most recent prior turn against the predecessor
+    window by agent_id+content, and the turn filter (r.Turn < turn and r.Turn >= 0) ensures the current turn and sentinel records are
+    never treated as self-history.
+  discovered: >-
+    The existing HistoryForAgent tests (TestHistoryRingTopology, TestHistoryRingTopologyWindow) included future turns in their test data,
+    so the initial appendSelfHistory implementation (which scanned all records without a turn filter) matched the current turn as
+    self-history. The fix was to add the turn parameter to appendSelfHistory and filter with r.Turn >= turn or r.Turn < 0 to exclude
+    both the current turn and sentinel turns. The TODO.md working-tree change was from Task 2 parallel subagent (adding a Roadmap
+    section) and was intentionally excluded from this commit. Task 2 cycle 61 was already present in progress.yaml; this cycle uses 62.
+  verified: >-
+    Build verification passed with go build ./.... Vet verification passed with go vet ./.... Full repository verification passed with
+    go test -count=1 ./... all 14 packages ok (cmd/agora, internal/agent, internal/autogen, internal/cast, internal/config,
+    internal/evidence, internal/ledger, internal/llmutil, internal/orchestrator, internal/output, internal/session, internal/synthesis,
+    internal/transcript, internal/types). Focused new-test verification passed with
+    go test -count=1 -run TestExecuteTurn.*Ledger|TestSelfHistory|TestResolveLedgerPolicy|TestLoadConfigLedger -v:
+    TestExecuteTurnInjectsLedgerWhenSet PASS (AC1 ledger-injection success), TestExecuteTurnOmitsLedgerWhenDisabled PASS (AC5 disable-flag
+    success), TestExecuteTurnOmitsLedgerWhenNil PASS (nil ledger no key), TestExecuteTurnInjectsLedgerWhenEnabledExplicit PASS (explicit
+    enable key present), TestSelfHistoryAppendedAcrossAllTopologies PASS across ring/star/mesh subtests (AC2 self-history-injection
+    success), TestSelfHistoryDeduplicatedAgainstPredecessorWindow PASS (AC4 dedupe success), TestSelfHistoryMostRecentOnly PASS (AC3
+    only most recent own turn), TestSelfHistoryAbsentWhenNoPriorOwnTurn PASS (no self-history when no prior turns),
+    TestResolveLedgerPolicyCLIDisablesOverConfigEnable PASS (AC6a CLI wins over config), TestResolveLedgerPolicyConfigDisablesOverSettingsEnable
+    PASS (AC6b config wins over settings), TestResolveLedgerPolicySettingsDisablesOverDefaultEnable PASS (AC6c settings wins over default),
+    TestResolveLedgerPolicyAllUnsetReturnsNil PASS (AC6d all-unset nil enabled by default), TestLoadConfigLedgerExplicitTrue PASS,
+    TestLoadConfigLedgerExplicitFalse PASS, TestLoadConfigLedgerUnsetReturnsNil PASS, TestLoadConfigLedgerMalformedValueFails PASS
+    (malformed-disable-value failure, non-bool ledger value yields YAML parse error). Updated existing tests TestHistoryRingTopology and
+    TestHistoryRingTopologyWindow to account for the new self-history entry. gofmt clean. Diff hygiene clean with git diff --check.
+  next: >-
+    Task 3 is complete. Task 4 (depends on Tasks 2 and 3) can now wire the ledger updater into orchestrator round lifecycle via
+    SetCurrentLedger and trigger updates after each completed round. Task 5 (depends on Tasks 1 and 4) persists ledger records to
+    transcript. Do NOT proceed to Task 4 from this cycle.
+  context:
+    intent: implement only Task 3 inject ledger and self-history into per-turn envelope with disable flag
+    constraints: do not trigger ledger updates per round (Task 4), do not persist ledger records (Task 5), do not touch internal/ledger
+      (Task 2 package), orchestrator treats ledger as opaque data (Decision 1), three-layer precedence (Decision 5)
+    scope: internal/types/types.go, internal/transcript/query.go, internal/orchestrator/orchestrator.go, internal/config/config.go,
+      internal/config/settings.go, internal/session/session.go, cmd/agora/main.go, cmd/agora/config_cmd.go, cmd/agora/command_contract_test.go,
+      and their _test.go files
 - number: 61
   timestamp: "2026-07-07 23:05"
   type: implementation

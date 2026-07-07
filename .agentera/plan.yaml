@@ -122,7 +122,7 @@ tasks:
   - number: 3
     name: "Inject ledger and self-history into per-turn envelope with disable flag"
     depends_on: ["1"]
-    status: pending
+    status: complete
     acceptance:
       - "GIVEN a deliberation in progress after at least one round WHEN an agent is about to take its turn THEN the envelope handed to that agent contains the most recent ledger"
       - "GIVEN an agent whose own prior turn exists in the transcript WHEN the agent is about to take its next turn THEN the envelope handed to that agent contains that agent's own immediately preceding turn regardless of topology"
