@@ -1,4 +1,95 @@
 cycles:
+- number: 63
+  timestamp: "2026-07-08 00:31"
+  type: implementation
+  phase: build
+  what: >-
+    Completed Task 4 of the debate ledger plan by wiring the ledger.Updater into the orchestrator Run() loop so a ledger
+    update fires after each completed agent round and Orchestrator.currentLedger is set before the next round's first
+    turn. In internal/orchestrator/orchestrator.go, added a ledgerUpdater *ledger.Updater field plus SetLedgerUpdater
+    mirroring SetEvidenceCollector (default nil → no-op, so tests that don't exercise the ledger stay independent),
+    added a private isDryRun() helper that matches the Synthesize path's *agent.AgentRunner type-assertion pattern,
+    added updateLedgerIfRoundComplete() called AFTER transcript.Append + onTurn callback and BEFORE state.Turn++ in
+    Run(). The round-completion test is (state.Turn+1)%numAgents==0; the first round completes after turn numAgents-1
+    and the first agent of round 2 sees the freshly set ledger via the existing Task 3 envelope injection at
+    executeTurn. updateLedgerIfRoundComplete gates on: updater != nil, ledgerEnabled(state.LedgerUpdateEnabled),
+    state.Running (so a mid-round interrupt — max_turns, time_limit, budget_exceeded, or user_interrupt signal — never
+    produces a partial mid-round update), and the round-completion expression. Dry-run mode routes through
+    updater.UpdateDryRun(); real mode routes through updater.Update(records, topic, synthesizeModel()) and on error
+    writes "ledger update: <err>" to os.Stderr (the orchestrator personality stays neutral; the failure is not visible
+    to agents beyond the absence of an updated ledger, and the next round retries using the prior ledger if any). The
+    o.activity("Ledger Update") bracket matches collectEvidence's activity-wrapping convention. In
+    internal/session/session.go execute(), constructed ledger.NewUpdater(runner) the same way evidence.NewPolicyCollector
+    is constructed and wired via orch.SetLedgerUpdater. Tests added in internal/orchestrator/orchestrator_test.go: five
+    PASS+FAIL pairs for the five AC units (TestLedgerRoundBoundaryUpdate, TestLedgerRound0Empty,
+    TestLedgerMidRoundInterrupt, TestLedgerDryRunPlaceholder, TestLedgerDisableFlagSkipsUpdate); plus the optional
+    AC6-triple test TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled in cmd/agora/main_test.go addressing the
+    prior audit WARN on Task 3. .agentera/plan.yaml Task 4 status flipped from pending to complete.
+  commit: c04ac3f
+  inspiration: >-
+    Task 4 (depends on Tasks 2 and 3) is the per-round wiring of the ledger updater. Per Decision 1 (firm), the
+    orchestrator TRIGGERS the ledger updater but must not compose prompts from ledger contents; the updater's
+    prompt construction (internal/ledger/updater.go) is the only prompt for this path, and the orchestrator just calls
+    Update() or UpdateDryRun() and SetCurrentLedger(result). Per Decision 6 (firm), ledger updates persist the typed
+    state, not full prose — persistence is Task 5's job, not Task 4. The round-completion probe
+    (state.Turn+1)%numAgents==0 is evaluated BEFORE state.Turn++ in Run() because Turn is the just-completed turn index
+    at that point; the first agent of the next round sees the ledger because executeTurn reads o.currentLedger via the
+    existing Task 3 envelope-injection path at orchestrator.go:282. The wiring pattern mirrors SetEvidenceCollector /
+    NewPolicyCollector (constructor-as-method, runner-scoped, always-constructed) and the activity bracket mirrors
+    collectEvidence ("Ledger Update" stop phase). Dry-run detection reuses the Synthesize path's *agent.AgentRunner
+    type assertion so Task 4's dry-run routing remains structurally consistent with the existing synthesis dry-run
+    short-circuit. Failed ledger updates are non-fatal: the error is written to os.Stderr (matching the AGENTS.md
+    "stderr is for diagnostics" convention; the project does not use the log package in internal/), state.Running is
+    preserved, and o.currentLedger retains the prior ledger if any.
+  discovered: >-
+    The dry-run PASS test initially failed with Round: got 3, want 1 because MaxTurns=4 (two rounds) made the second
+    UpdateDryRun set currentLedger.Round = lastRound(records) = 3 (the last turn index, which lastRound returns since
+    it tracks max(turn) not round number), overwriting the first update's Round=1. Adjusted to MaxTurns=2 (one round
+    only) so the deterministic assertion is Round=1. UpdateDryRun's Round semantic is "last transcript turn index",
+    not "round counter" — this is consistent with the Updater test in internal/ledger/updater_test.go which checks
+    Round=1 when the sample records have last turn=1. The TODO.md working-tree change persists from a parallel Task 2
+    subagent and was excluded from this commit, matching the cycle 62 discovered note. Task 3 prior audit WARN about
+    the missing literal-triple resolveLedgerPolicy test ("CLI-disable + config-enable + settings-enable") was addressed
+    by adding TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled to cmd/agora/main_test.go, fitting naturally
+    alongside the four pairwise tests already present.
+  verified: >-
+    Build verification passed with go build ./.... Vet verification passed with go vet ./.... Full repository regression
+    passed with go test -count=1 ./... all 14 packages ok (cmd/agora, internal/agent, internal/autogen, internal/cast,
+    internal/config, internal/evidence, internal/ledger, internal/llmutil, internal/orchestrator, internal/output,
+    internal/session, internal/synthesis, internal/transcript, internal/types). Focused new-test verification passed
+    with go test -count=1 -run 'TestLedger|TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled' -v
+    ./internal/orchestrator/... ./cmd/agora/...: TestLedgerRoundBoundaryUpdate/pass PASS (AC2 round-boundary update
+    success — first agent of round 2 envelope contains *DebateLedger with Round=1),
+    TestLedgerRoundBoundaryUpdate/fail_updater_returns_error_skips_set_and_runs_to_completion PASS (round-boundary
+    fail — malformed JSON yields parse err logged to stderr, run continues to max_turns (4), currentLedger stays nil),
+    TestLedgerRound0Empty/pass_two_agents_one_turn_no_update PASS (AC1 round-0 empty success — currentLedger stays
+    nil before any round completes), TestLedgerRound0Empty/fail_four_agents_three_turns_no_round_complete_no_update
+    PASS (round-0 fail — 4 agents / MaxTurns=3 never completes a round, no ledger-updater calls, no envelope ledger),
+    TestLedgerMidRoundInterrupt/pass_halt_mid_round_2_keeps_round_1_ledger_no_partial PASS (AC3 mid-round-interrupt
+    success — 3 agents / MaxTurns=5, round 1 completes after turn 2, runner was called once for ledger-updater,
+    currentLedger.Round=1 reflecting only the completed round), TestLedgerMidRoundInterrupt/fail_max_turns_below_round_size_no_update
+    PASS (mid-round-interrupt fail — MaxTurns<round-size produces zero ledger-updater calls and nil currentLedger),
+    TestLedgerDryRunPlaceholder/pass_real_dry_run_runner_takes_update_dry_run_path PASS (AC4 dry-run placeholder success
+    — *agent.AgentRunner.IsDryRun routes through UpdateDryRun which leaves UpdatedAt=0 and produces deterministic
+    Round=1 with 2 positions, run never calls runner.Run for the "ledger-updater" agent ID),
+    TestLedgerDryRunPlaceholder/fail_non_dry_run_runner_takes_real_update_path_runner_invoked PASS (dry-run fail —
+    non-dry-run recording runner produces real-path calls for "ledger-updater", UpdatedAt set to time.Now().Unix()
+    by Update), TestLedgerDisableFlagSkipsUpdate/pass_disabled_suppresses_updater_call_and_envelope_inject PASS (AC5
+    disable-flag success — LedgerUpdateEnabled=&false suppresses all ledger-updater runner calls and all envelope ledger
+    injections), TestLedgerDisableFlagSkipsUpdate/fail_default_enabled_triggers_updater_call_post_round PASS (disable-flag
+    fail — default-enabled (nil) triggers ≥1 ledger-updater call per completed round). The optional AC6-triple
+    TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled PASS exercised the literal three-layer precedence
+    (CLI --no-ledger=true, config.Ledger=&true, settings.DefaultLedgerEnabled=&true → resolved=false; CLI wins
+    simultaneously over config-enable AND settings-enable). gofmt clean. Diff hygiene clean with git diff --check.
+  next: >-
+    Task 4 is complete. Task 5 (depends on Tasks 1 and 4) persists ledger records to the transcript via the typed
+    LedgerRecord sentinel (Turn=LedgerSentinelTurn=-3, AgentID=LedgerAgentID="ledger") after each completed round, then
+    teaches the show/resume transcript loaders to read and replay them. Task 6 (depends on Tasks 1-5) is the final
+    state sync: version bump, CHANGELOG/DECISIONS/TODO updates. Do NOT proceed to Task 5 from this cycle.
+  context:
+    intent: implement only Task 4 wire the ledger updater into the orchestrator Run loop so an update fires after each completed agent round
+    constraints: do not persist ledger records to transcript (Task 5), do not touch show/resume loaders (Task 5), do not add CLI flags (Task 3 already wired --no-ledger), orchestrator triggers but must not compose prompts from ledger contents (Decision 1), use the existing synthesizeModel() meta-model resolution, match collectEvidence activity-bracket pattern and SetEvidenceCollector/NewPolicyCollector constructor pattern
+    scope: internal/orchestrator/orchestrator.go, internal/orchestrator/orchestrator_test.go, internal/session/session.go, cmd/agora/main_test.go, .agentera/plan.yaml, .agentera/progress.yaml
 - number: 62
   timestamp: "2026-07-07 23:12"
   type: implementation

@@ -134,7 +134,7 @@ tasks:
   - number: 4
     name: "Update ledger per round through orchestrator round lifecycle"
     depends_on: ["2", "3"]
-    status: pending
+    status: complete
     acceptance:
       - "GIVEN a deliberation begins with an opening round WHEN the first agent in the round finishes its turn THEN no ledger update has been triggered yet and the ledger is empty"
       - "GIVEN an in-progress round WHEN the last agent in the round finishes its turn THEN a ledger update runs before any agent in the next round takes its turn"
