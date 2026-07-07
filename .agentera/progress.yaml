@@ -1,4 +1,63 @@
 cycles:
+- number: 61
+  timestamp: "2026-07-07 23:05"
+  type: implementation
+  phase: build
+  what: >-
+    Completed Task 2 of the debate ledger plan by adding `internal/ledger/updater.go` and `internal/ledger/updater_test.go`, a new package
+    that produces a typed `types.DebateLedger` from the running deliberation transcript by delegating to the meta-model. The public
+    surface mirrors `evidence.NewPolicyCollector` and `synthesis.Synthesize` conventions: `NewUpdater(runner agent.Runner) *Updater`,
+    `Update(records, topic, model)` returning a typed ledger, `UpdateDryRun(records, topic)` returning a deterministic placeholder ledger
+    without model calls, the `DefaultSystemPrompt` constant whose JSON shape is the typed-state contract
+    ({round, positions[], agreements[], cruxes[], draft{status,text}}), and the `parseLedger(content)` helper that wraps
+    `llmutil.ExtractJSON` and `types.DebateLedger.Validate`. parseLedger returns a structured error on extract failure or validation
+    failure (including required-field-missing cases caught by Validate), never a silent empty or partial ledger. Plan `.agentera/plan.yaml`
+    Task 2 status flipped from `pending` to `complete`.
+  commit: pending
+  inspiration: >-
+    Task 2 of the debate ledger plan defines a mid-deliberation updater that is deliberately separate from the post-hoc synthesis agent
+    in `internal/synthesis`: the synthesis agent owns the essay-shape output contract
+    ({key_arguments, points_of_agreement, unresolved_tensions, recommended_decision, confidence}) written once after deliberation
+    completes, while the updater owns the typed-state-shape contract ({round, positions[], agreements[], cruxes[], draft{status,text}})
+    produced mid-deliberation after each completed round. Decision 1 (firm) requires the orchestrator to treat the ledger as opaque DATA
+    injected into the envelope and forbids composing prompts from ledger contents; Decision 6 (firm) requires transcripts to persist
+    typed state, not essay-shape JSON. The updater must not touch the orchestrator's `executeTurn` (Task 3 owns envelope injection) and
+    must not persist ledger records (Task 5 owns persistence).
+  discovered: >-
+    The Task 1 commit `fac3b14` had introduced the typed ledger domain types in `internal/types/types.go` (`DebateLedger`, `LedgerRecord`,
+    `AgentPosition`, `AgreementPoint`, `OpenCrux`, `DraftProposal`) plus the `NewDebateLedger`/`NewLedgerRecord` constructors and
+    `Validate()` methods, but had never committed `.agentera/plan.yaml` itself despite marking Task 1 complete in it. The plan file was
+    untracked in the working tree at Task 2 start. The existing `evidence.PolicyCollector` (`collector.go:166-197` `deriveResearchQueries`)
+    and `synthesis.synthesisEngine.synthesize` provided the canonical prompt-and-parse shape, and `agent.AgentRunner.dryRunResponse`
+    provided the deterministic-placeholder convention the `UpdateDryRun` method mirrors. `Validate()` accepts an empty ledger as a valid
+    initial state, so `parseLedger` returns a structured error only on ExtractJSON failure or Validate() failure rather than rejecting
+    legitimately-empty ledgers the meta-model might return.
+  verified: >-
+    Focused verification passed with `go test -count=1 -v ./internal/ledger/...`. Six tests passed (five AC-mapped tests plus a dry-run
+    test): `TestUpdaterProducesTypedLedger` (PASS, AC1 typed-ledger success) asserted the ledger parses with Round=1, two positions,
+    one agreement, one crux, Draft.Status=draft, Draft.Text="strict parse with fall-back load", UpdatedAt populated, runner captured
+    `ledger-updater` as agent.ID, ReadOnlyHint prefix on the prompt, and absence of the `key_arguments` essay-shape leak;
+    `TestUpdaterSurfacesAgreements` (PASS, AC2) asserted `len(ledger.Agreements) > 0` when the model returned an agreement point with
+    two endorsers; `TestUpdaterSurfacesCruxes` (PASS, AC3) asserted `len(ledger.Cruxes) > 0` with two views when the model returned an
+    unaddressed objection; `TestUpdaterRejectsMalformedOutput` (PASS, AC4 failure unit) is table-driven over four malformed cases —
+    non-JSON text yielding `parsing ledger JSON`, position missing agent_id yielding `agent_id must be non-empty`, draft with status but
+    no text yielding `draft with status`, negative round yielding `ledger round must be >= 0` — each returns a structured error and a nil
+    ledger, never an empty or partial ledger; `TestUpdaterDryRunIsDeterministic` (PASS) asserted two calls produce equal
+    Round/Positions/Draft.Status/UpdatedAt, positions derived deterministically from the latest record per active agent, draft set to
+    DraftStatusNone, and runner calls == 0; `TestSynthesisPathRetainsEssayShapeContract` (PASS, AC5) called `synthesis.Synthesize` with a
+    stub runner returning essay-shape JSON and asserted the returned map retains the `key_arguments` and `recommended_decision` keys and
+    lacks the `positions` and `round` ledger-shape keys, proving the two paths remain structurally separate. Build verification passed
+    with `go build ./...`. Vet verification passed with `go vet ./...`. gofmt reported no dirty files under `internal/ledger/`. Full
+    regression `go test -count=1 ./...` passed for all 14 packages including `internal/ledger`, `internal/synthesis`, `internal/types`,
+    and `internal/orchestrator`. Diff hygiene passed with `git diff --check`.
+  next: >-
+    Task 2 is complete; Task 3 owns per-turn envelope injection with the disable flag and must not be implemented here. Task 4 owns
+    orchestrator round-lifecycle wiring of the updater. Task 5 owns transcript persistence of ledger records. Task 6 owns version bump,
+    CHANGELOG/DECISIONS/TODO final state sync. No push to remote was performed.
+  context:
+    intent: implement only Task 2 mid-deliberation ledger updater as a separate path from post-hoc synthesis
+    constraints: new files only under `internal/ledger/`, do not modify `internal/synthesis/`, `internal/types/types.go`, or `internal/orchestrator/orchestrator.go`; never add inline code comments; structured error on malformed model output, never a silent empty ledger; meta-model injected via Update parameter so callers can resolve via EffectiveMetaModel(); do not push.
+    scope: internal/ledger/updater.go, internal/ledger/updater_test.go, .agentera/plan.yaml, .agentera/progress.yaml
 - number: 60
   timestamp: "2026-05-16 09:18"
   type: verification
@@ -679,7 +738,8 @@ cycles:
     TurnProgress always rendered unknownAgentBadge(record.AgentID) even though preview/header/final stats already used config-order agentBadge values. The CLI uses the same OutputManager instance for DeliberationHeader and subsequent orchestrator turn callbacks, so storing the cast mapping in the output manager is sufficient for normal run/resume paths without changing orchestrator callback signatures or transcript schema. Lipgloss theater panels used RoundedBorder even in plain mode, and the legacy drawPanel helper always emitted ANSI and Unicode box drawing.
   verified: >-
     go test ./internal/output passed; go test ./... passed; go build ./... passed; go vet ./... passed; NO_COLOR=1 TERM=dumb COLUMNS=80 go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic "final inspection badge smoke" --dry-run --yes --max-turns 2 --time 10 --verbose --synthesize --output /tmp/opencode/agora-final-inspection-smoke.jsonl > /tmp/opencode/agora-final-inspection-smoke.out completed; smoke output showed the Deliberation Start panel with ASCII +-| borders, Cast lines AGENT [A1 optimist] and AGENT [A2 skeptic], TURN 1/2 AGENT [A1 optimist], and TURN 2/2 AGENT [A2 skeptic]; ! rg -n $'\x1b\\[' /tmp/opencode/agora-final-inspection-smoke.out found no ANSI escapes; ! rg -n '^TURN .*\[A\?' /tmp/opencode/agora-final-inspection-smoke.out found no unknown badges on turn lines; ! rg -n '[╭╮╰╯─│┼]' /tmp/opencode/agora-final-inspection-smoke.out found no Unicode box drawing in the no-color/dumb smoke.
-  next: Return final-inspection recovery evidence; no commit or push was performed and .agentera/plan.yaml remains status: completed.
+  next: >-
+    Return final-inspection recovery evidence; no commit or push was performed and .agentera/plan.yaml remains status: completed.
   context:
     intent: satisfy final-inspection recovery only without broad output redesign or behavior/schema changes
     constraints: no commit, no push, preserve command flags, exit behavior, transcript schema, semantic data ordering, and error semantics
@@ -908,11 +968,13 @@ cycles:
   type: test
   phase: build
   what: Added OutputManager renderer tests for panels, tables, wrapping, config preview, stats output, and status methods.
-  commit: d956003 test(output): add terminal renderer coverage
+  commit: >-
+    d956003 test(output): add terminal renderer coverage
   inspiration: HEALTH.md Test D grade flagged OutputManager at 0% coverage
   discovered: visualLen counted bytes instead of runes, overestimating Unicode box/check glyph widths despite ignoring ANSI escapes.
   verified: go test ./internal/output/ - 7 tests pass; go test ./...; go build ./...; go vet ./...; go run ./cmd/agora --help; go test ./internal/output/ -cover = 67.3%
-  next: Remaining cleanup: tune auto mode caps from usage evidence and decompose executeTurn token/cost parsing.
+  next: >-
+    Remaining cleanup: tune auto mode caps from usage evidence and decompose executeTurn token/cost parsing.
   context:
     intent: close OutputManager coverage gap from TODO and HEALTH findings
     constraints: test-only scope except defects exposed by the renderer tests; preserve terminal output behavior
@@ -923,11 +985,13 @@ cycles:
   type: test
   phase: build
   what: Added SynthesisEngine and Orchestrator.Synthesize tests — extractJSON, formatTranscript, full engine flow, and wrapper.
-  commit: da105f0 test(orchestrator): add SynthesisEngine and Synthesize tests
+  commit: >-
+    da105f0 test(orchestrator): add SynthesisEngine and Synthesize tests
   inspiration: HEALTH.md Test D grade flagged orchestrator core at 0% coverage
   discovered: The SynthesisEngine had zero test coverage despite being pure-function extractJSON and formatTranscript being trivially testable.
   verified: go test ./internal/orchestrator/ - 23 tests pass (7 new), go build ./... and go vet ./... pass
-  next: Remaining coverage gaps: OutputManager (0% coverage, 17 functions) and executeTurn decomposition (106 lines)
+  next: >-
+    Remaining coverage gaps: OutputManager (0% coverage, 17 functions) and executeTurn decomposition (106 lines)
   context:
     intent: close remaining orchestrator test gap flagged in HEALTH.md Test D
     constraints: follow existing test patterns (table-driven, mockRunner/seqMockRunner, newTestState helpers)
