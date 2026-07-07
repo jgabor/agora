@@ -145,7 +145,7 @@ tasks:
   - number: 5
     name: "Persist ledger to transcript for show and resume"
     depends_on: ["1", "4"]
-    status: pending
+    status: complete
     acceptance:
       - "GIVEN a deliberation reaches the end of a round WHEN the ledger is updated THEN a transcript record is appended capturing the new ledger in the typed ledger shape, not as essay-shape JSON"
       - "GIVEN a transcript opened with agora show WHEN ledger records are present THEN the ledger records appear in the order they occurred, distinct from agent turns and evidence records, and malformed ledger records fail loading strictly per the existing strict-loading contract"
