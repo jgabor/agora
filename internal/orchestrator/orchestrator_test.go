@@ -862,3 +862,107 @@ func TestOrchestratorSynthesize(t *testing.T) {
 		}
 	})
 }
+
+func TestExecuteTurnInjectsLedgerWhenSet(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_ledger.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := newTestState(cfg)
+
+	ledger := types.NewDebateLedger(1, 100.0)
+	ledger.Positions = []types.AgentPosition{
+		{AgentID: "agent-0", Text: "position 0", Turn: 0},
+		{AgentID: "agent-1", Text: "position 1", Turn: 1},
+	}
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+	o.SetCurrentLedger(ledger)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	if len(runner.envelopes) != 1 {
+		t.Fatalf("envelopes: got %d, want 1", len(runner.envelopes))
+	}
+	injected, ok := runner.envelopes[0]["ledger"].(*types.DebateLedger)
+	if !ok || injected == nil {
+		t.Fatalf("envelope ledger: got %#v, want injected *DebateLedger", runner.envelopes[0]["ledger"])
+	}
+	if injected.Round != 1 || len(injected.Positions) != 2 {
+		t.Fatalf("ledger content: got round=%d positions=%d, want round=1 positions=2", injected.Round, len(injected.Positions))
+	}
+}
+
+func TestExecuteTurnOmitsLedgerWhenDisabled(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_ledger_disabled.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := newTestState(cfg)
+	disabled := false
+	state.LedgerUpdateEnabled = &disabled
+
+	ledger := types.NewDebateLedger(1, 100.0)
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+	o.SetCurrentLedger(ledger)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	if _, hasLedger := runner.envelopes[0]["ledger"]; hasLedger {
+		t.Fatalf("envelope should not contain ledger when disabled: %#v", runner.envelopes[0])
+	}
+}
+
+func TestExecuteTurnOmitsLedgerWhenNil(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_ledger_nil.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := newTestState(cfg)
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	if _, hasLedger := runner.envelopes[0]["ledger"]; hasLedger {
+		t.Fatalf("envelope should not contain ledger when currentLedger is nil: %#v", runner.envelopes[0])
+	}
+}
+
+func TestExecuteTurnInjectsLedgerWhenEnabledExplicit(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_ledger_explicit.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := newTestState(cfg)
+	enabled := true
+	state.LedgerUpdateEnabled = &enabled
+
+	ledger := types.NewDebateLedger(0, 50.0)
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+	o.SetCurrentLedger(ledger)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	if _, hasLedger := runner.envelopes[0]["ledger"]; !hasLedger {
+		t.Fatalf("envelope should contain ledger when explicitly enabled: %#v", runner.envelopes[0])
+	}
+}

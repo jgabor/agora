@@ -8,8 +8,15 @@ func IsInternalAgent(agentID string) bool {
 }
 
 // HistoryForAgent builds the history envelope for the next agent turn
-// from the given records using the specified topology and window.
+// from the given records using the specified topology and window. For all
+// topologies, the agent's own immediately preceding turn is appended at most
+// once, deduplicated against the predecessor-history window.
 func HistoryForAgent(records []types.TurnRecord, agentID string, window int, topology types.Topology, numAgents int, turn int) []map[string]string {
+	history := historyForTopology(records, agentID, window, topology, numAgents, turn)
+	return appendSelfHistory(history, records, agentID, turn)
+}
+
+func historyForTopology(records []types.TurnRecord, agentID string, window int, topology types.Topology, numAgents int, turn int) []map[string]string {
 	switch topology {
 	case types.TopologyStar, types.TopologyMesh:
 		start := len(records) - window
@@ -56,6 +63,28 @@ func HistoryForAgent(records []types.TurnRecord, agentID string, window int, top
 		}
 		return history
 	}
+}
+
+func appendSelfHistory(history []map[string]string, records []types.TurnRecord, agentID string, turn int) []map[string]string {
+	for i := len(records) - 1; i >= 0; i-- {
+		r := records[i]
+		if r.Turn >= turn || r.Turn < 0 {
+			continue
+		}
+		if r.AgentID != agentID {
+			continue
+		}
+		for _, h := range history {
+			if h["agent_id"] == r.AgentID && h["content"] == r.Content {
+				return history
+			}
+		}
+		return append(history, map[string]string{
+			"agent_id": r.AgentID,
+			"content":  r.Content,
+		})
+	}
+	return history
 }
 
 func inferAgentOrder(records []types.TurnRecord, numAgents int) []string {

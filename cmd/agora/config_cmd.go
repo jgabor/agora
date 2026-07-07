@@ -102,6 +102,27 @@ var settingKeyDefs = []settingKeyDef{
 		},
 	},
 	{
+		Group:        "defaults",
+		Key:          "default_ledger_enabled",
+		Type:         "bool",
+		Description:  "enable per-round debate ledger injection (default: enabled)",
+		DefaultValue: "true",
+		Get: func(settings config.Settings) (string, bool) {
+			if settings.DefaultLedgerEnabled == nil {
+				return "", false
+			}
+			return strconv.FormatBool(*settings.DefaultLedgerEnabled), true
+		},
+		Set: func(settings *config.Settings, value string) error {
+			b, err := parseBool("default_ledger_enabled", value)
+			if err != nil {
+				return err
+			}
+			settings.DefaultLedgerEnabled = &b
+			return nil
+		},
+	},
+	{
 		Group:        "evidence",
 		Key:          "research_max_sources",
 		Type:         "positive integer",
@@ -394,4 +415,12 @@ func parsePositiveInt64(key, value string) (int64, error) {
 		return 0, fmt.Errorf("%s must be positive", key)
 	}
 	return n, nil
+}
+
+func parseBool(key, value string) (bool, error) {
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean (true/false): %w", key, err)
+	}
+	return b, nil
 }

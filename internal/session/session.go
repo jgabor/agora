@@ -35,6 +35,7 @@ type RunRequest struct {
 	FullContext  bool
 	DryRun       bool
 	Evidence     types.EvidenceRequest
+	Ledger       *bool
 	Synthesize   bool
 	Auto         *AutoCaps
 	TranscriptID int
@@ -123,16 +124,17 @@ func buildState(req RunRequest, existingTurns int) *types.DeliberationState {
 		turn = existingTurns
 	}
 	return &types.DeliberationState{
-		Config:          req.Config,
-		Topic:           req.Topic,
-		Window:          req.Window,
-		MaxTurns:        maxTurns,
-		TimeLimit:       req.TimeLimit,
-		Budget:          req.Budget,
-		FullContext:     req.FullContext,
-		Turn:            turn,
-		Evidence:        req.Evidence,
-		DeliverableGate: orchestrator.ParseDeliverableGate(req.Topic),
+		Config:              req.Config,
+		Topic:               req.Topic,
+		Window:              req.Window,
+		MaxTurns:            maxTurns,
+		TimeLimit:           req.TimeLimit,
+		Budget:              req.Budget,
+		FullContext:         req.FullContext,
+		Turn:                turn,
+		Evidence:            req.Evidence,
+		DeliverableGate:     orchestrator.ParseDeliverableGate(req.Topic),
+		LedgerUpdateEnabled: req.Ledger,
 	}
 }
 

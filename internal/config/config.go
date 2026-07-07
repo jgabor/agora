@@ -17,6 +17,7 @@ type rawConfig struct {
 	MinRounds          int                 `yaml:"min_rounds"`
 	SynthesisModel     *string             `yaml:"synthesis_model"`
 	Research           *bool               `yaml:"research"`
+	Ledger             *bool               `yaml:"ledger"`
 	Context            []string            `yaml:"context"`
 }
 
@@ -75,6 +76,7 @@ func loadConfigFromBytes(data []byte, settings Settings) (*types.DeliberationCon
 		ConsensusThreshold: raw.ConsensusThreshold,
 		MinRounds:          raw.MinRounds,
 		SynthesisModel:     raw.SynthesisModel,
+		Ledger:             raw.Ledger,
 		ContextPaths:       append([]string(nil), raw.Context...),
 	}
 	if raw.Research != nil {

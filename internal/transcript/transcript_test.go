@@ -204,11 +204,14 @@ func TestHistoryRingTopology(t *testing.T) {
 	}
 
 	history = HistoryForAgent(records, "a", 5, types.TopologyRing, 2, 2)
-	if len(history) != 1 {
-		t.Fatalf("turn 2 history: got %d, want 1", len(history))
+	if len(history) != 2 {
+		t.Fatalf("turn 2 history: got %d, want 2 (predecessor + self-history)", len(history))
 	}
 	if history[0]["agent_id"] != "b" {
-		t.Errorf("turn 2: expected b, got %q", history[0]["agent_id"])
+		t.Errorf("turn 2 first: expected predecessor b, got %q", history[0]["agent_id"])
+	}
+	if history[1]["agent_id"] != "a" || history[1]["content"] != "msg from a" {
+		t.Errorf("turn 2 self-history: got %q=%q, want a/msg from a", history[1]["agent_id"], history[1]["content"])
 	}
 }
 
@@ -224,14 +227,17 @@ func TestHistoryRingTopologyWindow(t *testing.T) {
 	}
 
 	history := HistoryForAgent(records, "a", 2, types.TopologyRing, 3, 6)
-	if len(history) != 2 {
-		t.Fatalf("history len: got %d, want 2", len(history))
+	if len(history) != 3 {
+		t.Fatalf("history len: got %d, want 3 (2 predecessor + 1 self-history)", len(history))
 	}
 	if history[0]["agent_id"] != "c" || history[0]["content"] != "c-0" {
 		t.Errorf("first: got %q=%q, want c/c-0", history[0]["agent_id"], history[0]["content"])
 	}
 	if history[1]["agent_id"] != "c" || history[1]["content"] != "c-1" {
 		t.Errorf("second: got %q=%q, want c/c-1", history[1]["agent_id"], history[1]["content"])
+	}
+	if history[2]["agent_id"] != "a" || history[2]["content"] != "a-1" {
+		t.Errorf("self-history: got %q=%q, want a/a-1", history[2]["agent_id"], history[2]["content"])
 	}
 }
 
@@ -286,6 +292,107 @@ func TestHistoryRingEmptyTurn0(t *testing.T) {
 	history := HistoryForAgent(records, "a", 5, types.TopologyRing, 2, 0)
 	if len(history) != 0 {
 		t.Errorf("empty history for no records: got %d, want 0", len(history))
+	}
+}
+
+func TestSelfHistoryAppendedAcrossAllTopologies(t *testing.T) {
+	records := []types.TurnRecord{
+		mkRecord(-1, "moderator", "seed", false, ""),
+		mkRecord(0, "analyst", "first position", false, ""),
+		mkRecord(1, "critic", "reply", false, ""),
+		mkRecord(2, "analyst", "revised position", false, ""),
+		mkRecord(3, "critic", "second reply", false, ""),
+	}
+
+	for _, tc := range []struct {
+		name      string
+		topology  types.Topology
+		numAgents int
+		turn      int
+	}{
+		{"ring", types.TopologyRing, 2, 4},
+		{"star", types.TopologyStar, 2, 4},
+		{"mesh", types.TopologyMesh, 2, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			history := HistoryForAgent(records, "analyst", 2, tc.topology, tc.numAgents, tc.turn)
+			var ownEntry map[string]string
+			for _, h := range history {
+				if h["agent_id"] == "analyst" {
+					ownEntry = h
+					break
+				}
+			}
+			if ownEntry == nil {
+				t.Fatalf("analyst own turn missing from %s history: %#v", tc.name, history)
+			}
+			if ownEntry["content"] != "revised position" {
+				t.Errorf("own turn content: got %q, want %q (most recent only)", ownEntry["content"], "revised position")
+			}
+		})
+	}
+}
+
+func TestSelfHistoryDeduplicatedAgainstPredecessorWindow(t *testing.T) {
+	records := []types.TurnRecord{
+		mkRecord(-1, "moderator", "seed", false, ""),
+		mkRecord(0, "a", "a-0", false, ""),
+		mkRecord(1, "b", "b-0", false, ""),
+		mkRecord(2, "a", "a-1", false, ""),
+		mkRecord(3, "b", "b-1", false, ""),
+	}
+
+	history := HistoryForAgent(records, "a", 10, types.TopologyStar, 2, 4)
+	ownCount := 0
+	for _, h := range history {
+		if h["agent_id"] == "a" && h["content"] == "a-1" {
+			ownCount++
+		}
+	}
+	if ownCount != 1 {
+		t.Fatalf("self-history dedup: got %d own-turn entries, want 1 (history: %#v)", ownCount, history)
+	}
+}
+
+func TestSelfHistoryMostRecentOnly(t *testing.T) {
+	records := []types.TurnRecord{
+		mkRecord(-1, "moderator", "seed", false, ""),
+		mkRecord(0, "a", "oldest own turn", false, ""),
+		mkRecord(1, "b", "b-0", false, ""),
+		mkRecord(2, "a", "middle own turn", false, ""),
+		mkRecord(3, "b", "b-1", false, ""),
+		mkRecord(4, "a", "most recent own turn", false, ""),
+		mkRecord(5, "b", "b-2", false, ""),
+	}
+
+	history := HistoryForAgent(records, "a", 5, types.TopologyRing, 2, 6)
+	ownCount := 0
+	ownContent := ""
+	for _, h := range history {
+		if h["agent_id"] == "a" {
+			ownCount++
+			ownContent = h["content"]
+		}
+	}
+	if ownCount != 1 {
+		t.Fatalf("self-history count: got %d own-turn entries, want 1 (history: %#v)", ownCount, history)
+	}
+	if ownContent != "most recent own turn" {
+		t.Errorf("self-history content: got %q, want %q", ownContent, "most recent own turn")
+	}
+}
+
+func TestSelfHistoryAbsentWhenNoPriorOwnTurn(t *testing.T) {
+	records := []types.TurnRecord{
+		mkRecord(-1, "moderator", "seed", false, ""),
+		mkRecord(0, "a", "first turn", false, ""),
+	}
+
+	history := HistoryForAgent(records, "b", 5, types.TopologyRing, 2, 1)
+	for _, h := range history {
+		if h["agent_id"] == "b" {
+			t.Fatalf("unexpected self-history for b with no prior turns: %#v", history)
+		}
 	}
 }
 

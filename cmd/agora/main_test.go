@@ -752,6 +752,70 @@ func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
 	}
 }
 
+func TestResolveLedgerPolicyCLIDisablesOverConfigEnable(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-ledger", false, "No ledger")
+	if err := cmd.Flags().Set("no-ledger", "true"); err != nil {
+		t.Fatalf("set no-ledger: %v", err)
+	}
+	cfg := &types.DeliberationConfig{}
+	enabled := true
+	cfg.Ledger = &enabled
+
+	resolved := resolveLedgerPolicy(cmd, cfg, config.Settings{})
+	if resolved == nil {
+		t.Fatal("resolved: got nil, want false pointer (CLI override)")
+	}
+	if *resolved {
+		t.Fatal("resolved: got true, want false (CLI --no-ledger wins over config-enabled)")
+	}
+}
+
+func TestResolveLedgerPolicyConfigDisablesOverSettingsEnable(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-ledger", false, "No ledger")
+	cfg := &types.DeliberationConfig{}
+	disabled := false
+	cfg.Ledger = &disabled
+	settingsEnabled := true
+	settings := config.Settings{DefaultLedgerEnabled: &settingsEnabled}
+
+	resolved := resolveLedgerPolicy(cmd, cfg, settings)
+	if resolved == nil {
+		t.Fatal("resolved: got nil, want false pointer (config override)")
+	}
+	if *resolved {
+		t.Fatal("resolved: got true, want false (config-disabled wins over settings-enabled)")
+	}
+}
+
+func TestResolveLedgerPolicySettingsDisablesOverDefaultEnable(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-ledger", false, "No ledger")
+	cfg := &types.DeliberationConfig{}
+	settingsDisabled := false
+	settings := config.Settings{DefaultLedgerEnabled: &settingsDisabled}
+
+	resolved := resolveLedgerPolicy(cmd, cfg, settings)
+	if resolved == nil {
+		t.Fatal("resolved: got nil, want false pointer (settings override)")
+	}
+	if *resolved {
+		t.Fatal("resolved: got true, want false (settings-disabled wins over default-enabled)")
+	}
+}
+
+func TestResolveLedgerPolicyAllUnsetReturnsNil(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-ledger", false, "No ledger")
+	cfg := &types.DeliberationConfig{}
+
+	resolved := resolveLedgerPolicy(cmd, cfg, config.Settings{})
+	if resolved != nil {
+		t.Fatalf("resolved: got %v, want nil (enabled by default when all layers unset)", *resolved)
+	}
+}
+
 func TestParseTranscriptFilename(t *testing.T) {
 	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
 	if !ok {
@@ -2041,7 +2105,7 @@ func assertJSONNoANSI(t *testing.T, out string) {
 func configureRunGlobals(configPath, outputPath string) func() {
 	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output
 	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext := runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext
-	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldContext := runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.Context
+	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoLedger, oldContext := runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoLedger, runFlags.Context
 
 	runFlags.Config = configPath
 	runFlags.Topic = "artifact resolution"
@@ -2061,19 +2125,20 @@ func configureRunGlobals(configPath, outputPath string) func() {
 	runFlags.Yes = true
 	runFlags.Research = false
 	runFlags.NoResearch = false
+	runFlags.NoLedger = false
 	runFlags.Context = nil
 
 	return func() {
 		runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
 		runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext
-		runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.Context = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldContext
+		runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoLedger, runFlags.Context = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoLedger, oldContext
 	}
 }
 
 func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
 	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output
 	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun := resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun
-	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldContext := resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.Context
+	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoLedger, oldContext := resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoLedger, resumeFlags.Context
 
 	resumeFlags.Config = configPath
 	resumeFlags.Topic = "artifact resolution"
@@ -2093,12 +2158,13 @@ func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
 	resumeFile = sourcePath
 	resumeFlags.Research = false
 	resumeFlags.NoResearch = false
+	resumeFlags.NoLedger = false
 	resumeFlags.Context = nil
 
 	return func() {
 		resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
 		resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun
-		resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.Context = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldContext
+		resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoLedger, resumeFlags.Context = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoLedger, oldContext
 	}
 }
 

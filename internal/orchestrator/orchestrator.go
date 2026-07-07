@@ -39,6 +39,7 @@ type Orchestrator struct {
 	consensusStreak int
 	sharedEvidence  *types.EvidenceBundle
 	evidenceSent    map[string]bool
+	currentLedger   *types.DebateLedger
 }
 
 // NewOrchestrator creates a new Orchestrator.
@@ -55,6 +56,11 @@ func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptMa
 // SetEvidenceCollector registers a pre-deliberation evidence collector.
 func (o *Orchestrator) SetEvidenceCollector(collector evidence.Collector) {
 	o.evidence = collector
+}
+
+// SetCurrentLedger sets the most recent ledger injected into each agent turn.
+func (o *Orchestrator) SetCurrentLedger(ledger *types.DebateLedger) {
+	o.currentLedger = ledger
 }
 
 // OnTurn registers a callback invoked after each agent turn.
@@ -273,6 +279,9 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		envelope["evidence"] = o.sharedEvidence
 		o.evidenceSent[ag.ID] = true
 	}
+	if o.currentLedger != nil && ledgerEnabled(o.state.LedgerUpdateEnabled) {
+		envelope["ledger"] = o.currentLedger
+	}
 
 	if o.state.FullContext {
 		records := o.transcript.Records()
@@ -331,4 +340,11 @@ func (o *Orchestrator) setupSignalHandler() {
 		o.state.HaltedBy = "user_interrupt"
 		_ = o.transcript.WriteAll()
 	}()
+}
+
+func ledgerEnabled(v *bool) bool {
+	if v == nil {
+		return true
+	}
+	return *v
 }

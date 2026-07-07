@@ -273,6 +273,79 @@ agents:
 	}
 }
 
+func TestLoadConfigLedgerExplicitTrue(t *testing.T) {
+	yaml := `
+ledger: true
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Ledger == nil {
+		t.Fatal("Ledger: got nil, want &true")
+	}
+	if !*cfg.Ledger {
+		t.Fatal("Ledger: got &false, want &true")
+	}
+}
+
+func TestLoadConfigLedgerExplicitFalse(t *testing.T) {
+	yaml := `
+ledger: false
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Ledger == nil {
+		t.Fatal("Ledger: got nil, want &false")
+	}
+	if *cfg.Ledger {
+		t.Fatal("Ledger: got &true, want &false")
+	}
+}
+
+func TestLoadConfigLedgerUnsetReturnsNil(t *testing.T) {
+	yaml := `
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Ledger != nil {
+		t.Fatalf("Ledger: got %v, want nil (unset)", *cfg.Ledger)
+	}
+}
+
+func TestLoadConfigLedgerMalformedValueFails(t *testing.T) {
+	yaml := `
+ledger: not-a-boolean
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for malformed ledger value")
+	}
+	if !strings.Contains(err.Error(), "parsing config YAML") {
+		t.Errorf("error: got %q, want YAML parse error", err.Error())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Validation errors
 // ---------------------------------------------------------------------------

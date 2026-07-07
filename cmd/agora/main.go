@@ -62,6 +62,7 @@ type runFlagValues struct {
 	Yes         bool
 	Research    bool
 	NoResearch  bool
+	NoLedger    bool
 	Context     []string // local text context paths (repeatable)
 }
 
@@ -163,6 +164,7 @@ var runCmd = &cobra.Command{
 		}
 		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
 		evidenceRequest := evidence.ResolveRequest(cfg, settings.ResearchMaxSources, settings.ContextMaxBytes, settings.ContextMaxDepth, evidenceOverrides)
+		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, settings)
 
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 		req := session.RunRequest{
@@ -176,6 +178,7 @@ var runCmd = &cobra.Command{
 			FullContext:  runFlags.FullContext,
 			DryRun:       runFlags.DryRun,
 			Evidence:     evidenceRequest,
+			Ledger:       ledgerPolicy,
 			Synthesize:   runSynthesize || autoMode,
 			TranscriptID: generateTranscriptID(),
 		}
@@ -264,6 +267,20 @@ func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLev
 		overrides.Defaults = evidence.DefaultsForAutoLevel(level)
 	}
 	return overrides
+}
+
+func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, settings config.Settings) *bool {
+	if cmd.Flags().Changed("no-ledger") {
+		disabled := false
+		return &disabled
+	}
+	if cfg.Ledger != nil {
+		return cfg.Ledger
+	}
+	if settings.DefaultLedgerEnabled != nil {
+		return settings.DefaultLedgerEnabled
+	}
+	return nil
 }
 
 func resumeEvidenceRequestChanged(cmd *cobra.Command) bool {
@@ -727,6 +744,12 @@ var resumeCmd = &cobra.Command{
 			budget = &resumeFlags.Budget
 		}
 
+		settings, err := config.LoadDefaultSettings()
+		if err != nil {
+			return err
+		}
+		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, settings)
+
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
 		req := session.ResumeRequest{
 			RunRequest: session.RunRequest{
@@ -739,6 +762,7 @@ var resumeCmd = &cobra.Command{
 				Budget:      budget,
 				FullContext: resumeFlags.FullContext,
 				DryRun:      resumeFlags.DryRun,
+				Ledger:      ledgerPolicy,
 				Synthesize:  runSynthesize || autoMode,
 			},
 			SourceRecords: sourceRecords,
@@ -786,6 +810,7 @@ func sharedRunFlags(cmd *cobra.Command, prefix string) {
 	budgetDesc := "Cost cap in dollars"
 	researchDesc := "Enable topic-inferred web research before deliberation"
 	noResearchDesc := "Disable config-enabled web research for this run"
+	noLedgerDesc := "Disable per-round debate ledger injection for this run"
 	contextDesc := "Local text context path to include before deliberation (repeatable)"
 
 	if prefix == "resume" {
@@ -818,6 +843,7 @@ func sharedRunFlags(cmd *cobra.Command, prefix string) {
 	cmd.Flags().BoolVar(&v.Yes, "yes", false, "Skip preview confirmation prompt")
 	cmd.Flags().BoolVar(&v.Research, "research", false, researchDesc)
 	cmd.Flags().BoolVar(&v.NoResearch, "no-research", false, noResearchDesc)
+	cmd.Flags().BoolVar(&v.NoLedger, "no-ledger", false, noLedgerDesc)
 	cmd.Flags().StringArrayVar(&v.Context, "context", nil, contextDesc)
 }
 

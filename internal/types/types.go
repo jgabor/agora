@@ -152,6 +152,7 @@ type DeliberationConfig struct {
 	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
 	MetaModel          *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
 	ResearchEnabled    bool          `yaml:"research" json:"research"`
+	Ledger             *bool         `yaml:"ledger,omitempty" json:"ledger,omitempty"`
 	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
 }
 
@@ -187,6 +188,10 @@ func CloneDeliberationConfig(cfg *DeliberationConfig) *DeliberationConfig {
 		}
 	}
 	clone.ContextPaths = append([]string(nil), cfg.ContextPaths...)
+	if cfg.Ledger != nil {
+		v := *cfg.Ledger
+		clone.Ledger = &v
+	}
 	if cfg.SynthesisModel != nil {
 		model := *cfg.SynthesisModel
 		clone.SynthesisModel = &model
@@ -343,6 +348,7 @@ type DeliberationState struct {
 	HaltedBy             string
 	FinalConsensusStreak int
 	DeliverableGate      *DeliverableGate
+	LedgerUpdateEnabled  *bool
 }
 
 // EvidenceRequest captures the resolved pre-deliberation evidence policy.
