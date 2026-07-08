@@ -253,11 +253,14 @@ func (o *Orchestrator) updateLedgerIfRoundComplete() {
 		return
 	}
 
+	round := (o.state.Turn + 1) / o.numAgents
+
 	stop := o.activity("Ledger Update")
 	defer stop()
 
 	if o.isDryRun() {
 		ledger := o.ledgerUpdater.UpdateDryRun(o.transcript.Records(), o.state.Topic)
+		ledger.Round = round
 		o.SetCurrentLedger(ledger)
 		persistLedgerRecord(o.transcript, ledger)
 		return
@@ -268,6 +271,7 @@ func (o *Orchestrator) updateLedgerIfRoundComplete() {
 		fmt.Fprintf(os.Stderr, "ledger update: %v\n", err)
 		return
 	}
+	ledger.Round = round
 	o.SetCurrentLedger(ledger)
 	persistLedgerRecord(o.transcript, ledger)
 }

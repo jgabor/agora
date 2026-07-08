@@ -1022,8 +1022,8 @@ func TestLedgerRoundBoundaryUpdate(t *testing.T) {
 		if state.HaltedBy != "max_turns (4)" {
 			t.Fatalf("HaltedBy: got %q, want max_turns (4)", state.HaltedBy)
 		}
-		if o.currentLedger == nil || o.currentLedger.Round != 1 {
-			t.Fatalf("currentLedger: got %+v, want Round=1 after round-boundary update", o.currentLedger)
+		if o.currentLedger == nil || o.currentLedger.Round != 2 {
+			t.Fatalf("currentLedger: got %+v, want Round=2 after second round-boundary update (MaxTurns=4, 2 agents = 2 full rounds)", o.currentLedger)
 		}
 		if len(runner.envelopes) < 4 {
 			t.Fatalf("runner envelopes: got %d, want at least 4", len(runner.envelopes))
@@ -1181,7 +1181,7 @@ func TestLedgerDryRunPlaceholder(t *testing.T) {
 			t.Fatal("currentLedger: got nil, want non-nil (dry-run path should be detected via *agent.AgentRunner.IsDryRun)")
 		}
 		if o.currentLedger.Round != 1 {
-			t.Errorf("Round: got %d, want 1 (UpdateDryRun derives Round from last transcript turn after one completed round)", o.currentLedger.Round)
+			t.Errorf("Round: got %d, want 1 (orchestrator stamps authoritative round after UpdateDryRun returns)", o.currentLedger.Round)
 		}
 		if len(o.currentLedger.Positions) != 2 {
 			t.Fatalf("Positions: got %d, want 2 (UpdateDryRun derives positions from latest record per active agent)", len(o.currentLedger.Positions))

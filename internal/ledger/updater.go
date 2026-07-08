@@ -114,11 +114,12 @@ func (u *Updater) Update(records []types.TurnRecord, topic, model string) (*type
 // typed-state shape, and stays stable across repeated calls on the same
 // records so downstream envelope injection is uniform across live and
 // dry-run deliberations. Positions are derived deterministically from the
-// most recent record per active agent; UpdatedAt is left at zero for
-// determinism (callers stamp it on persist if needed).
+// most recent record per active agent. Round is left at zero (unstamped)
+// because the orchestrator is the authoritative source of round numbering
+// and stamps the value after receiving the ledger; UpdatedAt is left at
+// zero for determinism (callers stamp it on persist if needed).
 func (u *Updater) UpdateDryRun(records []types.TurnRecord, topic string) *types.DebateLedger {
 	return &types.DebateLedger{
-		Round:     lastRound(records),
 		Positions: latestPositions(records),
 		Draft:     types.DraftProposal{Status: types.DraftStatusNone},
 	}
@@ -160,16 +161,6 @@ func nonModeratorTurnCount(records []types.TurnRecord) int {
 		}
 	}
 	return count
-}
-
-func lastRound(records []types.TurnRecord) int {
-	max := 0
-	for _, r := range records {
-		if r.Turn > max {
-			max = r.Turn
-		}
-	}
-	return max
 }
 
 func latestPositions(records []types.TurnRecord) []types.AgentPosition {

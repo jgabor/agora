@@ -226,8 +226,8 @@ func TestUpdaterDryRunIsDeterministic(t *testing.T) {
 	if stub.calls != 0 {
 		t.Fatalf("runner calls: got %d, want 0 for dry-run", stub.calls)
 	}
-	if first.Round != 1 || second.Round != 1 {
-		t.Errorf("Round: got first=%d second=%d, want 1", first.Round, second.Round)
+	if first.Round != 0 || second.Round != 0 {
+		t.Errorf("Round: got first=%d second=%d, want 0 (orchestrator stamps authoritative round; UpdateDryRun leaves it unstamped)", first.Round, second.Round)
 	}
 	if len(first.Positions) != 2 || len(second.Positions) != 2 {
 		t.Fatalf("Positions: got first=%d second=%d, want 2 agent positions", len(first.Positions), len(second.Positions))
