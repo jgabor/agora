@@ -228,4 +228,135 @@ audits:
     improved: Cycle 39 now follows cycle 38 in both number and timestamp, and cycle 40 records the cleanup.
   patterns:
   - Completed plan artifacts are ordered newest-first with monotonically decreasing timestamps.
+- number: 4
+  date: '2026-07-08'
+  dimensions:
+  - Architecture
+  - Patterns
+  - Coupling
+  - Complexity
+  - Tests
+  - Deps
+  - Versions
+  - Artifacts
+  - Prose
+  - Security
+  findings_summary:
+    critical: 0
+    warning: 3
+    info: 5
+    filtered_by_confidence: 0
+  trajectory: 'improving — high-B (5 A, 5 B, 0 C/D/F) vs Audit #1''s B-with-test-D. Debate-ledger subsystem ships clean; module-path warning resolved; test coverage up sharply. Held back by a dead-code redundancy, a stale docs registry, and two bonus follow-up latent bugs documented-not-fixed.'
+  grades: {}
+  overall_grade: B+
+  scope: 'Post-plan health audit across the 8 Debate-Ledger commits (fac3b14..d9aa36f) plus the archived plan. Focus: new ledger subsystem (internal/ledger, types, orchestrator wiring, transcript persistence, resume seeding, --no-ledger precedence) against Decisions 1, 6, and 10.'
+  dimension_details:
+  - name: Architecture Alignment
+    grade: B
+    summary: 'Decisions 1, 6, and 10 are respected: the orchestrator injects ledger as typed *types.DebateLedger DATA into the envelope (executeTurn: envelope["ledger"] = o.currentLedger) and never composes prompts from ledger contents; transcripts persist the typed *DebateLedger pointer (sibling to Evidence), not a JSON-stringified essay; the separate updater path is guarded by TestSynthesisPathRetainsEssayShapeContract. One real typed-state correctness defect and one CLI precedence edge case prevent an A.'
+    findings:
+    - heading: '⇉ Updater.Round ships max(turn) not the round counter, warning (confidence: 85/100)'
+      severity: warning
+      confidence: 85
+      location: internal/ledger/updater.go:121,165-173
+      evidence: UpdateDryRun sets Round = lastRound(records) = max(turn), so across multi-round dry-runs round N's snapshot records the highest turn index rather than the round number. Cycle 65's own verified field shows round 2's snapshot rendered as "Ledger Round 3" (max turn index 3). The value is monotonic but semantically wrong for the typed round field.
+      impact: Agents receive a ledger whose Round field disagrees with the actual deliberation round; resume/show render rounds off-by-one or more. Typed-state contract is correct by shape but wrong by value.
+      suggested_action: Derive Round from the completed-round count in updateLedgerIfRoundComplete (or pass a round counter into UpdateDryRun/Update) instead of max(turn). Add a test that asserts the persisted Round equals the round index.
+    - heading: '⇢ --no-ledger=false disables the ledger instead of re-enabling it, info (confidence: 80/100)'
+      severity: info
+      confidence: 80
+      location: cmd/agora/main.go:272-284
+      evidence: resolveLedgerPolicy gates on cmd.Flags().Changed ("no-ledger") and returns disabled=false whenever the flag is present, ignoring its value. So --no-ledger=false (explicitly NOT disabling) resolves to disabled rather than falling through to config/settings default-on.
+      impact: 'A user passing --no-ledger=false to override a config-disable gets the opposite: the ledger stays off. Obscure because the documented form is bare --no-ledger, but it inverts the stated CLI > config > settings precedence for the =false case.'
+      suggested_action: 'Gate on the flag value too: if cmd.Flags().Changed("no-ledger") && v.NoLedger. Add a test for the --no-ledger=false override-enable case.'
+  - name: Pattern Consistency
+    grade: B
+    summary: 'New code follows house patterns (New*/Set*/Clone* constructors, %w wrapping, dual YAML+JSON tags, Validate() methods, camelCase). One DRY/YAGNI violation: a parallel LedgerRecord family built in Task 1 was superseded by Task 5''s TurnRecord.Ledger persistence path and left in place, dead in production.'
+    findings:
+    - heading: '⇉ LedgerRecord/NewLedgerRecord/CloneLedgerRecord are dead in production, warning (confidence: 90/100)'
+      severity: warning
+      confidence: 90
+      location: internal/types/types.go:610-668
+      evidence: The orchestrator persists ledger snapshots directly onto TurnRecord.Ledger via persistLedgerRecord (orchestrator.go:281-295), not via NewLedgerRecord. A repository-wide grep finds LedgerRecord/NewLedgerRecord/CloneLedgerRecord referenced only in types_test.go and the package doc comment, never in production code paths.
+      impact: ~50 lines of unused production code that duplicate the ledger-snapshot concept with a value (Ledger DebateLedger) where TurnRecord uses a pointer (*DebateLedger). Future maintainers may wire the dead type thinking it is the persistence path.
+      suggested_action: Delete LedgerRecord, NewLedgerRecord, CloneLedgerRecord, and LedgerRecord.Validate (keep their tests only if reinvented as TurnRecord.Ledger clone tests), or wire NewLedgerRecord into persistLedgerRecord. Fix the package doc that references LedgerRecord as the persistence type.
+  - name: Coupling Health
+    grade: A
+    summary: 'internal/ledger is a clean leaf: it imports only agent, llmutil, and types. The orchestrator adds a single new import (ledger) with no reverse dependency and no cycles. session wires ledger the same way it wires evidence (NewUpdater mirroring NewPolicyCollector). No god modules, no inappropriate intimacy.'
+    findings: []
+  - name: Complexity Hotspots
+    grade: B
+    summary: 'No accidental complexity. updateLedgerIfRoundComplete (orchestrator.go:242-273) is ~32 lines of flat guard clauses and a clean dry/real branch; persistLedgerRecord (281-295) is a small clone-and-append. executeTurn shrank from Audit #1''s 106 to ~70 lines but still inlines envelope assembly and token/cost extraction.'
+    findings:
+    - heading: '⇢ executeTurn still inlines envelope assembly and token/cost extraction, info (confidence: 70/100)'
+      severity: info
+      confidence: 70
+      location: internal/orchestrator/orchestrator.go:349-418
+      evidence: 'executeTurn builds the envelope (topic/history/evidence/ledger/fullContext), runs the agent, extracts consensus, and extracts token/cost in one function. Improved from Audit #1 (106 -> ~70 lines) but the prior extraction suggestion is only partially addressed.'
+      impact: Marginal testability/coupling risk; a token-parsing change can touch record construction. Low because the function is now well within acceptable length.
+      suggested_action: Extract an envelope-assembly helper and a token/cost extraction helper if a future change touches either.
+  - name: Test Health
+    grade: A
+    summary: 'Major improvement over Audit #1''s D (orchestrator 0%, output 0%). go test -count=1 -cover ./... passes all 14 packages; coverage now ledger 92.0%, orchestrator 86.2%, transcript 86.8%, session 88.0%, types 80.8%, output 71.9%. Tests are behavior-oriented (PASS+FAIL pairs, table-driven). Two documented test-quality caveats.'
+    findings:
+    - heading: '⇢ AC4 dry-run test infers no-Run via UpdatedAt==0, not a fail-on-Run sentinel, info (confidence: 85/100)'
+      severity: info
+      confidence: 85
+      location: internal/orchestrator/orchestrator_test.go:1167-1191; cycle 63 verified
+      evidence: TestLedgerDryRunPlaceholder/pass asserts currentLedger.UpdatedAt == 0 to conclude the dry-run path was taken. Cycle 63's verified field claimed the run "never calls runner.Run for the ledger-updater agent ID" but that was inferred from UpdatedAt==0, not a fail-on-Run sentinel.
+      impact: The orchestrator integration test is weaker than the ledger package's own TestUpdaterDryRunIsDeterministic (which does use an error-on-Run sentinel). Verification honesty gap, not a code defect; cycle 65 documents it.
+      suggested_action: Add an orchestrator-level AC4 variant using a runner that errors on Run for the ledger-updater agent ID, asserting the error never fires for the dry-run path.
+  - name: Dependency Health
+    grade: A
+    summary: 'go.mod is byte-for-byte unchanged across the plan (git diff fac3b14~1 d9aa36f -- go.mod is empty). No new dependencies were added, as the plan required. The Audit #1 module-path warning is now resolved: module is github.com/jgabor/agora.'
+    findings: []
+  - name: Version Health
+    grade: A
+    summary: 'Version bumped 0.3.0 -> 0.4.0 in cmd/agora/main.go:26 (var version = "0.4.0") and recorded in CHANGELOG.md [0.4.0] - 2026-07-07, matching the docs.yaml feat-minor policy for the two feat: commits (Tasks 2 and 3). The binary --version reports 0.4.0.'
+    findings: []
+  - name: Artifact Freshness
+    grade: B
+    summary: 'decisions.yaml, progress.yaml (cycle 65), CHANGELOG.md, TODO.md, session.yaml, and the archived plan are freshly updated and mutually consistent. .agentera/docs.yaml is stale: it still labels the last audit 2026-06-15 and the changelog index entry 2026-06-15, missing the 0.4.0 release.'
+    findings:
+    - heading: '⇉ docs.yaml not refreshed for the 0.4.0 release, warning (confidence: 88/100)'
+      severity: warning
+      confidence: 88
+      location: .agentera/docs.yaml:1,47-49
+      evidence: last_audit reads 2026-06-15 and the index Changelog entry is last_updated 2026-06-15, but CHANGELOG.md now ships [0.4.0] - 2026-07-07. The audit_log has no 0.4.0 entry.
+      impact: The artifact registry (docs.yaml) is the project's source of truth for documentation freshness; leaving it behind after a minor release erodes artifact trust and the inspektera/dokumentera producers' stated cadence.
+      suggested_action: 'Run a dokumentera/doks refresh pass: bump last_audit to 2026-07-08, update the Changelog index entry to 2026-07-07, and add an audit_log entry for the 0.4.0 release (debate ledger + self-history + --no-ledger).'
+  - name: Security Hygiene
+    grade: A
+    summary: No hardcoded secrets; secret/token/credential occurrences are all redaction logic (format.go, evidence/context.go) or test fixtures. No new dangerous function calls beyond the pre-existing os/exec.Command("opencode") subprocess in internal/agent. The new ledger path carries no user input into shell or SQL.
+    findings: []
+  - name: Prose Health
+    grade: B
+    summary: 'Decision 10 is clear and well-reasoned with concrete alternatives and firm confidence; CHANGELOG entries are concise and accurate; ledger package/type doc comments are thorough. Two prose gaps: the cycle 65 verified field quotes a semantically-wrong round value as expected output, and the types.go package doc names the dead LedgerRecord type as the persistence path.'
+    findings:
+    - heading: '⇢ cycle 65 verified quotes "Ledger Round 3" for round 2 without caveat, info (confidence: 78/100)'
+      severity: info
+      confidence: 78
+      location: .agentera/progress.yaml:71-96
+      evidence: The verified field shows the round-2 snapshot rendering as "Ledger Round 3" and treats it as expected output; the caveat that this is a max(turn) quirk lives only in the separate discovered field, so the evidence trail documents an incorrect value as correct.
+      impact: A reader scanning verified (not discovered) could accept Round = turn index as intended behavior, slowing future diagnosis of the round-counter bug.
+      suggested_action: In the verified field, annotate that "Round 3" reflects the known Updater.Round quirk, or fix the quirk so the verified output matches the round counter.
+    - heading: '⇢ types.go package doc references the unused LedgerRecord persistence path, info (confidence: 72/100)'
+      severity: info
+      confidence: 72
+      location: internal/types/types.go:3-13,610-621
+      evidence: 'The package doc says ledger snapshots "persist as typed transcript records (LedgerRecord) using Turn = LedgerSentinelTurn", but production persists via TurnRecord.Ledger (orchestrator persistLedgerRecord); LedgerRecord is the dead type from Pattern finding #3.'
+      impact: Docs point a maintainer at a type that is never written by the persistence path.
+      suggested_action: Repoint the package doc at TurnRecord.Ledger once LedgerRecord is removed, or wire NewLedgerRecord into the persistence path.
+  trends:
+    improved:
+    - 'Test coverage: orchestrator 0% -> 86.2%, output 0% -> 71.9%, ledger 92.0%; Audit #1 test D now an A.'
+    - 'Module path github.com/jgabor/kumbaja -> github.com/jgabor/agora (Audit #1 warning resolved).'
+    - executeTurn 106 -> ~70 lines; ledger wiring factored into updateLedgerIfRoundComplete and persistLedgerRecord.
+    degraded:
+    - Two documented-not-fixed latent defects shipped (Updater.Round quirk; --no-ledger=false precedence inversion) and a dead LedgerRecord family, none present before this plan.
+  patterns:
+  - 'Ledger envelope injection is typed *types.DebateLedger DATA only (Decision 1 firm): orchestrator.go:369-371 never composes prompts from ledger contents.'
+  - Ledger persistence is typed (TurnRecord.Ledger *DebateLedger), deep-cloned on write (CloneDebateLedger) and on resume seed (Decision 6 references-only).
+  - Three-layer ledger precedence CLI > config > settings > default-on wired identically in run and resume paths (cmd/agora/main.go:167-181, 751-765, 272-284).
+  - 'New internal/ledger package mirrors evidence.NewPolicyCollector: constructor takes a runner, methods return typed values.'
 archive: []
