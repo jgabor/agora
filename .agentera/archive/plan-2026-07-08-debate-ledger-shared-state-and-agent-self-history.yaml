@@ -1,8 +1,8 @@
 header:
   level: full
   created: '2026-07-07'
-  status: active
-  reviewed: '2026-07-07'
+  status: complete
+  reviewed: '2026-07-08'
   critic_issues: "7 found, 7 addressed, 0 dismissed"
   title: "Plan: Debate Ledger (Shared State) and Agent Self-History"
 what: >-
