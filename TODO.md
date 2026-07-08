@@ -43,19 +43,6 @@ What limits deliberation quality today
     label on seed/evidence records. Nothing detects repetition or
     stalemate, redirects drift, or forces a vote.
 
-3.  Situational blindness reduced. Agents now receive the turn number,
-    rounds remaining, time/budget pressure, the halting rule, who else
-    is on the panel, and their own agent ID via the situational-awareness
-    envelope fields. The remaining gap is per-turn directive instructions
-    ("round 2 of 3; you must address X's objection to point 2") — that
-    belongs to the phase-structure roadmap item.
-
-4.  Defaults now support depth. Non-auto runs scale time, max_turns, and
-    window off the cast size, consensus_threshold enables by default,
-    and min_rounds floors at three. Scheduling is still rigid
-    round-robin, and mesh still shares a star branch; the proposal,
-    moderator, and phase-structure roadmap items remain the next levers.
-
 ### Missing pieces, ranked by impact
 
 1.  A first-class proposal artifact with real voting. Make consensus an
