@@ -225,6 +225,90 @@ agents:
 	}
 }
 
+func TestLoadConfigDefaultsConsensusThresholdToAgentCountWhenOmitted(t *testing.T) {
+	yaml := `
+agents:
+  - id: a
+    model: m
+  - id: b
+    model: m
+  - id: c
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.ConsensusThreshold != 3 {
+		t.Errorf("consensus_threshold: got %d, want 3 (defaults to agent count when omitted)", cfg.ConsensusThreshold)
+	}
+}
+
+func TestLoadConfigDefaultsMinRoundsToThreeWhenOmitted(t *testing.T) {
+	yaml := `
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.MinRounds != defaultMinRounds {
+		t.Errorf("min_rounds: got %d, want %d (default when omitted)", cfg.MinRounds, defaultMinRounds)
+	}
+	if cfg.EffectiveMinRounds() != defaultMinRounds {
+		t.Errorf("EffectiveMinRounds: got %d, want %d", cfg.EffectiveMinRounds(), defaultMinRounds)
+	}
+}
+
+func TestLoadConfigPreservesExplicitConsensusThresholdAndMinRounds(t *testing.T) {
+	yaml := `
+consensus_threshold: 2
+min_rounds: 5
+agents:
+  - id: a
+    model: m
+  - id: b
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.ConsensusThreshold != 2 {
+		t.Errorf("consensus_threshold: got %d, want 2 (explicit wins over default)", cfg.ConsensusThreshold)
+	}
+	if cfg.MinRounds != 5 {
+		t.Errorf("min_rounds: got %d, want 5 (explicit wins over default)", cfg.MinRounds)
+	}
+}
+
+func TestLoadConfigFromBytesDoesNotApplyNonAutoDefaults(t *testing.T) {
+	yaml := `
+agents:
+  - id: a
+    model: m
+  - id: b
+    model: m
+  - id: c
+    model: m
+`
+	cfg, err := LoadConfigFromBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfigFromBytes: %v", err)
+	}
+	if cfg.ConsensusThreshold != 0 {
+		t.Errorf("consensus_threshold: got %d, want 0 (autogen path supplies its own via applyAutoDefaults)", cfg.ConsensusThreshold)
+	}
+	if cfg.MinRounds != 0 {
+		t.Errorf("min_rounds: got %d, want 0 (autogen path supplies its own via applyAutoDefaults)", cfg.MinRounds)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Synthesis model
 // ---------------------------------------------------------------------------

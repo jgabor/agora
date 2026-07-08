@@ -856,6 +856,127 @@ func TestResolveLedgerPolicyCLIFalseReEnablesOverConfigDisable(t *testing.T) {
 	}
 }
 
+func nonAutoRunShapeCommand() *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.Flags().Int("time", 60, "")
+	cmd.Flags().Int("max-turns", 10, "")
+	cmd.Flags().Int("window", 2, "")
+	return cmd
+}
+
+func TestApplyNonAutoRunShapeScalesByAgentCount(t *testing.T) {
+	cmd := nonAutoRunShapeCommand()
+	flags := &runFlagValues{TimeLimit: 60, Window: 2, MaxTurns: 10}
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{
+		{ID: "a", Model: "m"},
+		{ID: "b", Model: "m"},
+		{ID: "c", Model: "m"},
+		{ID: "d", Model: "m"},
+		{ID: "e", Model: "m"},
+	}}
+
+	applyNonAutoRunShape(cmd, flags, cfg)
+
+	wantTime := 3 * 5 * perTurnLatencyCeilingSeconds
+	if flags.TimeLimit != wantTime {
+		t.Errorf("TimeLimit: got %d, want %d (3 * N * per_turn_latency_ceiling)", flags.TimeLimit, wantTime)
+	}
+	if flags.MaxTurns != 15 {
+		t.Errorf("MaxTurns: got %d, want 15 (3 * N)", flags.MaxTurns)
+	}
+	if flags.Window != 5 {
+		t.Errorf("Window: got %d, want 5 (N, full predecessor round)", flags.Window)
+	}
+}
+
+func TestApplyNonAutoRunShapeSingleAgentUsesOneRoundWindow(t *testing.T) {
+	cmd := nonAutoRunShapeCommand()
+	flags := &runFlagValues{TimeLimit: 60, Window: 2, MaxTurns: 10}
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "a", Model: "m"}}}
+
+	applyNonAutoRunShape(cmd, flags, cfg)
+
+	if flags.Window != 1 {
+		t.Errorf("Window: got %d, want 1 (one full round for single agent)", flags.Window)
+	}
+	if flags.MaxTurns != 3 {
+		t.Errorf("MaxTurns: got %d, want 3 (3 * N)", flags.MaxTurns)
+	}
+	if flags.TimeLimit != 3*1*perTurnLatencyCeilingSeconds {
+		t.Errorf("TimeLimit: got %d, want %d", flags.TimeLimit, 3*1*perTurnLatencyCeilingSeconds)
+	}
+}
+
+func TestApplyNonAutoRunShapeCapsWindowForLargeCast(t *testing.T) {
+	cmd := nonAutoRunShapeCommand()
+	flags := &runFlagValues{TimeLimit: 60, Window: 2, MaxTurns: 10}
+	agents := make([]types.AgentConfig, 12)
+	for i := range agents {
+		agents[i] = types.AgentConfig{ID: fmt.Sprintf("a%d", i), Model: "m"}
+	}
+	cfg := &types.DeliberationConfig{Agents: agents}
+
+	applyNonAutoRunShape(cmd, flags, cfg)
+
+	if flags.Window != maxNonAutoWindow {
+		t.Errorf("Window: got %d, want %d (capped for large cast)", flags.Window, maxNonAutoWindow)
+	}
+	if flags.MaxTurns != 3*12 {
+		t.Errorf("MaxTurns: got %d, want %d (3 * N still scales with cast size)", flags.MaxTurns, 3*12)
+	}
+	if flags.TimeLimit != 3*12*perTurnLatencyCeilingSeconds {
+		t.Errorf("TimeLimit: got %d, want %d (3 * N * per_turn_latency_ceiling)", flags.TimeLimit, 3*12*perTurnLatencyCeilingSeconds)
+	}
+}
+
+func TestApplyNonAutoRunShapeKeepsExplicitFlags(t *testing.T) {
+	cmd := nonAutoRunShapeCommand()
+	if err := cmd.Flags().Set("time", "100"); err != nil {
+		t.Fatalf("set time: %v", err)
+	}
+	if err := cmd.Flags().Set("max-turns", "7"); err != nil {
+		t.Fatalf("set max-turns: %v", err)
+	}
+	if err := cmd.Flags().Set("window", "4"); err != nil {
+		t.Fatalf("set window: %v", err)
+	}
+	flags := &runFlagValues{TimeLimit: 100, Window: 4, MaxTurns: 7}
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "a", Model: "m"}, {ID: "b", Model: "m"}}}
+
+	applyNonAutoRunShape(cmd, flags, cfg)
+
+	if flags.TimeLimit != 100 {
+		t.Errorf("TimeLimit: got %d, want 100 (explicit --time wins)", flags.TimeLimit)
+	}
+	if flags.MaxTurns != 7 {
+		t.Errorf("MaxTurns: got %d, want 7 (explicit --max-turns wins)", flags.MaxTurns)
+	}
+	if flags.Window != 4 {
+		t.Errorf("Window: got %d, want 4 (explicit --window wins)", flags.Window)
+	}
+}
+
+func TestApplyNonAutoRunShapeMissingFlagsTreatedAsUnset(t *testing.T) {
+	cmd := &cobra.Command{}
+	flags := &runFlagValues{TimeLimit: 60, Window: 2, MaxTurns: 10}
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{
+		{ID: "a", Model: "m"}, {ID: "b", Model: "m"}, {ID: "c", Model: "m"},
+	}}
+
+	applyNonAutoRunShape(cmd, flags, cfg)
+
+	wantTime := 3 * 3 * perTurnLatencyCeilingSeconds
+	if flags.TimeLimit != wantTime {
+		t.Errorf("TimeLimit: got %d, want %d (unset flags auto-scale)", flags.TimeLimit, wantTime)
+	}
+	if flags.MaxTurns != 9 {
+		t.Errorf("MaxTurns: got %d, want 9", flags.MaxTurns)
+	}
+	if flags.Window != 3 {
+		t.Errorf("Window: got %d, want 3", flags.Window)
+	}
+}
+
 func TestParseTranscriptFilename(t *testing.T) {
 	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
 	if !ok {
@@ -1658,8 +1779,14 @@ func TestResumeCommandWarnsAndContinuesOnMalformedLedgerRecord(t *testing.T) {
 		t.Fatalf("load resumed transcript: %v", err)
 	}
 	for i, r := range records {
-		if r.AgentID == types.LedgerAgentID || r.Turn == types.LedgerSentinelTurn {
-			t.Fatalf("malformed ledger record should have been dropped on resume; found at index %d: %#v", i, r)
+		if r.AgentID != types.LedgerAgentID && r.Turn != types.LedgerSentinelTurn {
+			continue
+		}
+		if r.Ledger == nil {
+			t.Fatalf("malformed ledger record should have been dropped on resume; found nil-ledger sentinel at index %d: %#v", i, r)
+		}
+		if err := r.Ledger.Validate(); err != nil {
+			t.Fatalf("malformed ledger record should have been dropped on resume; found invalid ledger at index %d: %v", i, err)
 		}
 	}
 	if len(records) == 0 {
@@ -1886,8 +2013,8 @@ func TestResumeCommandResolvesTranscriptSlugToNewestMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load output transcript: %v", err)
 	}
-	if len(records) != 1 || records[0].Content != "new" {
-		t.Fatalf("copied records: got %#v, want newest transcript content", records)
+	if len(records) == 0 || records[0].Content != "new" {
+		t.Fatalf("copied records: got %#v, want first record to be newest transcript content", records)
 	}
 }
 

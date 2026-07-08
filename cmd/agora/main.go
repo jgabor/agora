@@ -23,6 +23,11 @@ import (
 
 const defaultModel = "opencode-go/deepseek-v4-flash"
 
+const (
+	perTurnLatencyCeilingSeconds = 30
+	maxNonAutoWindow             = 8
+)
+
 var version = "0.4.0"
 
 func main() {
@@ -144,6 +149,7 @@ var runCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			applyNonAutoRunShape(cmd, &runFlags, cfg)
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
 
@@ -293,6 +299,23 @@ func sessionAutoCaps(cmd *cobra.Command, caps types.LevelCaps) *session.AutoCaps
 		Caps:             caps,
 		ExplicitTime:     cmd.Flags().Changed("time"),
 		ExplicitMaxTurns: cmd.Flags().Changed("max-turns"),
+	}
+}
+
+func applyNonAutoRunShape(cmd *cobra.Command, flags *runFlagValues, cfg *types.DeliberationConfig) {
+	n := len(cfg.Agents)
+	if !cmd.Flags().Changed("time") {
+		flags.TimeLimit = 3 * n * perTurnLatencyCeilingSeconds
+	}
+	if !cmd.Flags().Changed("max-turns") {
+		flags.MaxTurns = 3 * n
+	}
+	if !cmd.Flags().Changed("window") {
+		w := n
+		if w > maxNonAutoWindow {
+			w = maxNonAutoWindow
+		}
+		flags.Window = w
 	}
 }
 
@@ -728,6 +751,7 @@ var resumeCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+			applyNonAutoRunShape(cmd, &resumeFlags, cfg)
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
 

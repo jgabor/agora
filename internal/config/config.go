@@ -9,6 +9,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const defaultMinRounds = 3
+
 // rawConfig mirrors the YAML structure for unmarshaling.
 type rawConfig struct {
 	Topology           string              `yaml:"topology"`
@@ -32,15 +34,15 @@ func LoadConfig(path string) (*types.DeliberationConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadConfigFromBytes(data, settings)
+	return loadConfigFromBytes(data, settings, true)
 }
 
 // LoadConfigFromBytes parses and validates a deliberation configuration from raw YAML bytes.
 func LoadConfigFromBytes(data []byte) (*types.DeliberationConfig, error) {
-	return loadConfigFromBytes(data, Settings{})
+	return loadConfigFromBytes(data, Settings{}, false)
 }
 
-func loadConfigFromBytes(data []byte, settings Settings) (*types.DeliberationConfig, error) {
+func loadConfigFromBytes(data []byte, settings Settings, applyNonAutoDefaults bool) (*types.DeliberationConfig, error) {
 	var raw rawConfig
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config YAML: %w", err)
@@ -81,6 +83,15 @@ func loadConfigFromBytes(data []byte, settings Settings) (*types.DeliberationCon
 	}
 	if raw.Research != nil {
 		cfg.ResearchEnabled = *raw.Research
+	}
+
+	if applyNonAutoDefaults {
+		if cfg.ConsensusThreshold == 0 {
+			cfg.ConsensusThreshold = len(cfg.Agents)
+		}
+		if cfg.MinRounds == 0 {
+			cfg.MinRounds = defaultMinRounds
+		}
 	}
 
 	if err := cfg.Validate(); err != nil {
