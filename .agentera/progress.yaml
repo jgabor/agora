@@ -1,4 +1,115 @@
 cycles:
+  - number: 66
+    timestamp: 2026-07-08 12:30
+    type: feat
+    phase: build
+    what: "Completed Task 3 (final state sync) of the better-defaults and
+      situational-awareness plan. Bumped CLI version 0.4.0 -> 0.4.1 in
+      cmd/agora/main.go per the docs.yaml feat-minor policy (Tasks 1 and 2 were
+      feat: commits). Cut CHANGELOG.md [0.4.1] - 2026-07-08 with Added
+      (situational-awareness envelope: agent_id, cast_roster, turn, round,
+      remaining_budget with turns/rounds/time/uncapped/budget variants, and
+      halting_rule naming every active cap plus optional deliverable gate;
+      non-auto default run shape: time = 3*N*30, max_turns = 3*N, window =
+      min(N,8), consensus_threshold = numAgents, min_rounds = 3, resume
+      mirroring run via applyNonAutoRunShape) and Changed (consensus/min_rounds
+      defaults at the config-loading layer; per-knob gating on
+      cmd.Flags().Changed). Recorded Decision 11 in .agentera/decisions.yaml
+      (cast-scaled defaults with a window maximum and per_turn_latency_ceiling =
+      30s; three rounds is the smallest deliberation that develops, converges,
+      and settles; confidence provisional pending real-usage data; satisfaction
+      state open). Removed TODO.md roadmap Missing Pieces #5 (Situational
+      awareness) and #6 (Better defaults), renumbering unchanged since they were
+      last; also rewrote TODO.md 'What limits deliberation quality today' items
+      3 and 4 to reflect that situational blindness and demo-hostile defaults
+      are now addressed, leaving per-turn directive instructions and rigid
+      scheduling as the remaining gaps. .agentera/plan.yaml Task 3 status
+      flipped from pending to complete; header.status flipped from active to
+      complete; all three plan tasks now complete."
+    inspiration: "Task 3 (depends on Tasks 1 and 2) is the plan's final state sync:
+      version bump per the feat-minor policy, CHANGELOG/DECISIONS/TODO updates,
+      and the progress-cycle build entry carrying observed-output verification
+      per the behavioral verification gate (Section 20 of the agentera
+      contract). Tasks 1 and 2 shipped the cast-scaled default math and the
+      situational envelope fields that the debate-ledger plan (cycle 65)
+      explicitly deferred to this follow-on plan."
+    discovered: "VALIDATOR SATISFACTION SCHEMA: the decisions.yaml on-save hook
+      rejected an initial Decision 11 draft that included a caveats: [] array
+      under satisfaction. The artifact schema (skills/agentera/schemas/
+      artifacts/decisions.yaml SATISFACTION DS1-DS3) allows only three fields
+      under satisfaction: state (open|provisionally_satisfied|
+      user_confirmed_satisfied), evidence (string), and user_confirmation (map
+      with confirmed_by/confirmed_at). review_needed, source, and caveats are
+      not stored fields — review_needed is derived from missing or stale
+      protected state by consumers, not authored. Folded the caveats prose into
+      the evidence string as plain text. TODO.md 'What limits deliberation
+      quality today' items 3 and 4 referenced situational blindness and
+      demo-hostile defaults as open problems; since both are now shipped, those
+      two items were rewritten to state what was addressed and what remains
+      (per-turn directive instructions and rigid round-robin scheduling), rather
+      than deleted, because the section frames the current state of deliberation
+      quality and the remaining levers. .agentera/plan.yaml was untracked on
+      disk (Tasks 1 and 2 committed their code but not the plan file); it is
+      included in this commit."
+    verified: "Observed-output verification per the behavioral verification gate: a
+      sample default `agora run` against real project state with the new
+      defaults and envelope fields in effect. Built the binary: go build -o
+      /tmp/opencode/agora-task3-verify ./cmd/agora (exit 0). Version smoke:
+      agora version 0.4.1. Ran a dry-run against examples/example-default.yaml
+      (5 agents, no explicit overrides): /tmp/opencode/agora-task3-verify run
+      --config examples/example-default.yaml --topic \"Should Agora adopt a
+      default consensus threshold equal to the cast size?\" --dry-run --output
+      /tmp/opencode/agora-task3-transcript.jsonl --quiet exited 0. The config
+      preview header confirmed the new defaults in effect: \"Time: 450s max\" (3
+      * 5 * 30 = 450), \"Turns: 15 max\" (3 * 5 = 15), \"Context window: 5 prior
+      messages\" (min(5, 8) = 5, one full round), \"Agreement target: 5 agents\"
+      (consensus_threshold = numAgents). The run completed \"Turns completed
+      15/15 (100%)\" = three full rounds of five agents, with three \"[INFO]
+      Working: Ledger Update\" activity brackets (after turns 5, 10, 15) proving
+      the per-round updater fired at each round boundary, and \"Halted by
+      Completed: all planned turns finished\" because the dry-run runner never
+      emits consensus markers. Per-Agent Stats listed only the five deliberation
+      agents (3 turns each) with NO ledger row, proving IsInternalAgent still
+      filters ledger sentinels. The envelope fields are verified by the Task 2
+      test suite (6 tests PASS): go test -count=1 -v -run
+      'TestExecuteTurnSituationalFields|TestRemainingBudget|TestHaltingRuleDeli\
+      verableGate|TestEnvelopeDryRunSituationalFields'
+      ./internal/orchestrator/... passed — TestExecuteTurnSituationalFields
+      asserts agent_id, turn, round, cast_roster (2 entries), remaining_budget
+      (turns_remaining=8, rounds_remaining=4, time_remaining_seconds present, no
+      uncapped key), halting_rule (consensus_threshold=3, min_rounds=2,
+      max_turns=10, time_limit_seconds=30, budget_cap present, deliverable_gate
+      absent when nil), and existing keys topic/history preserved;
+      TestRemainingBudgetTimeOnly, TestRemainingBudgetUncapped (uncapped: true),
+      TestRemainingBudgetWithBudgetCap (budget_remaining), and
+      TestHaltingRuleDeliverableGate cover the remaining budget variants and the
+      deliverable-gate surfacing; TestEnvelopeDryRunSituationalFields confirms
+      the dry-run path emits the same envelope shape deterministically. Build
+      verification passed with go build ./...(exit 0). Vet verification passed
+      with go vet ./... (exit 0). Full repository regression passed with go test
+      -count=1 ./... all 14 packages ok."
+    next: "Task 3 is complete and all three better-defaults plan tasks are complete.
+      The plan is ready for archival on the next session's Step 0
+      plan-completion sweep; do not start new defaults or envelope work. The
+      remaining roadmap items #1-4 (proposal-and-voting, moderator loop, phase
+      structure, convergence metrics) are the next levers. A future run may
+      confirm Decision 11's satisfaction (state: open ->
+      user_confirmed_satisfied) once the cast-scaled default math and 30s
+      per_turn_latency_ceiling are validated against real deliberation usage,
+      and may promote confidence from provisional to firm. Settings keys for the
+      new defaults (default_time, default_window, default_max_turns,
+      default_consensus_threshold, default_min_rounds) were explicitly deferred
+      by this plan and remain future work."
+    context:
+      intent: implement only Task 3 final state sync — version bump, CHANGELOG,
+        Decision 11, TODO cleanup, progress cycle 66
+      constraints: no new production code (limit to version string plus docs plus yaml
+        state); no comments in code; do not push to remote; commit only after go
+        build/vet/test pass; observed-output verified field must quote real
+        agora run output not fabricated; decisions.yaml satisfaction allows only
+        state/evidence/user_confirmation (no caveats array)
+      scope: cmd/agora/main.go, CHANGELOG.md, .agentera/decisions.yaml,
+        .agentera/progress.yaml, .agentera/plan.yaml, TODO.md
   - number: 65
     timestamp: 2026-07-08 02:35
     type: feat
@@ -828,57 +939,9 @@ cycles:
         docs/version closeout beyond minimal README contract markers, no commit
       scope: cmd/agora/command_contract_test.go, README.md, .agentera/plan.yaml,
         .agentera/progress.yaml
-  - number: 56
-    timestamp: 2026-05-16 08:50
-    type: feat
-    phase: audit
-    what: Completed Task 5 transcript show formatted output. `agora show TRANSCRIPT
-      --format json` now emits a schema-versioned inspection document with
-      document type/version, path, record count, agent list, available cast
-      metadata, ordered presentation records, evidence summaries/references,
-      consensus fields, and an explicit evidence boundary instead of exposing
-      raw JSONL storage records. `agora show TRANSCRIPT --format markdown` now
-      renders the same ordered transcript inspection facts in readable non-ANSI
-      Markdown while preserving the default text renderer and explicit `--format
-      text` behavior.
-    commit: none
-    inspiration: Task 5 was limited to transcript `show` formatted output and built
-      on the existing Task 1 format envelope and Task 4 transcript error
-      handling pattern. Later command-contract verification,
-      documentation/version closeout, plan-level freshness checkpoint, `--json`
-      aliases, `--context` semantics, and transcript JSONL storage changes were
-      not implemented.
-    discovered: The prior `show --format json` response placed raw `TurnRecord`
-      values under `data.records`, making the output easy to confuse with a
-      JSONL storage replacement and exposing storage-only fields such as
-      tokens/elapsed. Markdown already listed basic records, but did not surface
-      cast metadata or the evidence references-only boundary clearly enough for
-      agents.
-    verified: Focused verification passed with `go test ./cmd/agora -run
-      'TestShowCommand'`, covering default/path/slug text behavior, ordered text
-      transcript rendering, JSON and Markdown inspection success output, cast
-      metadata, evidence summaries and source references, consensus fields,
-      omitted full source contents, and formatted failures for malformed,
-      missing, and empty transcripts. Relevant broader command verification
-      passed with `go test ./cmd/agora`. Full repository verification passed
-      with `go test ./...`. The formatted success test asserts schema-versioned
-      JSON without ANSI, document type `agora.transcript.show`, no raw
-      storage-only `tokens`/`elapsed` fields, no `context_documents` payload, no
-      omitted context document content, ordered records, cast metadata, evidence
-      references, and consensus data. The malformed failure test asserts no
-      partial transcript content is emitted before the structured error
-      document.
-    next: Task 5 is complete. Tasks 6-8 remain pending and were not implemented. No
-      commit or push was performed.
-    context:
-      intent: implement only Task 5 transcript show formatted output
-      constraints: no later task scope, preserve default show text behavior and
-        `--format text`, JSON and Markdown non-ANSI, no `--json` alias, no
-        `--context` semantic change, no transcript JSONL storage schema change,
-        no commit
-      scope: cmd/agora/format.go, cmd/agora/main.go, cmd/agora/main_test.go,
-        .agentera/plan.yaml, .agentera/progress.yaml
 archive:
+  - summary: "Cycle 56 (2026-05-16): Completed Task 5 transcript show formatted
+      output. `agora show TRANSCRIPT --format json` now emits a..."
   - summary: "Cycle 55 (2026-05-16): Completed Task 4 transcript list and stats
       formatted outputs. `agora list --format json|markdown` now reports..."
   - summary: "Cycle 54 (2026-05-16): Completed Task 3 config and validation
@@ -964,6 +1027,3 @@ archive:
       contract with CLI flags, config parsing, settings caps, precedence..."
   - summary: "Cycle 17 (2026-05-05): Added OutputManager renderer tests for panels,
       tables, wrapping, config preview, stats output, and status methods."
-  - summary: "Cycle 16 (2026-05-05): Added SynthesisEngine and
-      Orchestrator.Synthesize tests — extractJSON, formatTranscript, full engine
-      flow, and wrapper."

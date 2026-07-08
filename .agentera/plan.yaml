@@ -1,0 +1,176 @@
+header:
+  level: full
+  created: '2026-07-08'
+  status: complete
+  reviewed: '2026-07-08'
+  critic_issues: "11 found, 10 addressed, 1 dismissed"
+  title: "Plan: Better Defaults and Situational Awareness"
+what: >-
+  Replace the demo-hostile default run shape (60s time, 10 max-turns, window 2,
+  consensus_threshold 0, effective min_rounds 1) with defaults that allow a
+  real multi-round deliberation to occur without explicit user tuning, and
+  expand the per-turn agent envelope with the situational fields an agent
+  needs to act on those defaults: the agent's own ID, the cast roster, the
+  current turn and round counters, the remaining budget expressed in the
+  unit each active cap supports (turns, rounds, or time), and the halting
+  rule currently in effect. Two tightly-coupled changes, one plan, because
+  defaults without situational awareness leave agents unable to act on a
+  "two rounds remain" signal, and situational awareness without usable
+  defaults gives agents nothing worth knowing about. The two work-streams
+  are code-orthogonal and may execute in parallel; they share only the
+  state-sync gate.
+why: >-
+  The codebase confirms the TODO's claims: an out-of-the-box `agora run`
+  defaults to 60 seconds, max-turns 10, window 2, and a disabled consensus
+  threshold; with five agents this is two shallow rounds terminated by the
+  clock; with the threshold disabled the only early-halt is the clock. The
+  deliberation-ledger plan (cycle 65, just completed and archived)
+  explicitly excluded "situational-awareness envelope fields (roster, turn
+  number, budget, halting rule)" from its scope and deferred them to "a
+  follow-on plan that reopens the same envelope code path." This is that
+  plan. Defaults fix the unobservable baseline; envelope fields unblock the
+  roadmap's moderator loop, phase structure, and convergence metrics, all
+  of which need round and turn state to operate. The roadmap ranks the
+  proposal-and-voting artifact as Missing Piece number one by theoretical
+  impact; this plan deliberately precedes it because no one can observe
+  whether the consensus mechanism is good or bad while defaults prevent it
+  from firing, and the moderator, phase, and convergence work all need
+  situational state the envelope does not yet carry.
+constraints: >-
+  Minimal orchestrator (Decision 1, firm): situational fields are data
+  injected into the structured JSON envelope; the orchestrator marshals
+  them as facts, not directives, and must not compose prompt prose from
+  their contents. Go-only single static binary (Decision 2, firm): no
+  external services or subprocesses beyond the existing agent runtime.
+  Existing-precedence preservation: new defaults yield to explicit
+  overrides at their existing precedence layer only — time, max_turns, and
+  window yield to their CLI flags and (for auto configs) to auto-level
+  caps; consensus_threshold and min_rounds yield to explicit values in the
+  config file. Adding brand-new settings keys for these knobs is out of
+  scope and deferred. Charm v2 visual system (Decision 7, firm): any
+  surfaced situational state in the live CLI renders through the existing
+  output module. Auto-mode caps (Decision 4, provisional): auto-level
+  MaxTurns and TimeLimits are out of scope; this plan changes only the
+  non-auto defaults. Backward compatibility: existing configs, settings,
+  and transcripts continue to load, run, and resume without modification;
+  the new envelope keys are additive and the transcript record schema is
+  unchanged. Off-limits: the consensus regex mechanism, the
+  deliverable-gate regex, the proposal/voting artifact (roadmap #1), the
+  moderator loop (roadmap #2), the phase structure (roadmap #3), and
+  per-turn phase instructions in the envelope ("you must address X's
+  objection") — that belongs to the phase-structure plan. The envelope's
+  existing keys (topic, history, evidence, ledger) are additive only — no
+  renaming or reshaping of the existing contract.
+scope:
+  included:
+    - "Default time, max-turns, window, consensus_threshold, and min_rounds for non-auto `agora run` and `agora resume` invocations"
+    - "Resume flag defaults mirror the new run defaults for time, max-turns, and window"
+    - "Per-turn envelope expansion: agent's own ID, cast roster, current turn index, current round, remaining budget (in turns, rounds, or time, whichever each active cap supports), and the halting rule in effect"
+    - "Consensus-threshold and min_rounds defaults applied at config-loading layer so direct DeliberationConfig struct construction in tests is unaffected"
+    - "Window auto-scale bounded by a maximum to prevent per-turn token-budget explosion on large casts"
+    - "Dry-run path emits the same envelope shape deterministically"
+    - "Transcript and resume schema compatibility: prior-release transcripts load and resume"
+    - "Minor version bump per the docs.yaml feat-minor policy"
+    - "CHANGELOG entry and TODO cleanup for roadmap items 5 and 6"
+    - "Decision record for the default-values math chosen and why"
+  excluded:
+    - "Auto-mode level caps (Decision 4) — quick/normal/deep/yolo MaxTurns and TimeLimits remain unchanged"
+    - "New settings keys for time/window/max_turns/consensus_threshold/min_rounds — future work"
+    - "First-class proposal artifact with real voting (roadmap #1)"
+    - "Active moderator loop consuming situational state (roadmap #2)"
+    - "Phase structure — opening, rebuttal, convergence vote (roadmap #3)"
+    - "Convergence and stalemate metrics (roadmap #4)"
+    - "Per-turn phase instructions in the envelope"
+    - "Agent-visible budget pressure surfaced as cost rather than turns or rounds or time"
+    - "Cross-run memory of prior situational state"
+  deferred:
+    - "Phase-aware per-turn instructions, deferred to the phase-structure plan"
+    - "Moderator-driven next-speaker selection, deferred to the moderator-loop plan"
+    - "Convergence metrics consuming turn-over-turn similarity, deferred"
+    - "Settings keys for the new defaults (default_time, default_window, default_max_turns, default_consensus_threshold, default_min_rounds), deferred"
+design: >-
+  Three work-streams with one parallel pair. Stream A revises the non-auto
+  default values so an out-of-the-box `agora run` produces a multi-round
+  deliberation terminated by consensus, by the turn count, or by the
+  time budget — not by a 60-second clock after two shallow rounds. The
+  window auto-scales so each agent sees at least one full prior round of
+  context, bounded by a maximum to prevent per-turn token-budget
+  explosion on large casts. The consensus threshold enables by default so
+  consensus can early-halt before max_turns. The minimum-rounds floor
+  raises so consensus cannot halt before the deliberation has had at
+  least three rounds to develop. The new defaults yield to explicit
+  overrides at their existing precedence layer only. Stream B runs in
+  parallel to Stream A and expands the per-turn envelope the orchestrator
+  already marshals with the situational fields an agent needs to use the
+  new default budget: the agent's own ID, the cast roster, the current
+  turn index, the current round, the remaining budget expressed in the
+  unit each active cap supports (turns remaining when max_turns is
+  positive, rounds remaining derived from turns, time remaining when only
+  a time limit is active, and an explicit uncapped signal when neither),
+  and the halting rule currently in effect — every active cap and the
+  value at which it triggers, including any deliverable gate. The
+  orchestrator marshals these as envelope facts only; it does not compose
+  prompt prose from their contents. Stream C depends on A and B and is
+  state sync — documentation, decisions record for the default math
+  chosen, version bump per feat-minor, and TODO cleanup for roadmap
+  items 5 and 6.
+tasks:
+  - number: 1
+    name: "Recompute better non-auto defaults for time, max-turns, window, consensus_threshold, and min_rounds"
+    depends_on: []
+    status: complete
+    acceptance:
+      - "GIVEN a non-auto `agora run` with N agents and no explicit --time, --max-turns, --window, consensus_threshold, or MinRounds override WHEN the run shape is computed THEN the effective time limit and max_turns are jointly sufficient for at least three full rounds of N agents to complete before the clock or turn count can terminate the run, where sufficient means time_limit >= 3 × N × per_turn_latency_ceiling and max_turns >= 3 × N, with the per_turn_latency_ceiling value chosen at build time and recorded in the decisions record"
+      - "GIVEN a non-auto `agora run` with five agents and no explicit --window override WHEN the run shape is computed THEN the effective window is at least one full round (five messages) so each agent sees a complete predecessor round, not two messages"
+      - "GIVEN a non-auto `agora run` with a large cast (more than ten agents) and no explicit --window override WHEN the run shape is computed THEN the effective window is bounded by a maximum to prevent per-turn token-budget explosion"
+      - "GIVEN a non-auto `agora run` with two or more agents and no explicit consensus_threshold override WHEN the run shape is computed THEN the effective consensus threshold is greater than zero so consensus can early-halt the run before max_turns"
+      - "GIVEN a non-auto `agora run` with two or more agents and no explicit MinRounds override WHEN the run shape is computed THEN the effective minimum-rounds floor is at least three so consensus cannot halt before the deliberation has had three rounds to develop"
+      - "GIVEN an explicit --time, --max-turns, --window flag, a config consensus_threshold, or a config MinRounds value WHEN the deliberation runs THEN the explicit value wins at its existing precedence layer and the new default is not used"
+      - "GIVEN an auto-mode invocation (quick/normal/deep/yolo) WHEN the run shape is computed THEN the auto-level MaxTurns and TimeLimits from Decision 4 are unchanged"
+      - "GIVEN an `agora resume` invocation with no explicit --time, --max-turns, or --window flag WHEN the resume run shape is computed THEN the effective defaults for those three match the new non-auto run defaults"
+      - "GIVEN the new consensus_threshold and min_rounds defaults are applied at the config-loading layer WHEN existing tests that construct a DeliberationConfig struct directly run THEN those tests are unaffected by the new default because the default is not applied in the types or orchestrator constructors"
+      - "GIVEN existing tests that exercise config-loaded configs with implicit zero consensus_threshold or zero min_rounds WHEN the new default is applied at config-loading THEN those tests are updated to reflect the new default rather than breaking silently"
+      - "Test proportionality target — one pass + one fail per testable unit (three-rounds-time-success, one-full-round-window-success, window-max-cap-success, threshold-enabled-success, min-rounds-floor-success, explicit-flag-wins-success, auto-mode-unchanged-success, resume-defaults-match-success; failure: explicit-zero-threshold-and-min-rounds properly honored as override)"
+  - number: 2
+    name: "Expand per-turn envelope with situational awareness fields"
+    depends_on: []
+    status: complete
+    acceptance:
+      - "GIVEN a deliberation in progress at turn T with R rounds completed and an effective max_turns greater than zero WHEN an agent is about to take its turn THEN the envelope handed to that agent contains the agent's own ID, the current turn index, the current round number, the remaining turns, and the remaining rounds derived from max_turns"
+      - "GIVEN a deliberation whose only effective cap is a time limit (max_turns zero) WHEN an agent receives its envelope THEN the envelope contains the time remaining rather than turns or rounds remaining"
+      - "GIVEN a deliberation with no effective cap on turns or time (uncapped equivalent) WHEN an agent receives its envelope THEN the envelope indicates the run is uncapped rather than reporting an undefined remaining value"
+      - "GIVEN a deliberation with multiple agents WHEN any agent receives its envelope THEN the envelope contains the cast roster — each active agent's ID and display name if available — so the agent can address peers by ID"
+      - "GIVEN a deliberation whose effective halting rule includes consensus_threshold greater than zero, max_turns, a time limit, and a budget cap WHEN an agent receives its envelope THEN the halting rule field names every active cap and the value at which it triggers"
+      - "GIVEN a deliberation whose halting rule includes a deliverable gate (for example, the topic requires a numbered set of laws) WHEN an agent receives its envelope THEN the halting rule field surfaces the deliverable requirement, not only the numeric caps"
+      - "GIVEN a dry-run deliberation WHEN each turn starts THEN the envelope handed to the agent contains the same situational fields with deterministic placeholder or computed values, not a missing-fields envelope"
+      - "GIVEN an envelope built for an agent WHEN the orchestrator builds it THEN the orchestrator marshals the situational fields as envelope facts only — it does not compose prompt prose from their contents, preserving the minimal-orchestrator constraint"
+      - "Test proportionality target — one pass + one fail per testable unit (fields-present-success, roster-success, time-only-success, uncapped-success, halting-rule-aggregate-success, deliverable-gate-surfaced-success, dry-run-deterministic-success; failure: orchestrator-must-not-compose-prompts-from-fields enforced)"
+  - number: 3
+    name: "Final state sync — version, changelog, decisions, todo"
+    depends_on: ["1", "2"]
+    status: complete
+    acceptance:
+      - "GIVEN the defaults and envelope features are complete and the test suite passes WHEN the version is checked THEN the minor version has been bumped per the docs.yaml feat-minor policy"
+      - "GIVEN the features are complete WHEN CHANGELOG.md is read THEN the Unreleased section records the new default-run shape and situational-awareness envelope capabilities under Added"
+      - "GIVEN the design decision is recorded WHEN .agentera/decisions.yaml is read THEN a new entry states the default math chosen (time, max-turns, window, consensus threshold, min_rounds, window-max-cap), why it produces a real deliberation, the per_turn_latency_ceiling value chosen, and the confidence label"
+      - "GIVEN the features are complete WHEN TODO.md is read THEN roadmap Missing Pieces #5 (Situational awareness) and #6 (Better defaults) are removed from the open Roadmap section, with completion recorded via CHANGELOG and progress.yaml"
+      - "GIVEN the features are complete WHEN PROGRESS.md is read THEN a build-cycle entry records what shipped, including observed-output verification per the behavioral verification gate — a sample default `agora run` against real project state showing the new defaults in effect and the new envelope fields present"
+overall_acceptance: >-
+  A default non-auto `agora run --config <five-agent-config> --topic "..."`
+  with no explicit overrides produces a deliberation that runs at least
+  three full rounds unless consensus halts it earlier, the effective
+  window shows each agent at least one full prior round (bounded by a
+  maximum to prevent token-budget explosion on large casts), the consensus
+  threshold is enabled and the min_rounds floor is at least three so
+  consensus cannot halt before three rounds, and every agent envelope
+  contains the agent's own ID, the cast roster, the current turn and
+  round counters, the remaining budget expressed in the unit each active
+  cap supports, and the halting rule in effect. An explicit flag or
+  config value at its existing precedence layer overrides the new defaults.
+  An auto-mode invocation is unaffected. A resume invocation's time,
+  max_turns, and window defaults match the new run defaults. A dry-run
+  invocation emits the new envelope shape deterministically. A transcript
+  from a release before this plan loads, runs, and resumes without failure
+  and without the new envelope fields. The project's test suite, build,
+  and lint commands all pass and the diff hygiene check is clean.
+surprises: ""

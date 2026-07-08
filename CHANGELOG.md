@@ -4,6 +4,16 @@
 
 _No user-facing changes yet._
 
+## [0.4.1] - 2026-07-08
+
+### Added
+- Situational awareness envelope: every per-turn agent envelope now carries the agent's own `agent_id`, a `cast_roster` listing each active agent's ID and display name, the current `turn` index and `round` counter, a `remaining_budget` expressed in the unit each active cap supports (turns and rounds remaining when max_turns is positive, time remaining when a time limit is active, an explicit uncapped signal when neither binds, and budget remaining when a budget cap is active), and the `halting_rule` in effect naming every active cap (consensus_threshold, min_rounds, max_turns, time_limit_seconds, budget_cap) and optionally the deliverable gate. The orchestrator marshals these as envelope facts only and does not compose prompt prose from their contents.
+- Non-auto default run shape that produces a real deliberation without explicit tuning: `time_limit` = 3 × N × `per_turn_latency_ceiling` (ceiling 30s), `max_turns` = 3 × N, `window` = min(N, 8) (one full prior round for casts up to eight agents, capped at eight to bound per-turn token growth), `consensus_threshold` = numAgents (when config omits it), and `min_rounds` = 3 (when config omits it). Resume non-auto paths mirror the run defaults via the same `applyNonAutoRunShape` helper. Auto-mode caps, explicit CLI flags, and explicit config values override at their existing precedence layer.
+
+### Changed
+- Consensus-threshold and min-rounds defaults are now applied at the config-loading layer (`LoadConfig`) so the autogen path (`LoadConfigFromBytes`) and tests that construct `DeliberationConfig` structs directly are unaffected.
+- The non-auto `agora run` and `agora resume` run-shape computation now gates each knob on `cmd.Flags().Changed(...)` so an explicit `--time`, `--max-turns`, or `--window` always wins over the new default.
+
 ## [0.4.0] - 2026-07-07
 
 ### Added
