@@ -164,13 +164,13 @@ var runCmd = &cobra.Command{
 			budget = &runFlags.Budget
 		}
 
-		settings, err := config.LoadDefaultSettings()
+		gconf, err := config.LoadDefaultGlobalConfig()
 		if err != nil {
 			return err
 		}
 		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
-		evidenceRequest := evidence.ResolveRequest(cfg, settings.ResearchMaxSources, settings.ContextMaxBytes, settings.ContextMaxDepth, evidenceOverrides)
-		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, settings)
+		evidenceRequest := evidence.ResolveRequest(cfg, gconf.ResearchMaxSources, gconf.ContextMaxBytes, gconf.ContextMaxDepth, evidenceOverrides)
+		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, gconf)
 
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 		req := session.RunRequest{
@@ -216,7 +216,7 @@ func init() {
 		if cmd.Flags().Changed("research") && cmd.Flags().Changed("no-research") {
 			return fmt.Errorf("cannot use --research and --no-research together")
 		}
-		if err := applySettingsDefaults(cmd, &runFlags.Model, &runFlags.Auto); err != nil {
+		if err := applyConfigDefaults(cmd, &runFlags.Model, &runFlags.Auto); err != nil {
 			return err
 		}
 
@@ -275,7 +275,7 @@ func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLev
 	return overrides
 }
 
-func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, settings config.Settings) *bool {
+func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, gconf config.Config) *bool {
 	if cmd.Flags().Changed("no-ledger") {
 		noLedger, _ := cmd.Flags().GetBool("no-ledger")
 		enabled := !noLedger
@@ -284,8 +284,8 @@ func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, sett
 	if cfg.Ledger != nil {
 		return cfg.Ledger
 	}
-	if settings.DefaultLedgerEnabled != nil {
-		return settings.DefaultLedgerEnabled
+	if gconf.DefaultLedgerEnabled != nil {
+		return gconf.DefaultLedgerEnabled
 	}
 	return nil
 }
@@ -579,11 +579,11 @@ var listCmd = &cobra.Command{
 		if err := validateFormat(listFormat); err != nil {
 			return err
 		}
-		settings, err := config.LoadDefaultSettings()
+		gconf, err := config.LoadDefaultGlobalConfig()
 		if err != nil {
-			return fmt.Errorf("loading settings: %w", err)
+			return fmt.Errorf("loading config: %w", err)
 		}
-		dir := settings.DefaultOutputDir
+		dir := gconf.DefaultOutputDir
 		if dir == "" {
 			dir, err = config.TranscriptStoreDir()
 			if err != nil {
@@ -662,7 +662,7 @@ var resumeCmd = &cobra.Command{
 		if resumeEvidenceRequestChanged(cmd) {
 			return fmt.Errorf("resume cannot change research or context evidence; existing transcript evidence is reused")
 		}
-		if err := applySettingsDefaults(cmd, &resumeFlags.Model, &resumeFlags.Auto); err != nil {
+		if err := applyConfigDefaults(cmd, &resumeFlags.Model, &resumeFlags.Auto); err != nil {
 			return err
 		}
 
@@ -769,11 +769,11 @@ var resumeCmd = &cobra.Command{
 			budget = &resumeFlags.Budget
 		}
 
-		settings, err := config.LoadDefaultSettings()
+		gconf, err := config.LoadDefaultGlobalConfig()
 		if err != nil {
 			return err
 		}
-		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, settings)
+		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, gconf)
 
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
 		req := session.ResumeRequest{
@@ -882,21 +882,21 @@ func liveOutputMode(quiet, verbose bool) output.OutputMode {
 	return output.OutputNormal
 }
 
-func applyDefaultModelFromSettings(cmd *cobra.Command, model *string) error {
-	return applySettingsDefaults(cmd, model, nil)
+func applyDefaultModelFromConfig(cmd *cobra.Command, model *string) error {
+	return applyConfigDefaults(cmd, model, nil)
 }
 
-func applySettingsDefaults(cmd *cobra.Command, model *string, autoLevel *string) error {
-	settings, err := config.LoadDefaultSettings()
+func applyConfigDefaults(cmd *cobra.Command, model *string, autoLevel *string) error {
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		return fmt.Errorf("loading settings: %w", err)
+		return fmt.Errorf("loading config: %w", err)
 	}
 
-	if !cmd.Flags().Changed("model") && settings.DefaultModel != "" {
-		*model = settings.DefaultModel
+	if !cmd.Flags().Changed("model") && gconf.DefaultModel != "" {
+		*model = gconf.DefaultModel
 	}
-	if autoLevel != nil && !cmd.Flags().Changed("auto") && !cmd.Flags().Changed("config") && settings.DefaultAutoLevel != "" {
-		*autoLevel = settings.DefaultAutoLevel
+	if autoLevel != nil && !cmd.Flags().Changed("auto") && !cmd.Flags().Changed("config") && gconf.DefaultAutoLevel != "" {
+		*autoLevel = gconf.DefaultAutoLevel
 	}
 	return nil
 }
@@ -906,11 +906,11 @@ func resolveTranscriptOutput(cmd *cobra.Command, currentOutput, topic string) (s
 		return currentOutput, nil
 	}
 
-	settings, err := config.LoadDefaultSettings()
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		return "", fmt.Errorf("loading settings: %w", err)
+		return "", fmt.Errorf("loading config: %w", err)
 	}
-	return config.TranscriptOutputPath(topic, settings, time.Now())
+	return config.TranscriptOutputPath(topic, gconf, time.Now())
 }
 
 func generateTranscriptID() int {
@@ -986,11 +986,11 @@ func resolveResumeSource(fileFlag string, args []string) (string, error) {
 }
 
 func resolveTranscriptSource(input string) (string, error) {
-	settings, err := config.LoadDefaultSettings()
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		return "", fmt.Errorf("loading settings: %w", err)
+		return "", fmt.Errorf("loading config: %w", err)
 	}
-	dir := settings.DefaultOutputDir
+	dir := gconf.DefaultOutputDir
 	if dir == "" {
 		dir, err = config.TranscriptStoreDir()
 		if err != nil {

@@ -30,19 +30,19 @@ func LoadConfig(path string) (*types.DeliberationConfig, error) {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	settings, err := LoadDefaultSettings()
+	gconf, err := LoadDefaultGlobalConfig()
 	if err != nil {
 		return nil, err
 	}
-	return loadConfigFromBytes(data, settings, true)
+	return loadConfigFromBytes(data, gconf, true)
 }
 
 // LoadConfigFromBytes parses and validates a deliberation configuration from raw YAML bytes.
 func LoadConfigFromBytes(data []byte) (*types.DeliberationConfig, error) {
-	return loadConfigFromBytes(data, Settings{}, false)
+	return loadConfigFromBytes(data, Config{}, false)
 }
 
-func loadConfigFromBytes(data []byte, settings Settings, applyNonAutoDefaults bool) (*types.DeliberationConfig, error) {
+func loadConfigFromBytes(data []byte, gconf Config, applyNonAutoDefaults bool) (*types.DeliberationConfig, error) {
 	var raw rawConfig
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config YAML: %w", err)
@@ -51,7 +51,7 @@ func loadConfigFromBytes(data []byte, settings Settings, applyNonAutoDefaults bo
 	topology := types.TopologyRing
 	topologySource := raw.Topology
 	if topologySource == "" {
-		topologySource = settings.DefaultTopology
+		topologySource = gconf.DefaultTopology
 	}
 	if topologySource != "" {
 		t, err := types.ParseTopology(topologySource)
@@ -67,8 +67,8 @@ func loadConfigFromBytes(data []byte, settings Settings, applyNonAutoDefaults bo
 
 	agents := raw.Agents
 	for i := range agents {
-		if agents[i].Model == "" && settings.DefaultModel != "" {
-			agents[i].Model = settings.DefaultModel
+		if agents[i].Model == "" && gconf.DefaultModel != "" {
+			agents[i].Model = gconf.DefaultModel
 		}
 	}
 

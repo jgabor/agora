@@ -8,7 +8,7 @@ type Collector interface {
 	Collect(request types.EvidenceRequest) (*types.EvidenceBundle, error)
 }
 
-// Default caps used when settings.yaml leaves evidence caps unset.
+// Default caps used when config.yaml leaves evidence caps unset.
 const (
 	DefaultMaxSources = 20
 	DefaultMaxBytes   = 1 << 20

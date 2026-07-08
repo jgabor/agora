@@ -15,7 +15,7 @@ We will acknowledge receipt and work on a fix before public disclosure when appr
 Agora orchestrates LLM agents through OpenCode and may read local files you pass with `--context`. Treat the following as sensitive:
 
 - **API keys and credentials** — configure models through OpenCode and your environment; do not commit `.env`, private keys, or secrets into the repository.
-- **`settings.yaml`** — managed by `agora config`; may contain model identifiers. `agora prime` and `agora config get --all` redact secret-like values, but the on-disk file is still user-owned data.
+- **`config.yaml`** — managed by `agora config`; may contain model identifiers. `agora prime` and `agora config get --all` redact secret-like values, but the on-disk file is still user-owned data.
 - **Transcripts** — JSONL deliberation logs under the configured transcript store can contain full agent responses and topic text. Back them up and share them only when appropriate.
 - **Local context paths** — `--context` reads bounded text from files and directories you specify. Agora skips common secret-looking filenames and binary files, but you remain responsible for what paths you include.
 

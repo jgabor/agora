@@ -96,15 +96,15 @@ agents:
 	}
 }
 
-func TestLoadConfigFillsMissingAgentModelFromSettings(t *testing.T) {
+func TestLoadConfigFillsMissingAgentModelFromConfig(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
-	settingsDir := filepath.Join(cfgHome, "agora")
-	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
-		t.Fatalf("mkdir settings dir: %v", err)
+	cfgDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir gconf dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(`default_model: "gpt-4"`), 0o644); err != nil {
-		t.Fatalf("write settings: %v", err)
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`default_model: "gpt-4"`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 
 	path := writeTempYAML(t, `
@@ -121,15 +121,15 @@ agents:
 	}
 }
 
-func TestLoadConfigKeepsExplicitAgentModelOverSettings(t *testing.T) {
+func TestLoadConfigKeepsExplicitAgentModelOverConfig(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
-	settingsDir := filepath.Join(cfgHome, "agora")
-	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
-		t.Fatalf("mkdir settings dir: %v", err)
+	cfgDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir gconf dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(`default_model: "gpt-4"`), 0o644); err != nil {
-		t.Fatalf("write settings: %v", err)
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`default_model: "gpt-4"`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 
 	path := writeTempYAML(t, `
@@ -147,15 +147,15 @@ agents:
 	}
 }
 
-func TestLoadConfigUsesDefaultTopologyFromSettings(t *testing.T) {
+func TestLoadConfigUsesDefaultTopologyFromConfig(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
-	settingsDir := filepath.Join(cfgHome, "agora")
-	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
-		t.Fatalf("mkdir settings dir: %v", err)
+	cfgDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir gconf dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(`default_topology: "mesh"`), 0o644); err != nil {
-		t.Fatalf("write settings: %v", err)
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`default_topology: "mesh"`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 
 	path := writeTempYAML(t, `

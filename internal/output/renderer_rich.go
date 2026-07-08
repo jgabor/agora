@@ -292,18 +292,18 @@ func richAutoConfigPanelAtWidth(r Renderer, width, contentWidth int,
 
 // richDeliberationHeaderAtWidth renders the deliberation header with side-by-side layout.
 func richDeliberationHeaderAtWidth(r Renderer, width, contentWidth int,
-	topicLines, castLines []string, settings []string,
-	settingsTitle string, agents []types.AgentConfig, c *cast.Cast,
+	topicLines, castLines []string, gconf []string,
+	panelTitle string, agents []types.AgentConfig, c *cast.Cast,
 ) string {
-	castWidth, settingsWidth := splitWidths(contentWidth, 2, 0.62)
+	castWidth, panelWidth := splitWidths(contentWidth, 2, 0.62)
 	castLines = append(castLines, agentCastTree(r, agents, c, castWidth))
 	castBlock := lipgloss.NewStyle().Width(castWidth).Render(sectionBlock(r, "Cast", castLines, castWidth))
-	settingsBlock := lipgloss.NewStyle().Width(settingsWidth).Render(sectionBlock(r, settingsTitle, settings, settingsWidth))
+	panelBlock := lipgloss.NewStyle().Width(panelWidth).Render(sectionBlock(r, panelTitle, gconf, panelWidth))
 	body := lipgloss.JoinVertical(
 		lipgloss.Left,
 		sectionBlock(r, "Topic", topicLines, contentWidth),
 		"",
-		lipgloss.JoinHorizontal(lipgloss.Top, castBlock, lipgloss.NewStyle().Width(2).Render(""), settingsBlock),
+		lipgloss.JoinHorizontal(lipgloss.Top, castBlock, lipgloss.NewStyle().Width(2).Render(""), panelBlock),
 	)
 	return r.Panel("Deliberation Start", body, width, "4")
 }

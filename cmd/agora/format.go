@@ -117,7 +117,7 @@ func containsDigit(value string) bool {
 	return false
 }
 
-type settingValue struct {
+type configValue struct {
 	Group                string   `json:"group"`
 	Key                  string   `json:"key"`
 	Type                 string   `json:"type"`
@@ -129,14 +129,14 @@ type settingValue struct {
 	Description          string   `json:"description"`
 }
 
-func effectiveSettingsRows(settings config.Settings) ([]settingValue, string, error) {
-	path, err := config.SettingsPath()
+func effectiveConfigRows(gconf config.Config) ([]configValue, string, error) {
+	path, err := config.GlobalConfigPath()
 	if err != nil {
 		return nil, "", err
 	}
-	rows := make([]settingValue, 0, len(settingKeyDefs))
-	for _, def := range settingKeyDefs {
-		value, explicit, err := effectiveSettingValue(def, settings)
+	rows := make([]configValue, 0, len(configKeyDefs))
+	for _, def := range configKeyDefs {
+		value, explicit, err := effectiveConfigValue(def, gconf)
 		if err != nil {
 			return nil, "", err
 		}
@@ -153,14 +153,14 @@ func effectiveSettingsRows(settings config.Settings) ([]settingValue, string, er
 				source = "default"
 			}
 		}
-		rows = append(rows, settingValue{
+		rows = append(rows, configValue{
 			Group:                def.Group,
 			Key:                  def.Key,
 			Type:                 def.Type,
 			Value:                redactedSettingValue(def.Key, value),
 			Source:               source,
 			Default:              redactedSettingValue(def.Key, defaultValue),
-			EffectiveValuePolicy: settingValuePolicy(def),
+			EffectiveValuePolicy: configValuePolicy(def),
 			AllowedValues:        append([]string(nil), def.Allowed...),
 			Description:          def.Description,
 		})
@@ -168,32 +168,32 @@ func effectiveSettingsRows(settings config.Settings) ([]settingValue, string, er
 	return rows, path, nil
 }
 
-func configAllData(settings config.Settings) (map[string]any, error) {
-	values, path, err := effectiveSettingsRows(settings)
+func configAllData(gconf config.Config) (map[string]any, error) {
+	values, path, err := effectiveConfigRows(gconf)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{
 		"path":      path,
-		"settings":  values,
-		"redaction": "secret-like setting keys and values are reported as [redacted] when set",
+		"config":    values,
+		"redaction": "secret-like config keys and values are reported as [redacted] when set",
 		"source_values": []string{
-			"set: explicitly configured in settings.yaml",
+			"set: explicitly configured in config.yaml",
 			"default: effective value supplied by Agora defaults",
 			"unset: no configured value and no default",
 		},
 	}, nil
 }
 
-func writeSettingsMarkdown(w io.Writer, data map[string]any) error {
-	values, _ := data["settings"].([]settingValue)
+func writeConfigMarkdown(w io.Writer, data map[string]any) error {
+	values, _ := data["config"].([]configValue)
 	var sb strings.Builder
-	fmt.Fprintln(&sb, "# Global Settings")
+	fmt.Fprintln(&sb, "# Global Config")
 	fmt.Fprintln(&sb)
 	fmt.Fprintf(&sb, "- **Path:** `%v`\n", data["path"])
 	fmt.Fprintf(&sb, "- **Redaction:** %v\n", data["redaction"])
 	fmt.Fprintln(&sb)
-	fmt.Fprintln(&sb, "## Effective Settings")
+	fmt.Fprintln(&sb, "## Effective Config")
 	for _, value := range values {
 		line := fmt.Sprintf("- `%s`: `%s` (source `%s`; type `%s`; policy: %s; default `%s`", value.Key, value.Value, value.Source, value.Type, value.EffectiveValuePolicy, value.Default)
 		if len(value.AllowedValues) > 0 {
@@ -792,7 +792,7 @@ func metadataCommandData() map[string]any {
 			"values":  validFormats,
 		},
 		"commands":            commandMetadata(),
-		"settings_keys":       settingsKeyMetadata(),
+		"config_keys":         configKeyMetadata(),
 		"transcript_metadata": transcriptMetadataContract(),
 	}
 }
@@ -899,11 +899,11 @@ func enumMetadata(commands []map[string]any) map[string]any {
 }
 
 func primeCommandData() (map[string]any, error) {
-	settings, err := config.LoadDefaultSettings()
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		return nil, fmt.Errorf("loading settings: %w", err)
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
-	settingValues, settingsPath, err := effectiveSettingsRows(settings)
+	configValues, cfgPath, err := effectiveConfigRows(gconf)
 	if err != nil {
 		return nil, err
 	}
@@ -912,15 +912,15 @@ func primeCommandData() (map[string]any, error) {
 		"schema_version": schemaVersion,
 		"purpose":        "Agora-provided CLI operating context for agents. This is not deliberation evidence.",
 		"context_boundary": map[string]any{
-			"prime":                "Use `agora prime` to inspect Agora's command surface, defaults, settings, and transcript metadata before operating the CLI.",
+			"prime":                "Use `agora prime` to inspect Agora's command surface, defaults, config, and transcript metadata before operating the CLI.",
 			"deliberation_context": "Use `--context PATH` on `agora run` to provide user-owned local text evidence to the deliberation. It is repeatable and does not change CLI operating context.",
 		},
 		"commands":            commands,
 		"flags":               commandFlags(commands),
 		"defaults":            defaultMetadata(commands),
 		"enum_values":         enumMetadata(commands),
-		"settings_keys":       settingsKeyMetadata(),
-		"settings":            map[string]any{"path": settingsPath, "values": settingValues, "redaction": "secret-like setting keys and values are reported as [redacted] when set"},
+		"config_keys":         configKeyMetadata(),
+		"config":              map[string]any{"path": cfgPath, "values": configValues, "redaction": "secret-like config keys and values are reported as [redacted] when set"},
 		"transcript_metadata": transcriptMetadataContract(),
 	}, nil
 }
@@ -957,16 +957,16 @@ func init() {
 
 func writePrimeText(w io.Writer, data map[string]any) error {
 	commands, _ := data["commands"].([]map[string]any)
-	settings, _ := data["settings"].(map[string]any)
-	settingValues, _ := settings["values"].([]settingValue)
+	gconf, _ := data["config"].(map[string]any)
+	configValues, _ := gconf["values"].([]configValue)
 	var sb strings.Builder
 	fmt.Fprintln(&sb, "Agora Prime")
 	fmt.Fprintln(&sb, "Purpose: Agora-provided CLI operating context for agents; not deliberation evidence.")
 	fmt.Fprintln(&sb, "Use --context PATH only with run to provide user-owned local text evidence to deliberation.")
 	fmt.Fprintf(&sb, "Formats: %s (default %s)\n", strings.Join(validFormats, ", "), formatText)
 	fmt.Fprintf(&sb, "Commands: %s\n", commandNames(commands))
-	fmt.Fprintf(&sb, "Settings: %d keys at %v; secret-like keys and values render as [redacted]\n", len(settingKeyDefs), settings["path"])
-	for _, value := range settingValues {
+	fmt.Fprintf(&sb, "Config: %d keys at %v; secret-like keys and values render as [redacted]\n", len(configKeyDefs), gconf["path"])
+	for _, value := range configValues {
 		fmt.Fprintf(&sb, "- %s: %s (%s)\n", value.Key, value.Value, value.Source)
 	}
 	fmt.Fprintln(&sb, "Transcript metadata: first JSONL record may include transcript.schema_version, cast, and config.")
@@ -977,9 +977,9 @@ func writePrimeText(w io.Writer, data map[string]any) error {
 func writePrimeMarkdown(w io.Writer, data map[string]any) error {
 	commands, _ := data["commands"].([]map[string]any)
 	flags, _ := data["flags"].([]map[string]any)
-	settingsKeys, _ := data["settings_keys"].([]map[string]any)
-	settings, _ := data["settings"].(map[string]any)
-	settingValues, _ := settings["values"].([]settingValue)
+	configKeys, _ := data["config_keys"].([]map[string]any)
+	gconf, _ := data["config"].(map[string]any)
+	configValues, _ := gconf["values"].([]configValue)
 	var sb strings.Builder
 	fmt.Fprintln(&sb, "# Agora Prime")
 	fmt.Fprintln(&sb)
@@ -987,7 +987,7 @@ func writePrimeMarkdown(w io.Writer, data map[string]any) error {
 	fmt.Fprintln(&sb)
 	fmt.Fprintln(&sb, "## Context Boundary")
 	fmt.Fprintln(&sb)
-	fmt.Fprintln(&sb, "- `agora prime`: inspect commands, flags, defaults, enum values, settings, and transcript metadata before operating Agora.")
+	fmt.Fprintln(&sb, "- `agora prime`: inspect commands, flags, defaults, enum values, config, and transcript metadata before operating Agora.")
 	fmt.Fprintln(&sb, "- `--context PATH`: provide user-owned local text evidence to `agora run`; repeatable and separate from CLI operating context.")
 	fmt.Fprintln(&sb)
 	fmt.Fprintln(&sb, "## Formats")
@@ -1008,10 +1008,10 @@ func writePrimeMarkdown(w io.Writer, data map[string]any) error {
 		fmt.Fprintln(&sb, line)
 	}
 	fmt.Fprintln(&sb)
-	fmt.Fprintln(&sb, "## Settings")
-	fmt.Fprintf(&sb, "- Path: `%v`\n", settings["path"])
-	fmt.Fprintln(&sb, "- Redaction: secret-like setting keys and values are reported as `[redacted]` when set.")
-	for _, key := range settingsKeys {
+	fmt.Fprintln(&sb, "## Config")
+	fmt.Fprintf(&sb, "- Path: `%v`\n", gconf["path"])
+	fmt.Fprintln(&sb, "- Redaction: secret-like config keys and values are reported as `[redacted]` when set.")
+	for _, key := range configKeys {
 		line := fmt.Sprintf("- `%s`: default `%v`; %s", key["key"], key["default"], key["description"])
 		if values, ok := key["enum_values"]; ok {
 			line += fmt.Sprintf("; values `%s`", strings.Join(anyStringSlice(values), "`, `"))
@@ -1019,8 +1019,8 @@ func writePrimeMarkdown(w io.Writer, data map[string]any) error {
 		fmt.Fprintln(&sb, line)
 	}
 	fmt.Fprintln(&sb)
-	fmt.Fprintln(&sb, "## Effective Settings")
-	for _, value := range settingValues {
+	fmt.Fprintln(&sb, "## Effective Config")
+	for _, value := range configValues {
 		fmt.Fprintf(&sb, "- `%s`: `%s` (%s)\n", value.Key, value.Value, value.Source)
 	}
 	fmt.Fprintln(&sb)
@@ -1056,9 +1056,9 @@ func anyStringSlice(value any) []string {
 	}
 }
 
-func settingsKeyMetadata() []map[string]any {
-	out := make([]map[string]any, 0, len(settingKeyDefs))
-	for _, def := range settingKeyDefs {
+func configKeyMetadata() []map[string]any {
+	out := make([]map[string]any, 0, len(configKeyDefs))
+	for _, def := range configKeyDefs {
 		defaultValue, _ := settingDefaultValue(def)
 		entry := map[string]any{
 			"group":                  def.Group,
@@ -1066,7 +1066,7 @@ func settingsKeyMetadata() []map[string]any {
 			"type":                   def.Type,
 			"description":            def.Description,
 			"default":                redactedSettingValue(def.Key, defaultValue),
-			"effective_value_policy": settingValuePolicy(def),
+			"effective_value_policy": configValuePolicy(def),
 		}
 		if len(def.Allowed) > 0 {
 			entry["enum_values"] = append([]string(nil), def.Allowed...)
@@ -1076,14 +1076,14 @@ func settingsKeyMetadata() []map[string]any {
 	return out
 }
 
-func settingDefaultValue(def settingKeyDef) (string, error) {
+func settingDefaultValue(def configKeyDef) (string, error) {
 	if def.DefaultFunc != nil {
 		return def.DefaultFunc()
 	}
 	return def.DefaultValue, nil
 }
 
-func settingValuePolicy(def settingKeyDef) string {
+func configValuePolicy(def configKeyDef) string {
 	if def.DefaultFunc != nil {
 		return "when unset, Agora computes a runtime default"
 	}
@@ -1136,7 +1136,7 @@ func metadataMarkdownRows(data map[string]any) [][]string {
 		{"Default format", formatText},
 		{"Valid formats", strings.Join(validFormats, ", ")},
 		{"Supported inspection commands", "list, stats, show, validate, config get --all, metadata"},
-		{"Settings keys", fmt.Sprintf("%d", len(settingKeyDefs))},
+		{"Config keys", fmt.Sprintf("%d", len(configKeyDefs))},
 		{"Transcript metadata", "schema_version, cast, config"},
 	}
 }

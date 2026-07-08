@@ -31,13 +31,13 @@ func DataDir() (string, error) {
 	return dataDirFor(runtime.GOOS, defaultPathEnv())
 }
 
-// SettingsPath returns the default global settings.yaml path.
-func SettingsPath() (string, error) {
+// GlobalConfigPath returns the default global config.yaml path.
+func GlobalConfigPath() (string, error) {
 	dir, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "settings.yaml"), nil
+	return filepath.Join(dir, "config.yaml"), nil
 }
 
 // TranscriptStoreDir returns the default managed transcript store directory.

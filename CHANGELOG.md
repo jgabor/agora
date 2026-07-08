@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-_No user-facing changes yet._
+### Changed
+- Global preferences file renamed from `settings.yaml` to `config.yaml` and the holding type from `Settings` to `Config` (load/save/path APIs renamed accordingly, e.g. `LoadDefaultSettings` → `LoadDefaultGlobalConfig`, `SettingsPath` → `GlobalConfigPath`). An existing `settings.yaml` is no longer read; run `agora config init --force` (or rename the file) to migrate.
+
+### Fixed
+- `agora prime` and `agora config get --all` machine contracts: the JSON keys `settings` and `settings_keys` (and the Markdown "Settings" sections) are now `config` and `config_keys`. Callers that parsed the prior keys need updating.
 
 ## [0.4.1] - 2026-07-08
 
@@ -19,7 +23,7 @@ _No user-facing changes yet._
 ### Added
 - Debate ledger: typed per-round compacted state (positions, agreements, open cruxes, current draft) injected into every agent envelope, separately produced by a mid-deliberation updater that is distinct from the post-hoc synthesis engine. Persisted as typed transcript records and visible in `agora show`.
 - Agent self-history: an agent's own immediately preceding turn is always injected into its envelope regardless of topology; deduplicated against the predecessor window.
-- `--no-ledger` flag and `default_ledger_enabled` settings key (three-layer precedence: CLI flag > config > settings > default-on).
+- `--no-ledger` flag and `default_ledger_enabled` config key (three-layer precedence: CLI flag > `--config` > `config.yaml` > default-on).
 
 ### Changed
 - `TurnRecord` now carries an optional `Ledger *DebateLedger` field as a sibling to the existing `Evidence *EvidenceBundle` field. Legacy transcripts without ledger records load, render, and resume in legacy mode without failure.
@@ -28,9 +32,9 @@ _No user-facing changes yet._
 ## [0.3.0] - 2026-06-15
 
 ### Added
-- `agora prime` provides read-only agent-operating context for the CLI, including commands, flags, defaults, enum values, settings keys, transcript metadata, and the boundary from deliberation `--context` evidence.
+- `agora prime` provides read-only agent-operating context for the CLI, including commands, flags, defaults, enum values, config keys, transcript metadata, and the boundary from deliberation `--context` evidence.
 - `--format text|json|markdown` is available on supported inspection surfaces: `prime`, `metadata`, `list`, `show`, `stats`, `validate`, and `config get --all`.
-- Command-contract verification checks live Cobra commands, canonical flags, supported formats, settings keys, enum values, schema versions, and README contract markers against the documented CLI surface.
+- Command-contract verification checks live Cobra commands, canonical flags, supported formats, config keys, enum values, schema versions, and README contract markers against the documented CLI surface.
 - `agora show` displays transcript records by slug or path using the same turn cards and response styling as `run`, including plain-output fallback, evidence summaries/source references, and consensus statements.
 
 ### Changed
@@ -43,13 +47,13 @@ _No user-facing changes yet._
 ## [0.2.0] - 2026-05-05
 
 ### Added
-- Opt-in pre-deliberation evidence: `--research`, `--no-research`, repeatable `--context`, config `research`/`context`, settings caps, topic-derived OpenCode web evidence, text-only local context safety, source-reference transcript summaries, dry-run reporting, and resume evidence reuse.
+- Opt-in pre-deliberation evidence: `--research`, `--no-research`, repeatable `--context`, config `research`/`context`, config caps, topic-derived OpenCode web evidence, text-only local context safety, source-reference transcript summaries, dry-run reporting, and resume evidence reuse.
 - OutputManager terminal renderer coverage for panels, tables, text wrapping, config preview, stats output, and status methods.
 - SynthesisEngine and Orchestrator.Synthesize test coverage (extractJSON, formatTranscript, full engine flow).
 - Slug-based `agora resume` with latest-match selection and a `--file` path override.
 - Managed transcript store output paths and `agora list` for browsing saved deliberations.
-- Settings-aware defaults now fill missing agent models, default topology, and auto level when CLI/config values omit them.
-- Global settings path/loading layer: XDG config/data dirs on Linux, Application Support on macOS, LOCALAPPDATA on Windows, plus `settings.yaml` parsing.
+- Config-aware defaults now fill missing agent models, default topology, and auto level when CLI/config values omit them.
+- Global config path/loading layer: XDG config/data dirs on Linux, Application Support on macOS, LOCALAPPDATA on Windows, plus `config.yaml` parsing.
 - `--auto <level>` flag on `agora resume` — generates agent configs when resuming from existing transcript.
 - `--yes` flag to skip preview confirmation prompt on both `run` and `resume`.
 - `--auto <level>` flag on `agora run` — generates agent configs via LLM meta-call (levels: off/quick/normal/deep/yolo).
@@ -74,7 +78,7 @@ _No user-facing changes yet._
 
 ### Fixed
 - Terminal visual-width calculation now counts Unicode glyphs as runes while ignoring ANSI escape sequences.
-- CLI auto mode now uses `settings.default_model` when `--model` is omitted.
+- CLI auto mode now uses `config.default_model` when `--model` is omitted.
 
 ### Changed
 - Merged go-port branch into main — Go is the canonical implementation.

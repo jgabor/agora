@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type settingKeyDef struct {
+type configKeyDef struct {
 	Group        string
 	Key          string
 	Type         string
@@ -22,25 +22,25 @@ type settingKeyDef struct {
 	DefaultValue string
 	DefaultFunc  func() (string, error)
 	Allowed      []string
-	Get          func(config.Settings) (string, bool)
-	Set          func(*config.Settings, string) error
+	Get          func(config.Config) (string, bool)
+	Set          func(*config.Config, string) error
 }
 
-var settingKeyDefs = []settingKeyDef{
+var configKeyDefs = []configKeyDef{
 	{
 		Group:        "defaults",
 		Key:          "default_model",
 		Type:         "string",
 		Description:  "model for auto config generation and omitted agent models",
 		DefaultValue: defaultModel,
-		Get: func(settings config.Settings) (string, bool) {
-			return settings.DefaultModel, settings.DefaultModel != ""
+		Get: func(gconf config.Config) (string, bool) {
+			return gconf.DefaultModel, gconf.DefaultModel != ""
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			if strings.TrimSpace(value) == "" {
 				return fmt.Errorf("default_model cannot be empty")
 			}
-			settings.DefaultModel = value
+			gconf.DefaultModel = value
 			return nil
 		},
 	},
@@ -50,10 +50,10 @@ var settingKeyDefs = []settingKeyDef{
 		Type:        "enum",
 		Description: "auto level used when --auto and --config are omitted",
 		Allowed:     []string{"quick", "normal", "deep", "yolo"},
-		Get: func(settings config.Settings) (string, bool) {
-			return settings.DefaultAutoLevel, settings.DefaultAutoLevel != ""
+		Get: func(gconf config.Config) (string, bool) {
+			return gconf.DefaultAutoLevel, gconf.DefaultAutoLevel != ""
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			level, err := types.ParseAutoLevel(value)
 			if err != nil {
 				return err
@@ -61,7 +61,7 @@ var settingKeyDefs = []settingKeyDef{
 			if level == types.AutoOff {
 				return fmt.Errorf("default_auto_level must be one of quick, normal, deep, yolo")
 			}
-			settings.DefaultAutoLevel = string(level)
+			gconf.DefaultAutoLevel = string(level)
 			return nil
 		},
 	},
@@ -72,15 +72,15 @@ var settingKeyDefs = []settingKeyDef{
 		Description:  "topology used when a YAML config omits topology",
 		DefaultValue: string(types.TopologyRing),
 		Allowed:      []string{"ring", "star", "mesh"},
-		Get: func(settings config.Settings) (string, bool) {
-			return settings.DefaultTopology, settings.DefaultTopology != ""
+		Get: func(gconf config.Config) (string, bool) {
+			return gconf.DefaultTopology, gconf.DefaultTopology != ""
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			topology, err := types.ParseTopology(value)
 			if err != nil {
 				return err
 			}
-			settings.DefaultTopology = string(topology)
+			gconf.DefaultTopology = string(topology)
 			return nil
 		},
 	},
@@ -90,14 +90,14 @@ var settingKeyDefs = []settingKeyDef{
 		Type:        "path",
 		Description: "directory for managed transcript output",
 		DefaultFunc: config.TranscriptStoreDir,
-		Get: func(settings config.Settings) (string, bool) {
-			return settings.DefaultOutputDir, settings.DefaultOutputDir != ""
+		Get: func(gconf config.Config) (string, bool) {
+			return gconf.DefaultOutputDir, gconf.DefaultOutputDir != ""
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			if strings.TrimSpace(value) == "" {
 				return fmt.Errorf("default_output_dir cannot be empty")
 			}
-			settings.DefaultOutputDir = value
+			gconf.DefaultOutputDir = value
 			return nil
 		},
 	},
@@ -107,18 +107,18 @@ var settingKeyDefs = []settingKeyDef{
 		Type:         "bool",
 		Description:  "enable per-round debate ledger injection (default: enabled)",
 		DefaultValue: "true",
-		Get: func(settings config.Settings) (string, bool) {
-			if settings.DefaultLedgerEnabled == nil {
+		Get: func(gconf config.Config) (string, bool) {
+			if gconf.DefaultLedgerEnabled == nil {
 				return "", false
 			}
-			return strconv.FormatBool(*settings.DefaultLedgerEnabled), true
+			return strconv.FormatBool(*gconf.DefaultLedgerEnabled), true
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			b, err := parseBool("default_ledger_enabled", value)
 			if err != nil {
 				return err
 			}
-			settings.DefaultLedgerEnabled = &b
+			gconf.DefaultLedgerEnabled = &b
 			return nil
 		},
 	},
@@ -128,18 +128,18 @@ var settingKeyDefs = []settingKeyDef{
 		Type:         "positive integer",
 		Description:  "maximum web and local context source references",
 		DefaultValue: strconv.Itoa(evidence.DefaultMaxSources),
-		Get: func(settings config.Settings) (string, bool) {
-			if settings.ResearchMaxSources <= 0 {
+		Get: func(gconf config.Config) (string, bool) {
+			if gconf.ResearchMaxSources <= 0 {
 				return "", false
 			}
-			return strconv.Itoa(settings.ResearchMaxSources), true
+			return strconv.Itoa(gconf.ResearchMaxSources), true
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			n, err := parsePositiveInt("research_max_sources", value)
 			if err != nil {
 				return err
 			}
-			settings.ResearchMaxSources = n
+			gconf.ResearchMaxSources = n
 			return nil
 		},
 	},
@@ -149,18 +149,18 @@ var settingKeyDefs = []settingKeyDef{
 		Type:         "positive integer",
 		Description:  "maximum total bytes of local context",
 		DefaultValue: strconv.FormatInt(evidence.DefaultMaxBytes, 10),
-		Get: func(settings config.Settings) (string, bool) {
-			if settings.ContextMaxBytes <= 0 {
+		Get: func(gconf config.Config) (string, bool) {
+			if gconf.ContextMaxBytes <= 0 {
 				return "", false
 			}
-			return strconv.FormatInt(settings.ContextMaxBytes, 10), true
+			return strconv.FormatInt(gconf.ContextMaxBytes, 10), true
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			n, err := parsePositiveInt64("context_max_bytes", value)
 			if err != nil {
 				return err
 			}
-			settings.ContextMaxBytes = n
+			gconf.ContextMaxBytes = n
 			return nil
 		},
 	},
@@ -170,18 +170,18 @@ var settingKeyDefs = []settingKeyDef{
 		Type:         "positive integer",
 		Description:  "maximum directory traversal depth for local context",
 		DefaultValue: strconv.Itoa(evidence.DefaultMaxDepth),
-		Get: func(settings config.Settings) (string, bool) {
-			if settings.ContextMaxDepth <= 0 {
+		Get: func(gconf config.Config) (string, bool) {
+			if gconf.ContextMaxDepth <= 0 {
 				return "", false
 			}
-			return strconv.Itoa(settings.ContextMaxDepth), true
+			return strconv.Itoa(gconf.ContextMaxDepth), true
 		},
-		Set: func(settings *config.Settings, value string) error {
+		Set: func(gconf *config.Config, value string) error {
 			n, err := parsePositiveInt("context_max_depth", value)
 			if err != nil {
 				return err
 			}
-			settings.ContextMaxDepth = n
+			gconf.ContextMaxDepth = n
 			return nil
 		},
 	},
@@ -192,8 +192,8 @@ var configCmd = newConfigCommand()
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Manage global settings",
-		Long:  "Manage global settings in settings.yaml.\n\nKeys:\n" + settingKeysHelp(),
+		Short: "Manage global config",
+		Long:  "Manage global config in config.yaml.\n\nKeys:\n" + configKeysHelp(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -206,31 +206,31 @@ func newConfigInitCommand() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Create the global settings file",
+		Short: "Create the global config file",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := config.SettingsPath()
+			path, err := config.GlobalConfigPath()
 			if err != nil {
 				return err
 			}
 			if _, err := os.Stat(path); err == nil && !force {
-				return fmt.Errorf("settings already exists: %s (use --force to overwrite)", path)
+				return fmt.Errorf("config already exists: %s (use --force to overwrite)", path)
 			} else if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("checking settings file: %w", err)
+				return fmt.Errorf("checking config file: %w", err)
 			}
 
-			settings, err := defaultGlobalSettings()
+			gconf, err := defaultGlobalConfig()
 			if err != nil {
 				return err
 			}
-			if err := config.SaveSettings(path, settings); err != nil {
-				return fmt.Errorf("saving settings: %w", err)
+			if err := config.SaveGlobalConfig(path, gconf); err != nil {
+				return fmt.Errorf("saving config: %w", err)
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), output.RenderStatus("Config Initialized", [][]string{{"Path", path}}, "2"))
 			return err
 		},
 	}
-	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite an existing settings file")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite an existing config file")
 	return cmd
 }
 
@@ -240,7 +240,7 @@ func newConfigGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get KEY",
 		Short: "Get a global setting",
-		Long:  "Get one global setting, or use --all to show effective settings.\n\nKeys:\n" + settingKeysHelp(),
+		Long:  "Get one global config, or use --all to show effective config.\n\nKeys:\n" + configKeysHelp(),
 		Args: func(cmd *cobra.Command, args []string) error {
 			if all {
 				if len(args) != 0 {
@@ -254,34 +254,34 @@ func newConfigGetCommand() *cobra.Command {
 			if err := validateFormat(format); err != nil {
 				return err
 			}
-			settings, err := config.LoadDefaultSettings()
+			gconf, err := config.LoadDefaultGlobalConfig()
 			if err != nil {
-				return fmt.Errorf("loading settings: %w", err)
+				return fmt.Errorf("loading config: %w", err)
 			}
 
 			if all {
 				switch format {
 				case formatJSON:
-					data, err := configAllData(settings)
+					data, err := configAllData(gconf)
 					if err != nil {
 						return err
 					}
 					return writeJSON(cmd.OutOrStdout(), "config get --all", data)
 				case formatMarkdown:
-					data, err := configAllData(settings)
+					data, err := configAllData(gconf)
 					if err != nil {
 						return err
 					}
-					return writeSettingsMarkdown(cmd.OutOrStdout(), data)
+					return writeConfigMarkdown(cmd.OutOrStdout(), data)
 				}
-				return printAllSettings(cmd.OutOrStdout(), settings)
+				return printAllConfig(cmd.OutOrStdout(), gconf)
 			}
 
 			def, ok := findSettingKey(args[0])
 			if !ok {
 				return unknownSettingKey(args[0])
 			}
-			value, explicit := def.Get(settings)
+			value, explicit := def.Get(gconf)
 			if !explicit {
 				return fmt.Errorf("key not set: %s", def.Key)
 			}
@@ -289,7 +289,7 @@ func newConfigGetCommand() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().BoolVarP(&all, "all", "a", false, "show all effective settings")
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "show all effective config")
 	addFormatFlag(cmd, &format)
 	return cmd
 }
@@ -298,7 +298,7 @@ func newConfigSetCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set KEY VALUE",
 		Short: "Set a global setting",
-		Long:  "Set one global setting in settings.yaml.\n\nKeys:\n" + settingKeysHelp(),
+		Long:  "Set one global setting in config.yaml.\n\nKeys:\n" + configKeysHelp(),
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			def, ok := findSettingKey(args[0])
@@ -306,27 +306,27 @@ func newConfigSetCommand() *cobra.Command {
 				return unknownSettingKey(args[0])
 			}
 
-			settings, err := config.LoadDefaultSettings()
+			gconf, err := config.LoadDefaultGlobalConfig()
 			if err != nil {
-				return fmt.Errorf("loading settings: %w", err)
+				return fmt.Errorf("loading config: %w", err)
 			}
-			if err := def.Set(&settings, args[1]); err != nil {
+			if err := def.Set(&gconf, args[1]); err != nil {
 				return fmt.Errorf("config value: %w", err)
 			}
-			if err := config.SaveDefaultSettings(settings); err != nil {
-				return fmt.Errorf("saving settings: %w", err)
+			if err := config.SaveDefaultGlobalConfig(gconf); err != nil {
+				return fmt.Errorf("saving config: %w", err)
 			}
 			return nil
 		},
 	}
 }
 
-func defaultGlobalSettings() (config.Settings, error) {
+func defaultGlobalConfig() (config.Config, error) {
 	outputDir, err := config.TranscriptStoreDir()
 	if err != nil {
-		return config.Settings{}, err
+		return config.Config{}, err
 	}
-	return config.Settings{
+	return config.Config{
 		DefaultModel:       defaultModel,
 		DefaultTopology:    string(types.TopologyRing),
 		DefaultOutputDir:   outputDir,
@@ -336,10 +336,10 @@ func defaultGlobalSettings() (config.Settings, error) {
 	}, nil
 }
 
-func settingKeysHelp() string {
+func configKeysHelp() string {
 	var sb strings.Builder
 	currentGroup := ""
-	for _, def := range settingKeyDefs {
+	for _, def := range configKeyDefs {
 		if def.Group != currentGroup {
 			if currentGroup != "" {
 				sb.WriteByte('\n')
@@ -352,40 +352,40 @@ func settingKeysHelp() string {
 	return sb.String()
 }
 
-func findSettingKey(key string) (settingKeyDef, bool) {
-	for _, def := range settingKeyDefs {
+func findSettingKey(key string) (configKeyDef, bool) {
+	for _, def := range configKeyDefs {
 		if def.Key == key {
 			return def, true
 		}
 	}
-	return settingKeyDef{}, false
+	return configKeyDef{}, false
 }
 
 func unknownSettingKey(key string) error {
-	keys := make([]string, len(settingKeyDefs))
-	for i, def := range settingKeyDefs {
+	keys := make([]string, len(configKeyDefs))
+	for i, def := range configKeyDefs {
 		keys[i] = def.Key
 	}
 	return fmt.Errorf("unknown config key %q; valid: %s", key, strings.Join(keys, ", "))
 }
 
-func printAllSettings(w io.Writer, settings config.Settings) error {
-	values, path, err := effectiveSettingsRows(settings)
+func printAllConfig(w io.Writer, gconf config.Config) error {
+	values, path, err := effectiveConfigRows(gconf)
 	if err != nil {
 		return err
 	}
 
 	rows := make([][]string, 0, len(values)+1)
-	rows = append(rows, []string{"settings", "path", path, "resolved"})
+	rows = append(rows, []string{"config", "path", path, "resolved"})
 	for _, value := range values {
 		rows = append(rows, []string{value.Group, value.Key, value.Value, value.Source})
 	}
-	_, err = fmt.Fprintln(w, output.RenderTable("Global Settings", []string{"Group", "Key", "Value", "Source"}, rows, []string{"", "", "", ""}, "5"))
+	_, err = fmt.Fprintln(w, output.RenderTable("Global Config", []string{"Group", "Key", "Value", "Source"}, rows, []string{"", "", "", ""}, "5"))
 	return err
 }
 
-func effectiveSettingValue(def settingKeyDef, settings config.Settings) (string, bool, error) {
-	if value, ok := def.Get(settings); ok {
+func effectiveConfigValue(def configKeyDef, gconf config.Config) (string, bool, error) {
+	if value, ok := def.Get(gconf); ok {
 		return value, true, nil
 	}
 	if def.DefaultFunc != nil {

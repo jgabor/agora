@@ -11,7 +11,7 @@ func TestTranscriptOutputPathUsesDefaultStore(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dataHome)
 	now := time.Date(2026, 5, 4, 14, 30, 22, 0, time.UTC)
 
-	path, err := TranscriptOutputPath("My Topic", Settings{}, now)
+	path, err := TranscriptOutputPath("My Topic", Config{}, now)
 	if err != nil {
 		t.Fatalf("TranscriptOutputPath: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestTranscriptOutputPathUsesDefaultStore(t *testing.T) {
 func TestTranscriptOutputPathUsesDefaultOutputDir(t *testing.T) {
 	now := time.Date(2026, 5, 4, 14, 30, 22, 0, time.UTC)
 
-	path, err := TranscriptOutputPath("Test", Settings{DefaultOutputDir: "/tmp/agora"}, now)
+	path, err := TranscriptOutputPath("Test", Config{DefaultOutputDir: "/tmp/agora"}, now)
 	if err != nil {
 		t.Fatalf("TranscriptOutputPath: %v", err)
 	}

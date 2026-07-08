@@ -142,7 +142,7 @@ By default, live output includes agent response bodies as turns complete. Use `-
 agora prime [--format text|json|markdown]
 ```
 
-Prints Agora-provided operating context for agents and tools: command surface, flags, defaults, enum values, settings keys, effective settings with secret-like values redacted, transcript metadata, and output-format contracts. `text` is the default; `json` and `markdown` are non-ANSI and intended for machine or agent startup use.
+Prints Agora-provided operating context for agents and tools: command surface, flags, defaults, enum values, config keys, effective config with secret-like values redacted, transcript metadata, and output-format contracts. `text` is the default; `json` and `markdown` are non-ANSI and intended for machine or agent startup use.
 
 `agora prime` is not deliberation evidence. Use it before operating the CLI. Use `agora run --context PATH` only when you want local text files or directories delivered to deliberation agents as bounded user-provided evidence.
 
@@ -237,9 +237,9 @@ Checks config for errors without starting a deliberation. Explicit paths are rea
 agora metadata [--format text|json|markdown]
 ```
 
-Reports the live command metadata used by contract verification, including commands, flags, defaults, enum values, settings keys, transcript metadata, and supported output formats.
+Reports the live command metadata used by contract verification, including commands, flags, defaults, enum values, config keys, transcript metadata, and supported output formats.
 
-### `agora config` — Manage global settings
+### `agora config` — Manage global config
 
 ```
 agora config init
@@ -249,7 +249,7 @@ agora config get KEY
 agora config set KEY VALUE
 ```
 
-Reads and writes the global `settings.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. `agora config get --all --format json|markdown` reports every supported setting with value, source, type, default/effective-value policy, allowed values, and redaction behavior. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
+Reads and writes the global `config.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. `agora config get --all --format json|markdown` reports every supported setting with value, source, type, default/effective-value policy, allowed values, and redaction behavior. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
 
 ## Configuration
 
@@ -264,7 +264,7 @@ Reads and writes the global `settings.yaml` file. `agora config init` creates it
 
 CLI flags override project config. For evidence, `--research` enables web research, `--no-research` disables config-enabled research, and any `--context` flags replace config `context` paths for that run.
 
-Global `settings.yaml` can be managed with `agora config`. It may set CLI defaults and evidence caps, but does not silently enable web access:
+Global `config.yaml` can be managed with `agora config`. It may set CLI defaults and evidence caps, but does not silently enable web access:
 
 | Key | Default | Description |
 |---|---|---|
@@ -276,7 +276,7 @@ Global `settings.yaml` can be managed with `agora config`. It may set CLI defaul
 | `context_max_bytes` | `1048576` | Maximum total bytes of local context |
 | `context_max_depth` | `5` | Maximum directory traversal depth for local context |
 
-When these evidence caps are unset in `settings.yaml`, auto mode raises their fallback defaults for broader runs:
+When these evidence caps are unset in `config.yaml`, auto mode raises their fallback defaults for broader runs:
 
 | Auto level | `research_max_sources` | `context_max_bytes` | `context_max_depth` |
 |---|---:|---:|---:|

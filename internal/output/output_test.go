@@ -200,7 +200,7 @@ func TestDeliberationHeaderPlainModeHasNoAnsi(t *testing.T) {
 	assertContains(t, got, "AGENT [A1 optimist]")
 	assertContains(t, got, "MODEL")
 	assertContains(t, got, "opencode/test")
-	assertContains(t, got, "Run Settings")
+	assertContains(t, got, "Run Config")
 	assertContains(t, got, "Consensus threshold: 2")
 	assertNoANSI(t, got)
 	assertNoUnicodeBox(t, got)

@@ -9,8 +9,8 @@ import (
 )
 
 // TranscriptOutputPath returns the managed transcript path for a topic.
-func TranscriptOutputPath(topic string, settings Settings, now time.Time) (string, error) {
-	dir := settings.DefaultOutputDir
+func TranscriptOutputPath(topic string, gconf Config, now time.Time) (string, error) {
+	dir := gconf.DefaultOutputDir
 	if dir == "" {
 		var err error
 		dir, err = TranscriptStoreDir()

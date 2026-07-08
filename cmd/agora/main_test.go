@@ -21,114 +21,114 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestApplyDefaultModelFromSettingsUsesSettingsWhenFlagOmitted(t *testing.T) {
+func TestApplyDefaultModelFromConfigUsesConfigWhenFlagOmitted(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
 
-	writeSettings(t, `default_model: "gpt-4"`)
+	writeConfig(t, `default_model: "gpt-4"`)
 	model := "opencode-go/deepseek-v4-flash"
 	cmd := modelCommand(&model)
 
-	if err := applyDefaultModelFromSettings(cmd, &model); err != nil {
-		t.Fatalf("applyDefaultModelFromSettings: %v", err)
+	if err := applyDefaultModelFromConfig(cmd, &model); err != nil {
+		t.Fatalf("applyDefaultModelFromConfig: %v", err)
 	}
 	if model != "gpt-4" {
 		t.Fatalf("model: got %q, want %q", model, "gpt-4")
 	}
 }
 
-func TestApplyDefaultModelFromSettingsKeepsExplicitModelFlag(t *testing.T) {
+func TestApplyDefaultModelFromConfigKeepsExplicitModelFlag(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
 
-	writeSettings(t, `default_model: "gpt-4"`)
+	writeConfig(t, `default_model: "gpt-4"`)
 	model := "opencode-go/deepseek-v4-flash"
 	cmd := modelCommand(&model)
 	if err := cmd.Flags().Set("model", "o1"); err != nil {
 		t.Fatalf("set model flag: %v", err)
 	}
 
-	if err := applyDefaultModelFromSettings(cmd, &model); err != nil {
-		t.Fatalf("applyDefaultModelFromSettings: %v", err)
+	if err := applyDefaultModelFromConfig(cmd, &model); err != nil {
+		t.Fatalf("applyDefaultModelFromConfig: %v", err)
 	}
 	if model != "o1" {
 		t.Fatalf("model: got %q, want explicit flag value %q", model, "o1")
 	}
 }
 
-func TestApplyDefaultModelFromSettingsReturnsInvalidSettingsError(t *testing.T) {
+func TestApplyDefaultModelFromConfigReturnsInvalidConfigError(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
 
-	writeSettings(t, "default_model: [\n")
+	writeConfig(t, "default_model: [\n")
 	model := "opencode-go/deepseek-v4-flash"
 	cmd := modelCommand(&model)
 
-	if err := applyDefaultModelFromSettings(cmd, &model); err == nil {
-		t.Fatal("expected invalid settings error")
+	if err := applyDefaultModelFromConfig(cmd, &model); err == nil {
+		t.Fatal("expected invalid gconf error")
 	}
 }
 
-func TestApplySettingsDefaultsUsesDefaultAutoWhenFlagsOmitted(t *testing.T) {
+func TestApplyConfigDefaultsUsesDefaultAutoWhenFlagsOmitted(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
 
-	writeSettings(t, `default_auto_level: "normal"`)
+	writeConfig(t, `default_auto_level: "normal"`)
 	model := "opencode-go/deepseek-v4-flash"
 	auto := ""
-	cmd := settingsCommand(&model, &auto)
+	cmd := configCommand(&model, &auto)
 
-	if err := applySettingsDefaults(cmd, &model, &auto); err != nil {
-		t.Fatalf("applySettingsDefaults: %v", err)
+	if err := applyConfigDefaults(cmd, &model, &auto); err != nil {
+		t.Fatalf("applyConfigDefaults: %v", err)
 	}
 	if auto != "normal" {
 		t.Fatalf("auto: got %q, want %q", auto, "normal")
 	}
 }
 
-func TestApplySettingsDefaultsKeepsExplicitAutoFlag(t *testing.T) {
+func TestApplyConfigDefaultsKeepsExplicitAutoFlag(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
 
-	writeSettings(t, `default_auto_level: "normal"`)
+	writeConfig(t, `default_auto_level: "normal"`)
 	model := "opencode-go/deepseek-v4-flash"
 	auto := ""
-	cmd := settingsCommand(&model, &auto)
+	cmd := configCommand(&model, &auto)
 	if err := cmd.Flags().Set("auto", "quick"); err != nil {
 		t.Fatalf("set auto flag: %v", err)
 	}
 
-	if err := applySettingsDefaults(cmd, &model, &auto); err != nil {
-		t.Fatalf("applySettingsDefaults: %v", err)
+	if err := applyConfigDefaults(cmd, &model, &auto); err != nil {
+		t.Fatalf("applyConfigDefaults: %v", err)
 	}
 	if auto != "quick" {
 		t.Fatalf("auto: got %q, want explicit flag value %q", auto, "quick")
 	}
 }
 
-func TestApplySettingsDefaultsKeepsExplicitConfigOverDefaultAuto(t *testing.T) {
+func TestApplyConfigDefaultsKeepsExplicitConfigOverDefaultAuto(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
 
-	writeSettings(t, `default_auto_level: "normal"`)
+	writeConfig(t, `default_auto_level: "normal"`)
 	model := "opencode-go/deepseek-v4-flash"
 	auto := ""
-	cmd := settingsCommand(&model, &auto)
+	cmd := configCommand(&model, &auto)
 	if err := cmd.Flags().Set("config", "example.yaml"); err != nil {
 		t.Fatalf("set config flag: %v", err)
 	}
 
-	if err := applySettingsDefaults(cmd, &model, &auto); err != nil {
-		t.Fatalf("applySettingsDefaults: %v", err)
+	if err := applyConfigDefaults(cmd, &model, &auto); err != nil {
+		t.Fatalf("applyConfigDefaults: %v", err)
 	}
 	if auto != "" {
-		t.Fatalf("auto: got %q, want settings ignored because --config is explicit", auto)
+		t.Fatalf("auto: got %q, want gconf ignored because --config is explicit", auto)
 	}
 }
 
@@ -151,12 +151,12 @@ func TestConfigSetGetRoundTrip(t *testing.T) {
 		t.Fatalf("config get output: got %q, want quick", out)
 	}
 
-	settings, err := config.LoadDefaultSettings()
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		t.Fatalf("LoadDefaultSettings: %v", err)
+		t.Fatalf("LoadDefaultGlobalConfig: %v", err)
 	}
-	if settings.DefaultAutoLevel != "quick" {
-		t.Fatalf("DefaultAutoLevel: got %q, want quick", settings.DefaultAutoLevel)
+	if gconf.DefaultAutoLevel != "quick" {
+		t.Fatalf("DefaultAutoLevel: got %q, want quick", gconf.DefaultAutoLevel)
 	}
 }
 
@@ -175,8 +175,8 @@ func TestConfigGetAllShowsDefaults(t *testing.T) {
 		t.Fatalf("config get --all: %v", err)
 	}
 	for _, want := range []string{
-		"Global Settings",
-		"settings",
+		"Global Config",
+		"config",
 		"path",
 		"default_model",
 		"opencode-",
@@ -206,7 +206,7 @@ func TestConfigGetAllFormattedOutputsIncludeMetadata(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	secret := "sk-test-secret-token-123"
-	writeSettings(t, `default_model: "`+secret+`"
+	writeConfig(t, `default_model: "`+secret+`"
 default_auto_level: "quick"
 `)
 
@@ -215,7 +215,7 @@ default_auto_level: "quick"
 		t.Fatalf("config get --all json: %v", err)
 	}
 	assertJSONNoANSI(t, jsonOut)
-	for _, want := range []string{"\"settings\"", "\"default_model\"", "\"type\"", "\"source\"", "\"effective_value_policy\"", "\"allowed_values\"", "[redacted]", "quick"} {
+	for _, want := range []string{"\"config\"", "\"default_model\"", "\"type\"", "\"source\"", "\"effective_value_policy\"", "\"allowed_values\"", "[redacted]", "quick"} {
 		assertStringContains(t, jsonOut, want)
 	}
 	assertStringNotContains(t, jsonOut, secret)
@@ -224,7 +224,7 @@ default_auto_level: "quick"
 	if err != nil {
 		t.Fatalf("config get --all markdown: %v", err)
 	}
-	for _, want := range []string{"# Global Settings", "## Effective Settings", "`default_auto_level`", "source `set`", "type `enum`", "allowed `quick`, `normal`, `deep`, `yolo`", "[redacted]"} {
+	for _, want := range []string{"# Global Config", "## Effective Config", "`default_auto_level`", "source `set`", "type `enum`", "allowed `quick`, `normal`, `deep`, `yolo`", "[redacted]"} {
 		assertStringContains(t, markdownOut, want)
 	}
 	assertStringNotContains(t, markdownOut, secret)
@@ -245,7 +245,7 @@ func TestFormatContractAcceptedFormats(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+dir+"\"")
+	writeConfig(t, "default_output_dir: \""+dir+"\"")
 	configPath := filepath.Join(dir, "config.yaml")
 	writeValidConfig(t, configPath)
 	transcriptPath := filepath.Join(dir, "20260504-143022-topic.jsonl")
@@ -343,7 +343,7 @@ func TestFormatContractAcceptedFormats(t *testing.T) {
 				return err
 			},
 			assert: func(out string) {
-				assertStringContains(t, out, "# Global Settings")
+				assertStringContains(t, out, "# Global Config")
 				assertStringContains(t, out, "default_model")
 				assertStringNotContains(t, out, "\x1b[")
 			},
@@ -378,7 +378,7 @@ func TestFormatContractDefaultMatchesTextOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+dir+"\"")
+	writeConfig(t, "default_output_dir: \""+dir+"\"")
 	transcriptPath := filepath.Join(dir, "20260504-143022-topic.jsonl")
 	if err := os.WriteFile(transcriptPath, []byte(transcriptLine("analyst", "default text answer", 3)), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -416,7 +416,7 @@ func TestFormatContractDefaultMatchesTextOutput(t *testing.T) {
 func TestPrimeCommandDefaultAndTextOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
-	writeSettings(t, `default_model: "test-secret-safe-model"`)
+	writeConfig(t, `default_model: "test-secret-safe-model"`)
 
 	defaultOut := runPrimeCommand(t, formatText)
 	textOut := runPrimeCommand(t, formatText)
@@ -431,7 +431,7 @@ func TestPrimeCommandDefaultAndTextOutput(t *testing.T) {
 func TestPrimeCommandJSONOutputIncludesContractSections(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
-	writeSettings(t, `default_auto_level: "quick"`)
+	writeConfig(t, `default_auto_level: "quick"`)
 
 	out := runPrimeCommand(t, formatJSON)
 	assertJSONNoANSI(t, out)
@@ -446,7 +446,7 @@ func TestPrimeCommandJSONOutputIncludesContractSections(t *testing.T) {
 	if envelope.Command != "prime" || envelope.SchemaVersion != schemaVersion {
 		t.Fatalf("prime envelope: %#v", envelope)
 	}
-	for _, key := range []string{"commands", "flags", "defaults", "enum_values", "settings_keys", "settings", "transcript_metadata", "context_boundary"} {
+	for _, key := range []string{"commands", "flags", "defaults", "enum_values", "config_keys", "config", "transcript_metadata", "context_boundary"} {
 		if _, ok := envelope.Data[key]; !ok {
 			t.Fatalf("prime json missing %q: %#v", key, envelope.Data)
 		}
@@ -459,13 +459,13 @@ func TestPrimeCommandJSONOutputIncludesContractSections(t *testing.T) {
 func TestPrimeCommandMarkdownOutputIncludesAgentBriefing(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
-	writeSettings(t, "")
+	writeConfig(t, "")
 
 	out := runPrimeCommand(t, formatMarkdown)
 	assertStringContains(t, out, "# Agora Prime")
 	assertStringContains(t, out, "## Commands")
 	assertStringContains(t, out, "## Flags, Defaults, And Enum Values")
-	assertStringContains(t, out, "## Settings")
+	assertStringContains(t, out, "## Config")
 	assertStringContains(t, out, "## Transcript Metadata")
 	assertStringContains(t, out, "`agora prime`")
 	assertStringContains(t, out, "`--context PATH`")
@@ -473,11 +473,11 @@ func TestPrimeCommandMarkdownOutputIncludesAgentBriefing(t *testing.T) {
 	assertStringNotContains(t, out, "\x1b[")
 }
 
-func TestPrimeCommandRedactsSecretLookingSettingsValues(t *testing.T) {
+func TestPrimeCommandRedactsSecretLookingConfigValues(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	secret := "sk-test-secret-token-123"
-	writeSettings(t, `default_model: "`+secret+`"`)
+	writeConfig(t, `default_model: "`+secret+`"`)
 
 	for _, format := range []string{formatText, formatJSON, formatMarkdown} {
 		out := runPrimeCommand(t, format)
@@ -574,7 +574,7 @@ func TestConfigSetRejectsInvalidAutoLevel(t *testing.T) {
 	}
 }
 
-func TestConfigInitCreatesDefaultSettings(t *testing.T) {
+func TestConfigInitCreatesDefaultConfig(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
@@ -588,28 +588,28 @@ func TestConfigInitCreatesDefaultSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config init: %v", err)
 	}
-	settingsPath := filepath.Join(cfgHome, "agora", "settings.yaml")
+	cfgPath := filepath.Join(cfgHome, "agora", "config.yaml")
 	if !strings.Contains(out, "Config Initialized") || !strings.Contains(out, "Path") {
-		t.Fatalf("config init output missing status/path %q:\n%s", settingsPath, out)
+		t.Fatalf("config init output missing status/path %q:\n%s", cfgPath, out)
 	}
 
-	settings, err := config.LoadDefaultSettings()
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		t.Fatalf("LoadDefaultSettings: %v", err)
+		t.Fatalf("LoadDefaultGlobalConfig: %v", err)
 	}
 	wantOutputDir := filepath.Join(dataHome, "agora", "transcripts")
-	if settings.DefaultModel != defaultModel || settings.DefaultTopology != "ring" || settings.DefaultOutputDir != wantOutputDir {
-		t.Fatalf("default settings: got %#v", settings)
+	if gconf.DefaultModel != defaultModel || gconf.DefaultTopology != "ring" || gconf.DefaultOutputDir != wantOutputDir {
+		t.Fatalf("default config: got %#v", gconf)
 	}
-	if settings.DefaultAutoLevel != "" {
-		t.Fatalf("DefaultAutoLevel: got %q, want unset", settings.DefaultAutoLevel)
+	if gconf.DefaultAutoLevel != "" {
+		t.Fatalf("DefaultAutoLevel: got %q, want unset", gconf.DefaultAutoLevel)
 	}
-	if settings.ResearchMaxSources != 20 || settings.ContextMaxBytes != 1048576 || settings.ContextMaxDepth != 5 {
-		t.Fatalf("evidence defaults: got %#v", settings)
+	if gconf.ResearchMaxSources != 20 || gconf.ContextMaxBytes != 1048576 || gconf.ContextMaxDepth != 5 {
+		t.Fatalf("evidence defaults: got %#v", gconf)
 	}
 }
 
-func TestConfigInitRefusesExistingSettings(t *testing.T) {
+func TestConfigInitRefusesExistingConfig(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
@@ -620,14 +620,14 @@ func TestConfigInitRefusesExistingSettings(t *testing.T) {
 	}
 	_, err := executeConfigCommand(t, "init")
 	if err == nil {
-		t.Fatal("expected existing settings error")
+		t.Fatal("expected existing gconf error")
 	}
-	if !strings.Contains(err.Error(), "settings already exists") {
+	if !strings.Contains(err.Error(), "config already exists") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestConfigInitForceOverwritesExistingSettings(t *testing.T) {
+func TestConfigInitForceOverwritesExistingConfig(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")
 	}
@@ -640,19 +640,19 @@ func TestConfigInitForceOverwritesExistingSettings(t *testing.T) {
 		t.Fatalf("config init --force: %v", err)
 	}
 
-	settings, err := config.LoadDefaultSettings()
+	gconf, err := config.LoadDefaultGlobalConfig()
 	if err != nil {
-		t.Fatalf("LoadDefaultSettings: %v", err)
+		t.Fatalf("LoadDefaultGlobalConfig: %v", err)
 	}
-	if settings.DefaultModel != defaultModel {
-		t.Fatalf("DefaultModel: got %q, want %q", settings.DefaultModel, defaultModel)
+	if gconf.DefaultModel != defaultModel {
+		t.Fatalf("DefaultModel: got %q, want %q", gconf.DefaultModel, defaultModel)
 	}
 }
 
 func TestResolveTranscriptOutputKeepsExplicitOutput(t *testing.T) {
 	model := "opencode-go/deepseek-v4-flash"
 	auto := ""
-	cmd := settingsCommand(&model, &auto)
+	cmd := configCommand(&model, &auto)
 	cmd.Flags().String("output", "", "Output")
 	if err := cmd.Flags().Set("output", "custom.jsonl"); err != nil {
 		t.Fatalf("set output flag: %v", err)
@@ -762,7 +762,7 @@ func TestResolveLedgerPolicyCLIDisablesOverConfigEnable(t *testing.T) {
 	enabled := true
 	cfg.Ledger = &enabled
 
-	resolved := resolveLedgerPolicy(cmd, cfg, config.Settings{})
+	resolved := resolveLedgerPolicy(cmd, cfg, config.Config{})
 	if resolved == nil {
 		t.Fatal("resolved: got nil, want false pointer (CLI override)")
 	}
@@ -771,37 +771,37 @@ func TestResolveLedgerPolicyCLIDisablesOverConfigEnable(t *testing.T) {
 	}
 }
 
-func TestResolveLedgerPolicyConfigDisablesOverSettingsEnable(t *testing.T) {
+func TestResolveLedgerPolicyConfigDisablesOverGlobalConfigEnable(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("no-ledger", false, "No ledger")
 	cfg := &types.DeliberationConfig{}
 	disabled := false
 	cfg.Ledger = &disabled
-	settingsEnabled := true
-	settings := config.Settings{DefaultLedgerEnabled: &settingsEnabled}
+	gconfEnabled := true
+	gconf := config.Config{DefaultLedgerEnabled: &gconfEnabled}
 
-	resolved := resolveLedgerPolicy(cmd, cfg, settings)
+	resolved := resolveLedgerPolicy(cmd, cfg, gconf)
 	if resolved == nil {
 		t.Fatal("resolved: got nil, want false pointer (config override)")
 	}
 	if *resolved {
-		t.Fatal("resolved: got true, want false (config-disabled wins over settings-enabled)")
+		t.Fatal("resolved: got true, want false (config-disabled wins over gconf-enabled)")
 	}
 }
 
-func TestResolveLedgerPolicySettingsDisablesOverDefaultEnable(t *testing.T) {
+func TestResolveLedgerPolicyGlobalConfigDisablesOverDefaultEnable(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("no-ledger", false, "No ledger")
 	cfg := &types.DeliberationConfig{}
-	settingsDisabled := false
-	settings := config.Settings{DefaultLedgerEnabled: &settingsDisabled}
+	gconfDisabled := false
+	gconf := config.Config{DefaultLedgerEnabled: &gconfDisabled}
 
-	resolved := resolveLedgerPolicy(cmd, cfg, settings)
+	resolved := resolveLedgerPolicy(cmd, cfg, gconf)
 	if resolved == nil {
-		t.Fatal("resolved: got nil, want false pointer (settings override)")
+		t.Fatal("resolved: got nil, want false pointer (gconf override)")
 	}
 	if *resolved {
-		t.Fatal("resolved: got true, want false (settings-disabled wins over default-enabled)")
+		t.Fatal("resolved: got true, want false (gconf-disabled wins over default-enabled)")
 	}
 }
 
@@ -810,13 +810,13 @@ func TestResolveLedgerPolicyAllUnsetReturnsNil(t *testing.T) {
 	cmd.Flags().Bool("no-ledger", false, "No ledger")
 	cfg := &types.DeliberationConfig{}
 
-	resolved := resolveLedgerPolicy(cmd, cfg, config.Settings{})
+	resolved := resolveLedgerPolicy(cmd, cfg, config.Config{})
 	if resolved != nil {
 		t.Fatalf("resolved: got %v, want nil (enabled by default when all layers unset)", *resolved)
 	}
 }
 
-func TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled(t *testing.T) {
+func TestResolveLedgerPolicyCLIDisablesConfigAndGlobalConfigEnabled(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("no-ledger", false, "No ledger")
 	if err := cmd.Flags().Set("no-ledger", "true"); err != nil {
@@ -825,15 +825,15 @@ func TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled(t *testing.T) {
 	cfg := &types.DeliberationConfig{}
 	configEnabled := true
 	cfg.Ledger = &configEnabled
-	settingsEnabled := true
-	settings := config.Settings{DefaultLedgerEnabled: &settingsEnabled}
+	gconfEnabled := true
+	gconf := config.Config{DefaultLedgerEnabled: &gconfEnabled}
 
-	resolved := resolveLedgerPolicy(cmd, cfg, settings)
+	resolved := resolveLedgerPolicy(cmd, cfg, gconf)
 	if resolved == nil {
-		t.Fatal("resolved: got nil, want &false (CLI --no-ledger must win triple-over-config-and-settings)")
+		t.Fatal("resolved: got nil, want &false (CLI --no-ledger must win triple-over-config-and-gconf)")
 	}
 	if *resolved {
-		t.Fatal("resolved: got true, want false (CLI --no-ledger wins over config-enable AND settings-enable simultaneously per three-layer precedence)")
+		t.Fatal("resolved: got true, want false (CLI --no-ledger wins over config-enable AND gconf-enable simultaneously per three-layer precedence)")
 	}
 }
 
@@ -847,7 +847,7 @@ func TestResolveLedgerPolicyCLIFalseReEnablesOverConfigDisable(t *testing.T) {
 	disabled := false
 	cfg.Ledger = &disabled
 
-	resolved := resolveLedgerPolicy(cmd, cfg, config.Settings{})
+	resolved := resolveLedgerPolicy(cmd, cfg, config.Config{})
 	if resolved == nil {
 		t.Fatal("resolved: got nil, want &true pointer (CLI --no-ledger=false re-enables)")
 	}
@@ -1016,7 +1016,7 @@ func TestListCommandShowsFilenameOnlyWhenVerbose(t *testing.T) {
 	t.Setenv("TERM", "dumb")
 	t.Setenv("COLUMNS", "120")
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	filename := "20260504-143022-my-topic.jsonl"
 	if err := os.WriteFile(filepath.Join(store, filename), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1040,7 +1040,7 @@ func TestListCommandFormattedOutputReportsStoreFacts(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	filename := "20260504-143022-my-topic.jsonl"
 	if err := os.WriteFile(filepath.Join(store, filename), []byte(transcriptLine("a", "listed", 5)+transcriptLine("b", "again", 7)), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1073,7 +1073,7 @@ func TestListCommandFormattedOutputReportsEmptyStore(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 
 	jsonOut := executeListCommand(t, formatJSON)
 	assertJSONNoANSI(t, jsonOut)
@@ -1106,7 +1106,7 @@ func TestResolveResumeSourceFileFlag(t *testing.T) {
 
 func TestResolveResumeSourceExistingPathWinsOverSlug(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	if err := os.WriteFile(filepath.Join(store, "20260504-143022-my-topic.jsonl"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write store transcript: %v", err)
 	}
@@ -1127,7 +1127,7 @@ func TestResolveResumeSourceExistingPathWinsOverSlug(t *testing.T) {
 
 func TestResolveResumeSourceExactSlugWinsBeforeNewerPrefixMatch(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	if err := os.WriteFile(filepath.Join(store, "20260504-143022-my-topic.jsonl"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write exact transcript: %v", err)
 	}
@@ -1147,7 +1147,7 @@ func TestResolveResumeSourceExactSlugWinsBeforeNewerPrefixMatch(t *testing.T) {
 
 func TestResolveResumeSourcePrefixWinsBeforeNewerSubstringMatch(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	if err := os.WriteFile(filepath.Join(store, "20260504-143022-topic-alpha.jsonl"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write prefix transcript: %v", err)
 	}
@@ -1167,7 +1167,7 @@ func TestResolveResumeSourcePrefixWinsBeforeNewerSubstringMatch(t *testing.T) {
 
 func TestResolveResumeSourceNewestWithinMatchTier(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	if err := os.WriteFile(filepath.Join(store, "20260504-143022-my-topic.jsonl"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write old transcript: %v", err)
 	}
@@ -1187,7 +1187,7 @@ func TestResolveResumeSourceNewestWithinMatchTier(t *testing.T) {
 
 func TestResolveResumeSourceMissingPathLikeInputReportsPath(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	if err := os.WriteFile(filepath.Join(store, "20260504-143022-missing.jsonl.jsonl"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatalf("write slug transcript: %v", err)
 	}
@@ -1200,7 +1200,7 @@ func TestResolveResumeSourceMissingPathLikeInputReportsPath(t *testing.T) {
 
 func TestResolveResumeSourceNoSlugMatch(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 
 	_, err := resolveResumeSource("", []string{"nonexistent"})
 	if err == nil {
@@ -1277,7 +1277,7 @@ func TestResolveConfigArtifactReportsCollision(t *testing.T) {
 
 func TestRunCommandResolvesConfigExistingPath(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	if err := os.Mkdir(filepath.Join(dir, "examples"), 0o755); err != nil {
 		t.Fatalf("mkdir examples: %v", err)
 	}
@@ -1297,7 +1297,7 @@ func TestRunCommandResolvesConfigExistingPath(t *testing.T) {
 
 func TestRunCommandReportsMissingPathLikeConfig(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	writeValidConfig(t, filepath.Join(dir, "missing.yaml"))
 	t.Chdir(dir)
 
@@ -1315,7 +1315,7 @@ func TestRunCommandDefaultShowsResponseAndQuietHidesIt(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	configPath := filepath.Join(dir, "config.yaml")
 	writeValidConfig(t, configPath)
 	t.Chdir(dir)
@@ -1348,7 +1348,7 @@ func TestRunCommandPersistsTranscriptCastMetadata(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	configPath := filepath.Join(dir, "config.yaml")
 	writeValidConfig(t, configPath)
 	t.Chdir(dir)
@@ -1382,7 +1382,7 @@ func TestRunCommandPersistsTranscriptCastMetadata(t *testing.T) {
 
 func TestValidateCommandResolvesConfigSlug(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	if err := os.Mkdir(filepath.Join(dir, "examples"), 0o755); err != nil {
 		t.Fatalf("mkdir examples: %v", err)
 	}
@@ -1396,7 +1396,7 @@ func TestValidateCommandResolvesConfigSlug(t *testing.T) {
 
 func TestValidateCommandKeepsExplicitPathCompatibility(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	if err := os.Mkdir(filepath.Join(dir, "examples"), 0o755); err != nil {
 		t.Fatalf("mkdir examples: %v", err)
 	}
@@ -1414,7 +1414,7 @@ func TestValidateFormattedOutputsReportSummary(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "valid.yaml")
 	writeValidConfig(t, path)
 
@@ -1441,7 +1441,7 @@ func TestValidateFormattedOutputsReportStructuredFailure(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "invalid.yaml")
 	writeInvalidConfig(t, path)
 
@@ -1466,7 +1466,7 @@ func TestValidateFormattedOutputsReportStructuredFailure(t *testing.T) {
 
 func TestValidateCommandReportsAmbiguousConfigSlug(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	examples := filepath.Join(dir, "examples")
 	if err := os.Mkdir(examples, 0o755); err != nil {
 		t.Fatalf("mkdir examples: %v", err)
@@ -1486,7 +1486,7 @@ func TestValidateCommandReportsAmbiguousConfigSlug(t *testing.T) {
 
 func TestValidateCommandReportsMissingPathLikeConfig(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	writeValidConfig(t, filepath.Join(dir, "missing.yaml"))
 	t.Chdir(dir)
 
@@ -1504,7 +1504,7 @@ func TestValidateCommandUsageIncludesConfigOrSlug(t *testing.T) {
 
 func TestResumeCommandResolvesConfigExistingPath(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "demo.yaml")
 	writeValidConfig(t, path)
 	source := filepath.Join(dir, "source.jsonl")
@@ -1522,7 +1522,7 @@ func TestResumeCommandResolvesConfigExistingPath(t *testing.T) {
 
 func TestResumeCommandReportsMissingPathLikeConfig(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	writeValidConfig(t, filepath.Join(dir, "missing.yaml"))
 	source := filepath.Join(dir, "source.jsonl")
 	writeResumeTranscript(t, source)
@@ -1542,7 +1542,7 @@ func TestResumeCommandDefaultShowsResponseAndVerboseAddsDiagnostics(t *testing.T
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	configPath := filepath.Join(dir, "config.yaml")
 	writeValidConfig(t, configPath)
 	source := filepath.Join(dir, "source.jsonl")
@@ -1579,7 +1579,7 @@ func TestResumeCommandDefaultShowsResponseAndVerboseAddsDiagnostics(t *testing.T
 
 func TestStatsCommandResolvesTranscriptSlug(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	if err := os.WriteFile(filepath.Join(store, "20260504-143022-topic.jsonl"), []byte(transcriptLine("a", "stats", 7)), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
 	}
@@ -1591,7 +1591,7 @@ func TestStatsCommandResolvesTranscriptSlug(t *testing.T) {
 
 func TestStatsCommandReportsMalformedTranscriptRecord(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "bad.jsonl")
 	if err := os.WriteFile(path, []byte(transcriptLine("a", "ok", 1)+"not-json\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1607,7 +1607,7 @@ func TestStatsCommandFormattedOutputReportsTranscriptFacts(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "stats.jsonl")
 	model := "test/model"
 	if err := os.WriteFile(path, []byte(transcriptContent(t,
@@ -1652,7 +1652,7 @@ func TestStatsCommandFormattedOutputReportsMachineUsableErrors(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "bad.jsonl")
 	if err := os.WriteFile(path, []byte("not-json\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1685,7 +1685,7 @@ func TestStatsCommandFormattedOutputReportsMachineUsableErrors(t *testing.T) {
 
 func TestShowCommandResolvesTranscriptSlug(t *testing.T) {
 	store := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	path := filepath.Join(store, "20260504-143022-topic.jsonl")
 	if err := os.WriteFile(path, []byte(transcriptLine("analyst", "slug answer", 3)), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1704,7 +1704,7 @@ func TestShowCommandResolvesTranscriptSlug(t *testing.T) {
 
 func TestShowCommandAcceptsTranscriptPath(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "path.jsonl")
 	if err := os.WriteFile(path, []byte(transcriptLine("path-agent", "path answer", 3)), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1721,7 +1721,7 @@ func TestShowCommandAcceptsTranscriptPath(t *testing.T) {
 
 func TestShowCommandReportsMalformedTranscriptRecord(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "bad.jsonl")
 	if err := os.WriteFile(path, []byte(transcriptLine("a", "ok", 1)+"not-json\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1737,7 +1737,7 @@ const malformedLedgerRecordLine = `{"turn": -3, "agent_id": "ledger", "timestamp
 
 func TestShowCommandRejectsMalformedLedgerRecord(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "bad-ledger.jsonl")
 	content := transcriptLine("a", "ok", 1) + malformedLedgerRecordLine + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -1756,7 +1756,7 @@ func TestShowCommandRejectsMalformedLedgerRecord(t *testing.T) {
 
 func TestResumeCommandWarnsAndContinuesOnMalformedLedgerRecord(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	writeValidConfig(t, filepath.Join(dir, "config.yaml"))
 	source := filepath.Join(dir, "source.jsonl")
 	content := transcriptLine("a", "ok", 1) + malformedLedgerRecordLine + "\n"
@@ -1796,7 +1796,7 @@ func TestResumeCommandWarnsAndContinuesOnMalformedLedgerRecord(t *testing.T) {
 
 func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "show.jsonl")
 	model := "test/model"
 	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{
@@ -1847,7 +1847,7 @@ func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 
 func TestShowCommandReportsEmptyTranscript(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "empty.jsonl")
 	if err := os.WriteFile(path, []byte("\n\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -1861,7 +1861,7 @@ func TestShowCommandReportsEmptyTranscript(t *testing.T) {
 
 func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	path := filepath.Join(dir, "show.jsonl")
 	model := "test/model"
 	cfg := &types.DeliberationConfig{
@@ -1942,7 +1942,7 @@ func TestShowCommandFormattedOutputIsInspectionDocument(t *testing.T) {
 
 func TestShowCommandFormattedOutputReportsClearFailures(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	badPath := filepath.Join(dir, "bad.jsonl")
 	if err := os.WriteFile(badPath, []byte(transcriptLine("a", "partial answer", 1)+"not-json\n"), 0o644); err != nil {
 		t.Fatalf("write malformed transcript: %v", err)
@@ -1989,7 +1989,7 @@ func TestResumeCommandResolvesTranscriptSlugToNewestMatch(t *testing.T) {
 	if err := os.Mkdir(store, 0o755); err != nil {
 		t.Fatalf("mkdir store: %v", err)
 	}
-	writeSettings(t, "default_output_dir: \""+store+"\"")
+	writeConfig(t, "default_output_dir: \""+store+"\"")
 	writeValidConfig(t, filepath.Join(dir, "config.yaml"))
 	oldPath := filepath.Join(store, "20260504-143022-topic.jsonl")
 	newPath := filepath.Join(store, "20260504-150000-topic.jsonl")
@@ -2020,7 +2020,7 @@ func TestResumeCommandResolvesTranscriptSlugToNewestMatch(t *testing.T) {
 
 func TestResumeCommandReportsMalformedTranscriptRecord(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	writeValidConfig(t, filepath.Join(dir, "config.yaml"))
 	source := filepath.Join(dir, "source.jsonl")
 	if err := os.WriteFile(source, []byte(transcriptLine("a", "ok", 1)+"not-json\n"), 0o644); err != nil {
@@ -2052,7 +2052,7 @@ func TestLiveOutputModeMapsRunAndResumeFlagSemantics(t *testing.T) {
 
 func TestRunCommandRejectsQuietVerboseConflict(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	restore := configureRunGlobals("", filepath.Join(dir, "run.jsonl"))
 	defer restore()
 	runFlags.Auto = "quick"
@@ -2067,7 +2067,7 @@ func TestRunCommandRejectsQuietVerboseConflict(t *testing.T) {
 
 func TestResumeCommandRejectsQuietVerboseConflict(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	restore := configureResumeGlobals("", filepath.Join(dir, "source.jsonl"), filepath.Join(dir, "resume.jsonl"))
 	defer restore()
 	resumeFlags.Auto = "quick"
@@ -2080,17 +2080,17 @@ func TestResumeCommandRejectsQuietVerboseConflict(t *testing.T) {
 	}
 }
 
-func writeSettings(t *testing.T, content string) {
+func writeConfig(t *testing.T, content string) {
 	t.Helper()
 
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
-	settingsDir := filepath.Join(cfgHome, "agora")
-	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
-		t.Fatalf("mkdir settings dir: %v", err)
+	cfgDir := filepath.Join(cfgHome, "agora")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("mkdir gconf dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(settingsDir, "settings.yaml"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write settings: %v", err)
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 }
 
@@ -2521,7 +2521,7 @@ func TestRequireAutoApprovalNonTTYNoYesDryRunErrors(t *testing.T) {
 
 func TestRunCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	t.Chdir(dir)
 
 	old := stdinIsTerminal
@@ -2551,7 +2551,7 @@ func TestRunCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
 
 func TestResumeCommandAutoNonTTYRequiresYesOrDryRun(t *testing.T) {
 	dir := t.TempDir()
-	writeSettings(t, "")
+	writeConfig(t, "")
 	t.Chdir(dir)
 
 	old := stdinIsTerminal
@@ -2585,7 +2585,7 @@ func modelCommand(model *string) *cobra.Command {
 	return cmd
 }
 
-func settingsCommand(model, auto *string) *cobra.Command {
+func configCommand(model, auto *string) *cobra.Command {
 	cmd := modelCommand(model)
 	cmd.Flags().StringVar(auto, "auto", "", "Auto")
 	cmd.Flags().String("config", "", "Config")

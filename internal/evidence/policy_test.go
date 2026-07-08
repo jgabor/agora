@@ -27,17 +27,17 @@ func TestResolveRequestPrecedence(t *testing.T) {
 		t.Fatalf("ContextPaths: got %#v, want %#v", request.ContextPaths, want)
 	}
 	if request.MaxSources != 7 {
-		t.Fatalf("MaxSources: got %d, want settings cap 7", request.MaxSources)
+		t.Fatalf("MaxSources: got %d, want config cap 7", request.MaxSources)
 	}
 	if request.MaxBytes != 512 {
-		t.Fatalf("MaxBytes: got %d, want settings cap 512", request.MaxBytes)
+		t.Fatalf("MaxBytes: got %d, want config cap 512", request.MaxBytes)
 	}
 	if request.MaxDepth != 2 {
-		t.Fatalf("MaxDepth: got %d, want settings cap 2", request.MaxDepth)
+		t.Fatalf("MaxDepth: got %d, want config cap 2", request.MaxDepth)
 	}
 }
 
-func TestResolveRequestUsesAutoDefaultsWhenSettingsUnset(t *testing.T) {
+func TestResolveRequestUsesAutoDefaultsWhenConfigUnset(t *testing.T) {
 	cfg := &types.DeliberationConfig{ContextPaths: []string{"README.md"}}
 	request := ResolveRequest(cfg, 0, int64(0), 0, Overrides{
 		Defaults: DefaultsForAutoLevel(types.AutoDeep),
@@ -54,14 +54,14 @@ func TestResolveRequestUsesAutoDefaultsWhenSettingsUnset(t *testing.T) {
 	}
 }
 
-func TestResolveRequestSettingsOverrideAutoDefaults(t *testing.T) {
+func TestResolveRequestConfigOverrideAutoDefaults(t *testing.T) {
 	cfg := &types.DeliberationConfig{ContextPaths: []string{"README.md"}}
 	request := ResolveRequest(cfg, 7, int64(512), 2, Overrides{
 		Defaults: DefaultsForAutoLevel(types.AutoYOLO),
 	})
 
 	if request.MaxSources != 7 || request.MaxBytes != 512 || request.MaxDepth != 2 {
-		t.Fatalf("evidence caps: got sources=%d bytes=%d depth=%d, want explicit settings 7/512/2", request.MaxSources, request.MaxBytes, request.MaxDepth)
+		t.Fatalf("evidence caps: got sources=%d bytes=%d depth=%d, want explicit config 7/512/2", request.MaxSources, request.MaxBytes, request.MaxDepth)
 	}
 }
 
@@ -98,10 +98,10 @@ func TestResolveRequestUsesConfigResearchWithoutCLI(t *testing.T) {
 	}
 }
 
-func TestResolveRequestSettingsDoNotEnableResearch(t *testing.T) {
+func TestResolveRequestConfigDoNotEnableResearch(t *testing.T) {
 	cfg := &types.DeliberationConfig{}
 	request := ResolveRequest(cfg, 5, int64(0), 0, Overrides{})
 	if request.ResearchEnabled {
-		t.Fatal("ResearchEnabled: got true, want false because settings must not enable web access")
+		t.Fatal("ResearchEnabled: got true, want false because config must not enable web access")
 	}
 }

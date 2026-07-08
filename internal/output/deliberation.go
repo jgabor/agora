@@ -166,14 +166,14 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 		}
 	}
 
-	settings := []string{
+	gconf := []string{
 		fmt.Sprintf("Topology: %s", string(state.Config.Topology)),
 		fmt.Sprintf("Time limit: %ds", state.TimeLimit),
 		fmt.Sprintf("Max turns: %d", state.MaxTurns),
 		fmt.Sprintf("Window: %d", state.Window),
 	}
 	if r.IsRich() {
-		settings = []string{
+		gconf = []string{
 			fmt.Sprintf("Topology: %s", string(state.Config.Topology)),
 			fmt.Sprintf("Time: %ds max", state.TimeLimit),
 			fmt.Sprintf("Turns: %d max", state.MaxTurns),
@@ -185,29 +185,29 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 		if r.IsRich() {
 			budgetLine = fmt.Sprintf("Budget: $%.2f max", *state.Budget)
 		}
-		settings = append(settings, budgetLine)
+		gconf = append(gconf, budgetLine)
 	}
 	if state.Config.ConsensusThreshold > 0 {
 		agreementLine := fmt.Sprintf("Consensus threshold: %d", state.Config.ConsensusThreshold)
 		if r.IsRich() {
 			agreementLine = fmt.Sprintf("Agreement target: %d agents", state.Config.ConsensusThreshold)
 		}
-		settings = append(settings, agreementLine)
+		gconf = append(gconf, agreementLine)
 	}
-	settingsTitle := "Run Settings"
+	panelTitle := "Run Config"
 	if r.IsRich() {
-		settingsTitle = "Limits"
+		panelTitle = "Limits"
 	}
 
 	if r.IsRich() {
-		return richDeliberationHeaderAtWidth(r, width, contentWidth, topicLines, castLines, settings, settingsTitle, state.Config.Agents, c)
+		return richDeliberationHeaderAtWidth(r, width, contentWidth, topicLines, castLines, gconf, panelTitle, state.Config.Agents, c)
 	}
 
 	var sb strings.Builder
 	writeSection := sectionWriter(r, &sb, contentWidth)
 	writeSection("Topic", topicLines)
 	writeSection("Cast", castLines)
-	writeSection(settingsTitle, settings)
+	writeSection(panelTitle, gconf)
 
 	return r.Panel("Deliberation Start", sb.String(), width, "4")
 }

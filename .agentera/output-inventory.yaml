@@ -43,7 +43,7 @@ surfaces:
         renderer: OutputManager.DeliberationHeader
         classification: structured_metadata
         notes: agent IDs colored by hard-coded role mapping
-      - surface: deliberation settings line
+      - surface: deliberation config line
         renderer: OutputManager.DeliberationHeader
         classification: structured_metadata
         notes: topology, time, max_turns, window, optional budget, and optional consensus threshold
@@ -112,7 +112,7 @@ surfaces:
         renderer: OutputManager.DeliberationHeader -> drawPanel
         classification: prose
         notes: same topic rendering as agora run
-      - surface: deliberation agents and settings lines
+      - surface: deliberation agents and config lines
         renderer: OutputManager.DeliberationHeader
         classification: structured_metadata
         notes: same metadata fields as agora run, using resume state
@@ -175,7 +175,7 @@ surfaces:
         classification: structured_metadata
         notes: date, slug, turns, and filename columns
     stderr:
-      - surface: settings and transcript store errors
+      - surface: config and transcript store errors
         classification: status
         notes: returned through Cobra default error handling
   - command: agora root/help/version

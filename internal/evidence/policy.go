@@ -4,7 +4,7 @@ import (
 	"github.com/jgabor/agora/internal/types"
 )
 
-// Defaults captures fallback caps used when settings.yaml leaves evidence caps unset.
+// Defaults captures fallback caps used when config.yaml leaves evidence caps unset.
 type Defaults struct {
 	MaxSources int
 	MaxBytes   int64
@@ -33,8 +33,8 @@ func DefaultsForAutoLevel(level types.AutoLevel) Defaults {
 	}
 }
 
-// ResolveRequest applies CLI/config evidence choices plus settings/default caps.
-// Settings caps are injected as individual primitives rather than importing the
+// ResolveRequest applies CLI/config evidence choices plus config/default caps.
+// Config caps are injected as individual primitives rather than importing the
 // config package, keeping policy resolution and collection self-contained.
 func ResolveRequest(cfg *types.DeliberationConfig, researchMaxSources int, contextMaxBytes int64, contextMaxDepth int, overrides Overrides) types.EvidenceRequest {
 	defaults := defaultsOrBase(overrides.Defaults)

@@ -17,7 +17,7 @@ import (
 var commandContract = struct {
 	formats     []string
 	commands    map[string][]string
-	settings    []string
+	gconf       []string
 	schema      int
 	readmeMarks int
 }{
@@ -36,7 +36,7 @@ var commandContract = struct {
 		"agora show":        {"format"},
 		"agora validate":    {"format"},
 	},
-	settings:    []string{"default_auto_level", "default_ledger_enabled", "default_model", "default_output_dir", "default_topology", "context_max_bytes", "context_max_depth", "research_max_sources"},
+	gconf:       []string{"default_auto_level", "default_ledger_enabled", "default_model", "default_output_dir", "default_topology", "context_max_bytes", "context_max_depth", "research_max_sources"},
 	schema:      1,
 	readmeMarks: 11,
 }
@@ -44,7 +44,7 @@ var commandContract = struct {
 func TestCommandContractMatchesLiveCLIBehavior(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
-	writeSettings(t, "")
+	writeConfig(t, "")
 
 	if !reflect.DeepEqual(validFormats, commandContract.formats) {
 		t.Fatalf("valid formats drifted: got %v, want %v", validFormats, commandContract.formats)
@@ -89,12 +89,12 @@ func TestCommandContractMatchesLiveCLIBehavior(t *testing.T) {
 		}
 	}
 
-	settings := metadataSettings(t, metadata["settings_keys"])
-	if got, want := sortedKeys(settings), sortedStrings(commandContract.settings); !reflect.DeepEqual(got, want) {
-		t.Fatalf("settings key contract drifted:\ngot  %v\nwant %v", got, want)
+	gconf := metadataConfig(t, metadata["config_keys"])
+	if got, want := sortedKeys(gconf), sortedStrings(commandContract.gconf); !reflect.DeepEqual(got, want) {
+		t.Fatalf("gconf key contract drifted:\ngot  %v\nwant %v", got, want)
 	}
-	assertEnumValues(t, settings["default_auto_level"], []string{"quick", "normal", "deep", "yolo"})
-	assertEnumValues(t, settings["default_topology"], []string{"ring", "star", "mesh"})
+	assertEnumValues(t, gconf["default_auto_level"], []string{"quick", "normal", "deep", "yolo"})
+	assertEnumValues(t, gconf["default_topology"], []string{"ring", "star", "mesh"})
 
 	enums, ok := metadata["commands"].([]map[string]any)
 	if !ok || len(enums) == 0 {
@@ -111,7 +111,7 @@ func TestCommandContractMatchesLiveCLIBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prime data: %v", err)
 	}
-	for _, key := range []string{"schema_version", "commands", "flags", "defaults", "enum_values", "settings_keys", "settings", "transcript_metadata", "context_boundary"} {
+	for _, key := range []string{"schema_version", "commands", "flags", "defaults", "enum_values", "config_keys", "config", "transcript_metadata", "context_boundary"} {
 		if _, ok := prime[key]; !ok {
 			t.Fatalf("prime metadata missing %q: %#v", key, prime)
 		}
@@ -162,11 +162,11 @@ func TestCommandContractExpectedUseAndFailurePaths(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("TERM", "dumb")
 	dir := t.TempDir()
-	writeSettings(t, "default_output_dir: \""+dir+"\"")
+	writeConfig(t, "default_output_dir: \""+dir+"\"")
 	configPath := filepath.Join(dir, "config.yaml")
 	writeValidConfig(t, configPath)
-	badConfigPath := filepath.Join(dir, "bad.yaml")
-	writeInvalidConfig(t, badConfigPath)
+	badGlobalConfigPath := filepath.Join(dir, "bad.yaml")
+	writeInvalidConfig(t, badGlobalConfigPath)
 	transcriptPath := filepath.Join(dir, "20260504-143022-topic.jsonl")
 	if err := os.WriteFile(transcriptPath, []byte(transcriptLine("analyst", "contract", 3)), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
@@ -187,7 +187,7 @@ func TestCommandContractExpectedUseAndFailurePaths(t *testing.T) {
 			return err
 		}},
 		{name: "show", success: func() error { _, err := executeShowCommandFormat(t, formatJSON, transcriptPath); return err }, failure: func() error { _, err := executeShowCommandFormat(t, formatJSON, malformedTranscript); return err }},
-		{name: "validate", success: func() error { _, err := runValidateCommand(t, formatJSON, configPath); return err }, failure: func() error { _, err := runValidateCommand(t, formatJSON, badConfigPath); return err }},
+		{name: "validate", success: func() error { _, err := runValidateCommand(t, formatJSON, configPath); return err }, failure: func() error { _, err := runValidateCommand(t, formatJSON, badGlobalConfigPath); return err }},
 		{name: "config init", success: func() error {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			_, err := executeConfigCommand(t, "init")
@@ -271,14 +271,14 @@ func findMetadataFlag(t *testing.T, command map[string]any, name string) map[str
 	return nil
 }
 
-func metadataSettings(t *testing.T, value any) map[string]map[string]any {
+func metadataConfig(t *testing.T, value any) map[string]map[string]any {
 	t.Helper()
-	settings, ok := value.([]map[string]any)
+	gconf, ok := value.([]map[string]any)
 	if !ok {
-		t.Fatalf("metadata settings have unexpected shape: %#v", value)
+		t.Fatalf("metadata gconf have unexpected shape: %#v", value)
 	}
 	out := map[string]map[string]any{}
-	for _, setting := range settings {
+	for _, setting := range gconf {
 		key, _ := setting["key"].(string)
 		out[key] = setting
 	}
