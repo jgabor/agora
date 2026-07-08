@@ -42,7 +42,7 @@ func drawAutoConfigPanelAtWidth(r Renderer, cfg *types.DeliberationConfig, c *ca
 		shapeTitle = "Run Shape"
 		agreementTarget := "none"
 		if cfg.ConsensusThreshold > 0 {
-			agreementTarget = fmt.Sprintf("%d agents", cfg.ConsensusThreshold)
+			agreementTarget = fmt.Sprintf("%d", cfg.ConsensusThreshold)
 		}
 		shapeLines = []string{
 			fmt.Sprintf("Topology: %s", string(cfg.Topology)),
@@ -190,7 +190,7 @@ func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, w
 	if state.Config.ConsensusThreshold > 0 {
 		agreementLine := fmt.Sprintf("Consensus threshold: %d", state.Config.ConsensusThreshold)
 		if r.IsRich() {
-			agreementLine = fmt.Sprintf("Agreement target: %d agents", state.Config.ConsensusThreshold)
+			agreementLine = fmt.Sprintf("Agreement target: %d", state.Config.ConsensusThreshold)
 		}
 		gconf = append(gconf, agreementLine)
 	}
@@ -238,7 +238,9 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	if o.state != nil && o.state.Budget != nil {
 		costValue = boundedCostMetricValue(o.renderer, o.totalCost, *o.state.Budget)
 	}
-	if record.Consensus {
+	if types.IsInternalAgent(record.AgentID) {
+		// internal agents (moderator, ledger, synthesizer) do not affect consensus
+	} else if record.Consensus {
 		o.consensusStreak++
 	} else {
 		o.consensusStreak = 0
@@ -264,7 +266,8 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 		metadata += " | " + labelValue("TIME", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit))
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		metadata += " | " + labelValue("CONSENSUS", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold))
+		displayStreak := min(o.consensusStreak, o.state.Config.ConsensusThreshold)
+		metadata += " | " + labelValue("AGREEMENT", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold))
 	}
 	if len(o.turnDurations) > 0 && maxTurns > 0 {
 		remaining := maxTurns - turn - 1
@@ -326,7 +329,8 @@ func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue
 	}
 	parts = append(parts, labelValue("CUMULATIVE_COST", costValue))
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		parts = append(parts, labelValue("CONSENSUS_STREAK", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold)))
+		displayStreak := min(o.consensusStreak, o.state.Config.ConsensusThreshold)
+		parts = append(parts, labelValue("AGREEMENT", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold)))
 	}
 	return "  " + strings.Join(parts, " | ") + "\n"
 }
@@ -371,7 +375,8 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 		lines = append(lines, richMetricLine("Time limit", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit), "3"))
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.renderer, o.consensusStreak, o.state.Config.ConsensusThreshold), "2"))
+		displayStreak := min(o.consensusStreak, o.state.Config.ConsensusThreshold)
+		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold), "2"))
 	}
 	if record.Consensus {
 		statement := strings.TrimSpace(record.ConsensusStatement)
@@ -414,7 +419,8 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 		{"Total cost", finalCostValue(o.renderer, stats.TotalCost, state.Budget)},
 	}
 	if state.Config != nil && state.Config.ConsensusThreshold > 0 {
-		rows = append(rows, []string{"Consensus streak", boundedIntMetricValue(o.renderer, consensusStreak, state.Config.ConsensusThreshold)})
+		displayStreak := min(consensusStreak, state.Config.ConsensusThreshold)
+		rows = append(rows, []string{"Agreement", boundedIntMetricValue(o.renderer, displayStreak, state.Config.ConsensusThreshold)})
 	}
 	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(state.HaltedBy), haltColor(state.HaltedBy))})
 	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))

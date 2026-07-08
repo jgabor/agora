@@ -276,7 +276,7 @@ func RenderConfigSummary(cfg *types.DeliberationConfig) string {
 		IndenterStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("8"))).
 		Child("topology " + string(cfg.Topology))
 	if cfg.ConsensusThreshold > 0 {
-		shape.Child(fmt.Sprintf("agreement target %d agents", cfg.ConsensusThreshold))
+		shape.Child(fmt.Sprintf("agreement target %d", cfg.ConsensusThreshold))
 	}
 	if cfg.SynthesisModel != nil {
 		shape.Child("synthesis " + *cfg.SynthesisModel)

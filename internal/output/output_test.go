@@ -270,7 +270,7 @@ func TestTurnProgressShowsBoundedMetricsWithoutMisleadingUnboundedBars(t *testin
 	assertContains(t, got, "COST $0.250000/$1.00 (25%) [###-------]")
 	assertContains(t, got, "TIME ")
 	assertContains(t, got, "/60s (")
-	assertContains(t, got, "CONSENSUS 1/2 (50%) [#####-----]")
+	assertContains(t, got, "AGREEMENT 1/2 (50%) [#####-----]")
 	assertContains(t, got, "TOKENS 42")
 	assertNotContains(t, got, "TOKENS 42/")
 	assertNoANSI(t, got)
@@ -688,7 +688,7 @@ func TestFinalStatsUsesSameBoundedMetricPresentationAsTurnProgress(t *testing.T)
 	assertContains(t, got, "/60s (")
 	assertContains(t, got, "Total cost")
 	assertContains(t, got, "$0.500000/$1.00 (50%) [#####-----]")
-	assertContains(t, got, "Consensus streak")
+	assertContains(t, got, "Agreement")
 	assertContains(t, got, "2/2 (100%) [##########]")
 	assertContains(t, got, "Total tokens")
 	assertContains(t, got, "70")
@@ -723,7 +723,7 @@ func TestFinalStatsConsensusStreakIgnoresSynthesizer(t *testing.T) {
 		NewOutputManager(false).FinalStats(records, state)
 	})
 
-	assertContains(t, got, "Consensus streak")
+	assertContains(t, got, "Agreement")
 	assertContains(t, got, "2/2 (100%) [##########]")
 }
 
