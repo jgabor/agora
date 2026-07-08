@@ -837,6 +837,25 @@ func TestResolveLedgerPolicyCLIDisablesConfigAndSettingsEnabled(t *testing.T) {
 	}
 }
 
+func TestResolveLedgerPolicyCLIFalseReEnablesOverConfigDisable(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-ledger", false, "No ledger")
+	if err := cmd.Flags().Set("no-ledger", "false"); err != nil {
+		t.Fatalf("set no-ledger: %v", err)
+	}
+	cfg := &types.DeliberationConfig{}
+	disabled := false
+	cfg.Ledger = &disabled
+
+	resolved := resolveLedgerPolicy(cmd, cfg, config.Settings{})
+	if resolved == nil {
+		t.Fatal("resolved: got nil, want &true pointer (CLI --no-ledger=false re-enables)")
+	}
+	if !*resolved {
+		t.Fatal("resolved: got false, want true (--no-ledger=false must re-enable over config-disabled)")
+	}
+}
+
 func TestParseTranscriptFilename(t *testing.T) {
 	entry, ok := parseTranscriptFilename("20260504-143022-my-topic.jsonl")
 	if !ok {

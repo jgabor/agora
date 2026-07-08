@@ -271,8 +271,9 @@ func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLev
 
 func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, settings config.Settings) *bool {
 	if cmd.Flags().Changed("no-ledger") {
-		disabled := false
-		return &disabled
+		noLedger, _ := cmd.Flags().GetBool("no-ledger")
+		enabled := !noLedger
+		return &enabled
 	}
 	if cfg.Ledger != nil {
 		return cfg.Ledger
