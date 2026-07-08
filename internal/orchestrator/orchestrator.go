@@ -363,8 +363,14 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	)
 
 	envelope := map[string]any{
-		"topic":   o.state.Topic,
-		"history": history,
+		"topic":            o.state.Topic,
+		"history":          history,
+		"agent_id":         ag.ID,
+		"cast_roster":      o.buildCastRoster(),
+		"turn":             o.state.Turn,
+		"round":            o.state.Turn/o.numAgents + 1,
+		"remaining_budget": o.buildRemainingBudget(turnStart),
+		"halting_rule":     o.buildHaltingRule(),
 	}
 	if o.sharedEvidence != nil && !o.evidenceSent[ag.ID] {
 		envelope["evidence"] = o.sharedEvidence
@@ -419,6 +425,63 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		ConsensusIgnored:   consensusIgnored,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
+}
+
+func (o *Orchestrator) buildCastRoster() []map[string]string {
+	agents := o.state.Config.Agents
+	roster := make([]map[string]string, 0, len(agents))
+	for _, a := range agents {
+		name := a.ID
+		if a.Identity != nil && a.Identity.DisplayName != "" {
+			name = a.Identity.DisplayName
+		}
+		roster = append(roster, map[string]string{
+			"id":   a.ID,
+			"name": name,
+		})
+	}
+	return roster
+}
+
+func (o *Orchestrator) buildRemainingBudget(now float64) map[string]any {
+	budget := map[string]any{}
+	if o.state.MaxTurns > 0 {
+		turnsRemaining := o.state.MaxTurns - o.state.Turn
+		budget["turns_remaining"] = turnsRemaining
+		budget["rounds_remaining"] = turnsRemaining / o.numAgents
+	}
+	if o.state.TimeLimit > 0 {
+		remaining := float64(o.state.TimeLimit) - (now - o.state.StartTime)
+		budget["time_remaining_seconds"] = remaining
+	}
+	if o.state.MaxTurns == 0 && o.state.TimeLimit == 0 {
+		budget["uncapped"] = true
+	}
+	if o.state.Budget != nil && *o.state.Budget > 0 {
+		accumulated := transcript.TotalCost(o.transcript.Records())
+		budget["budget_remaining"] = *o.state.Budget - accumulated
+	}
+	return budget
+}
+
+func (o *Orchestrator) buildHaltingRule() map[string]any {
+	rule := map[string]any{
+		"consensus_threshold": o.state.Config.ConsensusThreshold,
+		"min_rounds":          o.state.Config.EffectiveMinRounds(),
+		"max_turns":           o.state.MaxTurns,
+		"time_limit_seconds":  o.state.TimeLimit,
+	}
+	if o.state.Budget != nil {
+		rule["budget_cap"] = *o.state.Budget
+	} else {
+		rule["budget_cap"] = float64(0)
+	}
+	if o.state.DeliverableGate != nil && o.state.DeliverableGate.MinItems > 0 {
+		rule["deliverable_gate"] = map[string]any{
+			"min_items": o.state.DeliverableGate.MinItems,
+		}
+	}
+	return rule
 }
 
 func (o *Orchestrator) setupSignalHandler() {

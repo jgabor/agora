@@ -968,6 +968,16 @@ func TestExecuteTurnInjectsLedgerWhenEnabledExplicit(t *testing.T) {
 	}
 }
 
+type dryRunCaptureRunner struct {
+	inner     *agent.AgentRunner
+	envelopes []map[string]any
+}
+
+func (d *dryRunCaptureRunner) Run(ag types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error) {
+	d.envelopes = append(d.envelopes, envelope)
+	return d.inner.Run(ag, envelope)
+}
+
 func newLedgerTestState(cfg *types.DeliberationConfig, maxTurns int, ledgerEnabled *bool) *types.DeliberationState {
 	return &types.DeliberationState{
 		Config:              cfg,
@@ -1361,4 +1371,286 @@ func TestLedgerPersistedToTranscript(t *testing.T) {
 			t.Fatalf("currentLedger: got %+v, want nil when ledger disabled", o.currentLedger)
 		}
 	})
+}
+
+func TestExecuteTurnSituationalFields(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_envelope_fields.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{
+		Agents:             newTestAgents(2),
+		ConsensusThreshold: 3,
+		MinRounds:          2,
+	}
+	state := newTestState(cfg)
+	state.Turn = 2
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	env := runner.envelopes[0]
+
+	if agentID, ok := env["agent_id"].(string); !ok || agentID != "agent-0" {
+		t.Errorf("agent_id: got %v, want \"agent-0\"", env["agent_id"])
+	}
+
+	if turn, ok := env["turn"].(int); !ok || turn != 2 {
+		t.Errorf("turn: got %v, want 2", env["turn"])
+	}
+
+	if round, ok := env["round"].(int); !ok || round != 2 {
+		t.Errorf("round: got %v, want 2", env["round"])
+	}
+
+	roster, ok := env["cast_roster"].([]map[string]string)
+	if !ok || len(roster) != 2 {
+		t.Fatalf("cast_roster: got %v, want 2 entries", env["cast_roster"])
+	}
+	for i, entry := range roster {
+		expectedID := fmt.Sprintf("agent-%d", i)
+		if entry["id"] != expectedID {
+			t.Errorf("cast_roster[%d] id: got %q, want %q", i, entry["id"], expectedID)
+		}
+		if entry["name"] != expectedID {
+			t.Errorf("cast_roster[%d] name: got %q, want %q (ID as fallback)", i, entry["name"], expectedID)
+		}
+	}
+
+	budget, ok := env["remaining_budget"].(map[string]any)
+	if !ok {
+		t.Fatalf("remaining_budget: got %T, want map[string]any", env["remaining_budget"])
+	}
+	turnsRemaining, ok := budget["turns_remaining"].(int)
+	if !ok || turnsRemaining != 8 {
+		t.Errorf("turns_remaining: got %v, want 8", budget["turns_remaining"])
+	}
+	roundsRemaining, ok := budget["rounds_remaining"].(int)
+	if !ok || roundsRemaining != 4 {
+		t.Errorf("rounds_remaining: got %v, want 4", budget["rounds_remaining"])
+	}
+	if _, hasTime := budget["time_remaining_seconds"]; !hasTime {
+		t.Error("expected time_remaining_seconds in remaining_budget when TimeLimit > 0")
+	}
+	if _, hasUncapped := budget["uncapped"]; hasUncapped {
+		t.Error("uncapped should not be present when MaxTurns > 0 or TimeLimit > 0")
+	}
+
+	rule, ok := env["halting_rule"].(map[string]any)
+	if !ok {
+		t.Fatalf("halting_rule: got %T, want map[string]any", env["halting_rule"])
+	}
+	if ct, ok := rule["consensus_threshold"].(int); !ok || ct != 3 {
+		t.Errorf("consensus_threshold: got %v, want 3", rule["consensus_threshold"])
+	}
+	if mr, ok := rule["min_rounds"].(int); !ok || mr != 2 {
+		t.Errorf("min_rounds: got %v, want 2", rule["min_rounds"])
+	}
+	if mt, ok := rule["max_turns"].(int); !ok || mt != 10 {
+		t.Errorf("max_turns: got %v, want 10", rule["max_turns"])
+	}
+	if tl, ok := rule["time_limit_seconds"].(int); !ok || tl != 30 {
+		t.Errorf("time_limit_seconds: got %v, want 30", rule["time_limit_seconds"])
+	}
+	if _, hasBudgetCap := rule["budget_cap"]; !hasBudgetCap {
+		t.Error("expected budget_cap in halting_rule")
+	}
+	if _, hasGate := rule["deliverable_gate"]; hasGate {
+		t.Error("deliverable_gate should not be present when gate is nil")
+	}
+
+	if _, ok := env["topic"].(string); !ok {
+		t.Error("existing key 'topic' should still be present")
+	}
+	if _, ok := env["history"]; !ok {
+		t.Error("existing key 'history' should still be present")
+	}
+}
+
+func TestRemainingBudgetTimeOnly(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_budget_time.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(1)}
+	state := newTestState(cfg)
+	state.MaxTurns = 0
+	state.TimeLimit = 60
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	budget := runner.envelopes[0]["remaining_budget"].(map[string]any)
+	if _, hasTurns := budget["turns_remaining"]; hasTurns {
+		t.Error("turns_remaining should not be present when MaxTurns == 0")
+	}
+	if _, hasRounds := budget["rounds_remaining"]; hasRounds {
+		t.Error("rounds_remaining should not be present when MaxTurns == 0")
+	}
+	timeRemaining, ok := budget["time_remaining_seconds"].(float64)
+	if !ok || timeRemaining <= 0 || timeRemaining > 60 {
+		t.Errorf("time_remaining_seconds: got %v, want (0, 60]", budget["time_remaining_seconds"])
+	}
+	if _, hasUncapped := budget["uncapped"]; hasUncapped {
+		t.Error("uncapped should not be present when TimeLimit > 0")
+	}
+}
+
+func TestRemainingBudgetUncapped(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_budget_uncapped.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(1)}
+	state := newTestState(cfg)
+	state.MaxTurns = 0
+	state.TimeLimit = 0
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	budget := runner.envelopes[0]["remaining_budget"].(map[string]any)
+	uncapped, ok := budget["uncapped"].(bool)
+	if !ok || !uncapped {
+		t.Errorf("uncapped: got %v, want true", budget["uncapped"])
+	}
+	if _, hasTurns := budget["turns_remaining"]; hasTurns {
+		t.Error("turns_remaining should not be present when uncapped")
+	}
+	if _, hasRounds := budget["rounds_remaining"]; hasRounds {
+		t.Error("rounds_remaining should not be present when uncapped")
+	}
+	if _, hasTime := budget["time_remaining_seconds"]; hasTime {
+		t.Error("time_remaining_seconds should not be present when uncapped")
+	}
+}
+
+func TestRemainingBudgetWithBudgetCap(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_budget_cap.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	priorCost := 0.002
+	_ = tm.Append(types.TurnRecord{
+		Turn:    0,
+		AgentID: "agent-0",
+		Content: "prior turn",
+		Cost:    &priorCost,
+	})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := newTestState(cfg)
+	state.Turn = 1
+
+	budgetCap := 0.05
+	state.Budget = &budgetCap
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+
+	_, ok := o.executeTurn(cfg.Agents[1])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	budget := runner.envelopes[0]["remaining_budget"].(map[string]any)
+	budgetRemaining, ok := budget["budget_remaining"].(float64)
+	if !ok {
+		t.Fatalf("budget_remaining: got %T, want float64", budget["budget_remaining"])
+	}
+	expected := 0.05 - 0.002
+	if budgetRemaining < expected-1e-9 || budgetRemaining > expected+1e-9 {
+		t.Errorf("budget_remaining: got %f, want %f", budgetRemaining, expected)
+	}
+}
+
+func TestHaltingRuleDeliverableGate(t *testing.T) {
+	tm := transcript.NewTranscriptManager("/tmp/test_deliverable_gate.jsonl")
+	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
+
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := newTestState(cfg)
+	state.Topic = "The output must contain exactly three laws"
+	state.DeliverableGate = ParseDeliverableGate(state.Topic)
+
+	if state.DeliverableGate == nil || state.DeliverableGate.MinItems != 3 {
+		t.Fatalf("setup: expected DeliverableGate with MinItems=3, got %+v", state.DeliverableGate)
+	}
+
+	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	o := NewOrchestrator(state, tm, runner)
+
+	_, ok := o.executeTurn(cfg.Agents[0])
+	if !ok {
+		t.Fatal("expected successful turn execution")
+	}
+
+	rule := runner.envelopes[0]["halting_rule"].(map[string]any)
+	gate, ok := rule["deliverable_gate"].(map[string]any)
+	if !ok {
+		t.Fatalf("deliverable_gate: got %T, want map[string]any", rule["deliverable_gate"])
+	}
+	if minItems, ok := gate["min_items"].(int); !ok || minItems != 3 {
+		t.Errorf("min_items: got %v, want 3", gate["min_items"])
+	}
+}
+
+func TestEnvelopeDryRunSituationalFields(t *testing.T) {
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	state := &types.DeliberationState{
+		Config:    cfg,
+		Topic:     "dry-run test",
+		Window:    2,
+		MaxTurns:  4,
+		TimeLimit: 0,
+		Running:   true,
+		StartTime: float64(time.Now().UnixNano()) / 1e9,
+	}
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+
+	capture := &dryRunCaptureRunner{inner: agent.NewAgentRunner(true)}
+	o := NewOrchestrator(state, tm, capture)
+	o.Run()
+
+	if len(capture.envelopes) != 4 {
+		t.Fatalf("envelopes: got %d, want 4", len(capture.envelopes))
+	}
+	for i, env := range capture.envelopes {
+		if _, ok := env["agent_id"].(string); !ok {
+			t.Errorf("envelope[%d] agent_id: missing", i)
+		}
+		if turn, ok := env["turn"].(int); !ok {
+			t.Errorf("envelope[%d] turn: missing", i)
+		} else if turn != i {
+			t.Errorf("envelope[%d] turn: got %d, want %d", i, turn, i)
+		}
+		if _, ok := env["round"].(int); !ok {
+			t.Errorf("envelope[%d] round: missing", i)
+		}
+		if _, ok := env["cast_roster"].([]map[string]string); !ok {
+			t.Errorf("envelope[%d] cast_roster: wrong type %T", i, env["cast_roster"])
+		}
+		budget, ok := env["remaining_budget"].(map[string]any)
+		if !ok {
+			t.Errorf("envelope[%d] remaining_budget: missing", i)
+		} else if _, hasTurns := budget["turns_remaining"]; !hasTurns {
+			t.Errorf("envelope[%d] turns_remaining: missing", i)
+		} else if _, hasRounds := budget["rounds_remaining"]; !hasRounds {
+			t.Errorf("envelope[%d] rounds_remaining: missing", i)
+		}
+		if _, ok := env["halting_rule"].(map[string]any); !ok {
+			t.Errorf("envelope[%d] halting_rule: missing", i)
+		}
+	}
 }
