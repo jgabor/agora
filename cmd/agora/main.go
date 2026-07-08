@@ -23,7 +23,7 @@ import (
 
 const defaultModel = "opencode-go/deepseek-v4-flash"
 
-var version = "0.3.0"
+var version = "0.4.0"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")

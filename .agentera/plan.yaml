@@ -155,7 +155,7 @@ tasks:
   - number: 6
     name: "Final state sync — version, changelog, decisions, todo"
     depends_on: ["1", "2", "3", "4", "5"]
-    status: pending
+    status: complete
     acceptance:
       - "GIVEN the ledger feature is complete and the test suite passes WHEN the version is checked THEN the minor version has been bumped per the docs.yaml feat-minor policy"
       - "GIVEN the ledger feature is complete WHEN CHANGELOG.md is read THEN the Unreleased section records the new debate-ledger and self-history capabilities under Added"

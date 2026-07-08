@@ -342,4 +342,43 @@ decisions:
     user_confirmation:
       confirmed_by: user
       confirmed_at: '2026-05-26'
-archive: []
+- number: 10
+  date: '2026-07-07'
+  question: Should the mid-deliberation ledger reuse the post-hoc synthesis engine, or be a separate path?
+  context: The TODO roadmap item 1 (debate ledger) proposed running the synthesis engine every round. The prior design review
+    argued that synthesis.Synthesize returns essay-shape JSON (key_arguments, points_of_agreement, unresolved_tensions,
+    recommended_decision, confidence) which would re-inject prose into every per-turn envelope and re-create the token-pressure
+    problem the ledger was meant to fix. The ledger needs a compact typed state (positions, agreements, cruxes, draft) carried
+    on the envelope, while synthesis keeps its essay-shape report contract.
+  alternatives:
+  - name: Reuse synthesis.Synthesize
+    status: rejected
+    description: 'Run the existing post-hoc synthesis engine each round and inject its output. Win: one summarization path. Lose:
+      essay-shape output risks re-injecting prose into every envelope, re-creating token pressure; the output contract (key_arguments
+      et al.) differs from the typed-state shape the envelope carrier needs.'
+  - name: Separate updater path producing typed records
+    status: chosen
+    description: 'A dedicated ledger.Updater consumes the running transcript and produces a DebateLedger (positions, agreements,
+      cruxes, draft-status) persisted as a typed TurnRecord field. Win: typed-state shape matches the envelope carrier; persistence
+      as Ledger *DebateLedger is consistent with Decision 6 (references-only transcripts); synthesis retains its essay-shape contract. Lose:
+      a second summarization path to maintain.'
+  - name: Synthesis engine with an alternate typed output mode
+    status: rejected
+    description: 'Add a typed-output mode to synthesis.Synthesize. Win: shares parsing and format code. Lose: couples two distinct
+      output contracts and lifecycles into one engine and one prompt, muddying whether the artifact is mid-round state or a
+      post-hoc report.'
+  choice: Separate updater path. A mid-deliberation ledger.Updater produces typed DebateLedger records; the post-hoc synthesis
+    engine retains its existing essay-shape JSON contract.
+  reasoning: The mid-round ledger and the post-hoc synthesis have different output contracts and lifecycles. Synthesis is a
+    terminal essay-shape report; the ledger is a compact typed state injected every turn. Routing the ledger through synthesis
+    would re-inject prose into every envelope and re-create the token-pressure problem the ledger exists to solve. A separate
+    updater keeps each path's contract clean, matches the envelope's typed-data carrier (Decision 1, minimal orchestrator),
+    and persists as a typed Ledger field consistent with Decision 6 (references-only transcripts).
+  confidence: firm
+  feeds_into: internal/ledger/updater.go, internal/types/types.go, internal/orchestrator/orchestrator.go, internal/transcript/transcript.go, internal/output/transcript.go, CHANGELOG.md, README.md
+  satisfaction:
+    state: open
+    evidence: Decision recorded by the debate-ledger plan's Task 6 state-sync. The separate-updater path shipped in Tasks 2-5
+      (internal/ledger/updater.go with UpdateDryRun/Update; typed DebateLedger persisted to transcript via the TurnRecord.Ledger
+      field). The validator allowlist for decision.satisfaction.state is open|provisionally_satisfied|user_confirmed_satisfied;
+      "open" is the conformant semantic for a decision awaiting user confirmation.

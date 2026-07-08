@@ -4,6 +4,17 @@
 
 _No user-facing changes yet._
 
+## [0.4.0] - 2026-07-07
+
+### Added
+- Debate ledger: typed per-round compacted state (positions, agreements, open cruxes, current draft) injected into every agent envelope, separately produced by a mid-deliberation updater that is distinct from the post-hoc synthesis engine. Persisted as typed transcript records and visible in `agora show`.
+- Agent self-history: an agent's own immediately preceding turn is always injected into its envelope regardless of topology; deduplicated against the predecessor window.
+- `--no-ledger` flag and `default_ledger_enabled` settings key (three-layer precedence: CLI flag > config > settings > default-on).
+
+### Changed
+- `TurnRecord` now carries an optional `Ledger *DebateLedger` field as a sibling to the existing `Evidence *EvidenceBundle` field. Legacy transcripts without ledger records load, render, and resume in legacy mode without failure.
+- `IsInternalAgent` now includes `"ledger"` so ledger records don't pollute per-agent statistics or consensus counts.
+
 ## [0.3.0] - 2026-06-15
 
 ### Added
