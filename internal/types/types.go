@@ -149,11 +149,13 @@ type DeliberationConfig struct {
 	Topology           Topology      `yaml:"topology" json:"topology"`
 	ConsensusThreshold int           `yaml:"consensus_threshold" json:"consensus_threshold"`
 	MinRounds          int           `yaml:"min_rounds" json:"min_rounds"`
+	Workdir            string        `yaml:"workdir,omitempty" json:"workdir,omitempty"`
 	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
 	MetaModel          *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
 	ResearchEnabled    bool          `yaml:"research" json:"research"`
 	Ledger             *bool         `yaml:"ledger,omitempty" json:"ledger,omitempty"`
 	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
+	ContextConfigured  bool          `yaml:"-" json:"-"`
 }
 
 // EffectiveMinRounds returns the minimum full agent rounds before consensus halt.
@@ -347,6 +349,7 @@ type DeliberationState struct {
 	StartTime            float64
 	Running              bool
 	HaltedBy             string
+	Failure              error
 	FinalConsensusStreak int
 	DeliverableGate      *DeliverableGate
 	LedgerUpdateEnabled  *bool

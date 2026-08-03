@@ -763,16 +763,26 @@ func TestActivityPlainModeEmitsReadableStatusWithoutSpinnerArtifacts(t *testing.
 	t.Setenv("TERM", "dumb")
 
 	got := captureOutput(t, func() {
-		stop := NewOutputManager(false).Activity("Research")
+		stop := NewOutputManager(false).Activity("Evidence")
 		stop()
 		fmt.Println("final output")
 	})
 
-	assertContains(t, got, "[INFO] Working: Research")
+	assertContains(t, got, "[INFO] Working: Evidence")
 	assertContains(t, got, "final output")
 	assertNoANSI(t, got)
 	if strings.Contains(got, "\r") || strings.ContainsAny(got, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
 		t.Fatalf("plain activity should not contain spinner artifacts\noutput: %q", got)
+	}
+}
+
+func TestHaltedByTextDistinguishesNewAndLegacyEvidenceFailures(t *testing.T) {
+	manager := NewOutputManager(false)
+	if got := manager.HaltedByText("evidence_error: permission denied"); got != "Evidence failed: permission denied" {
+		t.Fatalf("new halt text: got %q", got)
+	}
+	if got := manager.HaltedByText("research_error: legacy failure"); got != "Research failed: legacy failure" {
+		t.Fatalf("legacy halt text: got %q", got)
 	}
 }
 

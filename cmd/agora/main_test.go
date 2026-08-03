@@ -709,6 +709,23 @@ func TestResearchOverridesNoResearchDisablesConfigResearch(t *testing.T) {
 	}
 }
 
+func TestResearchOverridesNoContextDisablesConfigContext(t *testing.T) {
+	cmd := &cobra.Command{}
+	runFlags.Context = []string{"config.md"}
+	cmd.Flags().Bool("research", false, "Research")
+	cmd.Flags().Bool("no-research", false, "No research")
+	cmd.Flags().Bool("no-context", false, "No context")
+	cmd.Flags().StringArrayVar(&runFlags.Context, "context", nil, "Context")
+	if err := cmd.Flags().Set("no-context", "true"); err != nil {
+		t.Fatalf("set no-context: %v", err)
+	}
+
+	overrides := researchOverrides(cmd)
+	if !overrides.ContextSet || len(overrides.ContextPaths) != 0 {
+		t.Fatalf("context override: got set=%v paths=%#v, want enabled empty override", overrides.ContextSet, overrides.ContextPaths)
+	}
+}
+
 func TestRunEvidenceOverridesAddsAutoDefaults(t *testing.T) {
 	cmd := &cobra.Command{}
 	runFlags.Context = nil
@@ -724,6 +741,29 @@ func TestRunEvidenceOverridesAddsAutoDefaults(t *testing.T) {
 	}
 }
 
+func TestShouldDefaultContextToDotRequiresCallerSelectedAutoWorkdir(t *testing.T) {
+	cfg := &types.DeliberationConfig{Workdir: "/model-selected"}
+	cmd := &cobra.Command{}
+	cmd.Flags().String("workdir", "", "Workdir")
+	if shouldDefaultContextToDot(cmd, cfg, true) {
+		t.Fatal("model-generated auto workdir must not enable implicit context")
+	}
+	if err := cmd.Flags().Set("workdir", "/caller-selected"); err != nil {
+		t.Fatalf("set workdir: %v", err)
+	}
+	if !shouldDefaultContextToDot(cmd, cfg, true) {
+		t.Fatal("caller-selected auto workdir should enable implicit context")
+	}
+}
+
+func TestClearGeneratedWorkdir(t *testing.T) {
+	cfg := &types.DeliberationConfig{Workdir: "/model-selected"}
+	clearGeneratedWorkdir(cfg)
+	if cfg.Workdir != "" {
+		t.Fatalf("Workdir: got %q, want cleared", cfg.Workdir)
+	}
+}
+
 func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -733,6 +773,7 @@ func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
 		{name: "research", flag: "research", val: "true"},
 		{name: "no research", flag: "no-research", val: "true"},
 		{name: "context", flag: "context", val: "README.md"},
+		{name: "no context", flag: "no-context", val: "true"},
 	}
 
 	for _, tt := range tests {
@@ -741,6 +782,7 @@ func TestResumeEvidenceRequestChangedRejectsResearchContextFlags(t *testing.T) {
 			cmd := &cobra.Command{}
 			cmd.Flags().Bool("research", false, "Research")
 			cmd.Flags().Bool("no-research", false, "No research")
+			cmd.Flags().Bool("no-context", false, "No context")
 			cmd.Flags().StringArrayVar(&contextPaths, "context", nil, "Context")
 			if err := cmd.Flags().Set(tt.flag, tt.val); err != nil {
 				t.Fatalf("set %s: %v", tt.flag, err)
@@ -1292,6 +1334,92 @@ func TestRunCommandResolvesConfigExistingPath(t *testing.T) {
 	cmd := artifactCommand(t, filepath.Join(dir, "run.jsonl"))
 	if err := runCmd.RunE(cmd, nil); err != nil {
 		t.Fatalf("run command: %v", err)
+	}
+}
+
+func TestRunCommandUsesConfigWorkdirFromUnrelatedDirectory(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	projectDir := filepath.Join(root, "project")
+	launchDir := filepath.Join(root, "launch")
+	for _, dir := range []string{configDir, projectDir, launchDir} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "note.md"), []byte("project evidence"), 0o644); err != nil {
+		t.Fatalf("write project context: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(launchDir, "decoy.md"), []byte("launch directory decoy"), 0o644); err != nil {
+		t.Fatalf("write launch decoy: %v", err)
+	}
+	configPath := filepath.Join(configDir, "panel.yaml")
+	configYAML := "workdir: ../project\nagents:\n  - id: a\n    model: test/model\n"
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	writeConfig(t, "")
+	t.Chdir(launchDir)
+	outputPath := filepath.Join(root, "run.jsonl")
+	restore := configureRunGlobals(configPath, outputPath)
+	defer restore()
+
+	out := captureStdout(t, func() {
+		if err := runCmd.RunE(artifactCommand(t, outputPath), nil); err != nil {
+			t.Fatalf("run command: %v", err)
+		}
+	})
+	assertStringContains(t, out, "Deliberation complete")
+	records, err := loadTranscriptFile(outputPath)
+	if err != nil {
+		t.Fatalf("load transcript: %v", err)
+	}
+	var paths []string
+	for _, record := range records {
+		if record.Evidence != nil {
+			for _, ref := range record.Evidence.SourceReferences {
+				paths = append(paths, ref.Path)
+			}
+		}
+	}
+	joined := strings.Join(paths, "\n")
+	if !strings.Contains(joined, filepath.Join(projectDir, "note.md")) || strings.Contains(joined, "decoy.md") {
+		t.Fatalf("evidence paths: got %v, want project context only", paths)
+	}
+	for _, dir := range []string{launchDir, projectDir} {
+		if _, err := os.Stat(filepath.Join(dir, "opencode.json")); !os.IsNotExist(err) {
+			t.Fatalf("run created opencode.json in %s: %v", dir, err)
+		}
+	}
+}
+
+func TestRunCommandEvidenceFailureReturnsErrorWithoutSuccess(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeConfig(t, "")
+	configPath := filepath.Join(dir, "panel.yaml")
+	configYAML := "context:\n  - missing.md\nagents:\n  - id: a\n    model: test/model\n"
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Chdir(dir)
+	outputPath := filepath.Join(dir, "run.jsonl")
+	restore := configureRunGlobals(configPath, outputPath)
+	defer restore()
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runCmd.RunE(artifactCommand(t, outputPath), nil)
+	})
+	if runErr == nil || !strings.Contains(runErr.Error(), "Evidence failed") {
+		t.Fatalf("error: got %v, want evidence failure", runErr)
+	}
+	assertStringNotContains(t, out, "SUCCESS")
+	assertStringContains(t, out, "[INFO] Transcript:")
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Fatalf("transcript was not written: %v", err)
 	}
 }
 
@@ -2065,6 +2193,24 @@ func TestRunCommandRejectsQuietVerboseConflict(t *testing.T) {
 	}
 }
 
+func TestRunCommandRejectsContextAndNoContext(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, "")
+	restore := configureRunGlobals(filepath.Join(dir, "panel.yaml"), filepath.Join(dir, "out.jsonl"))
+	defer restore()
+	cmd := outputModeCommand(t)
+	if err := cmd.Flags().Set("context", "README.md"); err != nil {
+		t.Fatalf("set context: %v", err)
+	}
+	if err := cmd.Flags().Set("no-context", "true"); err != nil {
+		t.Fatalf("set no-context: %v", err)
+	}
+	err := runCmd.PreRunE(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "cannot use --context and --no-context together") {
+		t.Fatalf("error: got %v, want context conflict", err)
+	}
+}
+
 func TestResumeCommandRejectsQuietVerboseConflict(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, "")
@@ -2249,7 +2395,9 @@ func artifactCommand(t *testing.T, outputPath string) *cobra.Command {
 	cmd.Flags().String("output", "", "Output")
 	cmd.Flags().Bool("research", false, "Research")
 	cmd.Flags().Bool("no-research", false, "No research")
+	cmd.Flags().Bool("no-context", false, "No context")
 	cmd.Flags().StringArray("context", nil, "Context")
+	cmd.Flags().String("workdir", "", "Workdir")
 	cmd.Flags().Int("time", 60, "Time")
 	cmd.Flags().Int("max-turns", 1, "Max turns")
 	if err := cmd.Flags().Set("output", outputPath); err != nil {
@@ -2327,7 +2475,7 @@ func assertJSONNoANSI(t *testing.T, out string) {
 func configureRunGlobals(configPath, outputPath string) func() {
 	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output
 	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext := runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext
-	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoLedger, oldContext := runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoLedger, runFlags.Context
+	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir := runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoContext, runFlags.NoLedger, runFlags.Context, runFlags.Workdir
 
 	runFlags.Config = configPath
 	runFlags.Topic = "artifact resolution"
@@ -2347,20 +2495,22 @@ func configureRunGlobals(configPath, outputPath string) func() {
 	runFlags.Yes = true
 	runFlags.Research = false
 	runFlags.NoResearch = false
+	runFlags.NoContext = false
 	runFlags.NoLedger = false
 	runFlags.Context = nil
+	runFlags.Workdir = ""
 
 	return func() {
 		runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
 		runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext
-		runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoLedger, runFlags.Context = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoLedger, oldContext
+		runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoContext, runFlags.NoLedger, runFlags.Context, runFlags.Workdir = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir
 	}
 }
 
 func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
 	oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput := resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output
 	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun := resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun
-	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoLedger, oldContext := resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoLedger, resumeFlags.Context
+	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir := resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoContext, resumeFlags.NoLedger, resumeFlags.Context, resumeFlags.Workdir
 
 	resumeFlags.Config = configPath
 	resumeFlags.Topic = "artifact resolution"
@@ -2380,13 +2530,15 @@ func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
 	resumeFile = sourcePath
 	resumeFlags.Research = false
 	resumeFlags.NoResearch = false
+	resumeFlags.NoContext = false
 	resumeFlags.NoLedger = false
 	resumeFlags.Context = nil
+	resumeFlags.Workdir = ""
 
 	return func() {
 		resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
 		resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun
-		resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoLedger, resumeFlags.Context = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoLedger, oldContext
+		resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoContext, resumeFlags.NoLedger, resumeFlags.Context, resumeFlags.Workdir = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir
 	}
 }
 
@@ -2488,6 +2640,24 @@ func TestSynthesisUnresolvedAfterConsensus(t *testing.T) {
 	if synthesisUnresolvedAfterConsensus(noneSemicolon) {
 		t.Fatal("expected no warning when tension item begins with none")
 	}
+}
+
+func TestPrintSessionResultFailureHasNoSuccessLines(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	failure := fmt.Errorf("permission denied")
+	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: "a", Model: "test/model"}}}
+	state := &types.DeliberationState{Config: cfg, MaxTurns: 1, HaltedBy: "evidence_error: permission denied", Failure: failure}
+	result := session.Result{OutputPath: "/tmp/transcript.jsonl", HaltedBy: state.HaltedBy, Failure: failure, State: state}
+	var resultErr error
+	out := captureStdout(t, func() {
+		resultErr = printSessionResult(output.NewOutputManager(false), result, "Deliberation complete")
+	})
+	if resultErr == nil || !strings.Contains(resultErr.Error(), "Evidence failed") {
+		t.Fatalf("error: got %v, want evidence failure", resultErr)
+	}
+	assertStringNotContains(t, out, "SUCCESS")
+	assertStringContains(t, out, "[INFO] Transcript: /tmp/transcript.jsonl")
 }
 
 func TestRequireAutoApprovalNonTTYAcceptsEnvYes(t *testing.T) {

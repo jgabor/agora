@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -37,22 +36,6 @@ const ReadOnlyOpenCodeConfig = `{
 }
 `
 
-// WriteReadOnlyConfig writes a minimal opencode.json to dir that denies
-// write/execute tools. Returns a cleanup function that removes the file.
-func WriteReadOnlyConfig(dir string) (cleanup func(), err error) {
-	configPath := filepath.Join(dir, "opencode.json")
-	// Do not overwrite an existing config.
-	if _, statErr := os.Stat(configPath); statErr == nil {
-		return func() {}, nil
-	}
-	if err := os.WriteFile(configPath, []byte(ReadOnlyOpenCodeConfig), 0o644); err != nil {
-		return func() {}, fmt.Errorf("writing read-only opencode config: %w", err)
-	}
-	return func() {
-		_ = os.Remove(configPath)
-	}, nil
-}
-
 // Runner is the interface for executing agent turns.
 type Runner interface {
 	Run(agent types.AgentConfig, envelope map[string]any) (string, *types.RunMetadata, error)
@@ -60,7 +43,8 @@ type Runner interface {
 
 // AgentRunner executes agent turns via the opencode subprocess.
 type AgentRunner struct {
-	dryRun bool
+	dryRun  bool
+	workdir string
 }
 
 // IsDryRun reports whether the runner operates in dry-run (simulated) mode.
@@ -71,6 +55,12 @@ func (r *AgentRunner) IsDryRun() bool {
 // NewAgentRunner creates a new AgentRunner.
 func NewAgentRunner(dryRun bool) *AgentRunner {
 	return &AgentRunner{dryRun: dryRun}
+}
+
+// NewAgentRunnerAt creates an AgentRunner whose OpenCode subprocesses execute
+// from workdir. An empty workdir preserves the caller's current directory.
+func NewAgentRunnerAt(dryRun bool, workdir string) *AgentRunner {
+	return &AgentRunner{dryRun: dryRun, workdir: workdir}
 }
 
 // Run executes a single agent turn via opencode subprocess.
@@ -90,6 +80,10 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 	}
 
 	cmd := exec.Command("opencode", opencodeRunArgs(agent.Model)...)
+	if r.workdir != "" {
+		cmd.Dir = r.workdir
+	}
+	cmd.Env = overrideEnv(os.Environ(), "OPENCODE_CONFIG_CONTENT", ReadOnlyOpenCodeConfig)
 	cmd.Stdin = strings.NewReader(payload)
 
 	var stdout, stderr bytes.Buffer
@@ -123,6 +117,17 @@ func (r *AgentRunner) Run(agent types.AgentConfig, envelope map[string]any) (str
 	}
 
 	return content, metadata, nil
+}
+
+func overrideEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			result = append(result, item)
+		}
+	}
+	return append(result, prefix+value)
 }
 
 // ReadOnlyHint is a brief, natural-language instruction reminding the model

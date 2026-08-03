@@ -45,6 +45,50 @@ func TestPolicyCollectorReferencesReadableTextFile(t *testing.T) {
 	}
 }
 
+func TestPolicyCollectorSkipsUnreadableNestedDirectoryWithWarning(t *testing.T) {
+	root := t.TempDir()
+	writeContextFile(t, root, "readable.md", "readable context")
+	private := filepath.Join(root, "private")
+	if err := os.Mkdir(private, 0o755); err != nil {
+		t.Fatalf("mkdir private: %v", err)
+	}
+	writeContextFile(t, private, "hidden.md", "hidden context")
+	makeDirectoryUnreadableOrSkip(t, private)
+
+	bundle, err := (PolicyCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{root}})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(bundle.SourceReferences) != 1 || !strings.Contains(bundle.SourceReferences[0].Path, "readable.md") {
+		t.Fatalf("SourceReferences: got %#v, want only readable file", bundle.SourceReferences)
+	}
+	if !strings.Contains(bundle.Summary, "skipped 1 unreadable nested local context path") {
+		t.Fatalf("Summary: got %q, want unreadable warning", bundle.Summary)
+	}
+}
+
+func TestPolicyCollectorFailsUnreadableExplicitDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeContextFile(t, root, "hidden.md", "hidden context")
+	makeDirectoryUnreadableOrSkip(t, root)
+
+	_, err := (PolicyCollector{}).Collect(types.EvidenceRequest{ContextPaths: []string{root}})
+	if err == nil || !strings.Contains(err.Error(), "resolving context") {
+		t.Fatalf("error: got %v, want explicit root failure", err)
+	}
+}
+
+func makeDirectoryUnreadableOrSkip(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatalf("chmod unreadable: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o755) })
+	if _, err := os.ReadDir(path); err == nil {
+		t.Skip("test user can still read mode-000 directory")
+	}
+}
+
 func TestPolicyCollectorResolvesDirectoryTextAndSkipsUnsafeFiles(t *testing.T) {
 	dir := t.TempDir()
 	keep := writeContextFile(t, dir, "docs/keep.txt", "safe text\n")

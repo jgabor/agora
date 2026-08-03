@@ -2,8 +2,6 @@ package agent
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -707,55 +705,24 @@ func TestExtractConsensusRejectsBodyDisagreementWithoutEndorsement(t *testing.T)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// WriteReadOnlyConfig
-// ---------------------------------------------------------------------------
-
-func TestWriteReadOnlyConfigWritesAndCleansUp(t *testing.T) {
-	dir := t.TempDir()
-
-	cleanup, err := WriteReadOnlyConfig(dir)
-	if err != nil {
-		t.Fatalf("WriteReadOnlyConfig: %v", err)
+func TestOverrideEnvReplacesInlineConfigAndPreservesOtherValues(t *testing.T) {
+	got := overrideEnv([]string{"PATH=/bin", "OPENCODE_CONFIG_CONTENT=old", "OTHER=value"}, "OPENCODE_CONFIG_CONTENT", ReadOnlyOpenCodeConfig)
+	joined := strings.Join(got, "\n")
+	if strings.Contains(joined, "OPENCODE_CONFIG_CONTENT=old") {
+		t.Fatalf("old inline config was retained: %v", got)
 	}
-
-	configPath := filepath.Join(dir, "opencode.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("reading config: %v", err)
+	if !strings.Contains(joined, "OPENCODE_CONFIG_CONTENT="+ReadOnlyOpenCodeConfig) {
+		t.Fatalf("read-only inline config missing: %v", got)
 	}
-	if !strings.Contains(string(data), `"edit": "deny"`) {
-		t.Errorf("config should deny edit, got: %s", string(data))
-	}
-	if !strings.Contains(string(data), `"read": "allow"`) {
-		t.Errorf("config should allow read, got: %s", string(data))
-	}
-
-	cleanup()
-
-	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
-		t.Errorf("config should be removed after cleanup, got stat err: %v", err)
+	if !strings.Contains(joined, "PATH=/bin") || !strings.Contains(joined, "OTHER=value") {
+		t.Fatalf("unrelated environment values were not preserved: %v", got)
 	}
 }
 
-func TestWriteReadOnlyConfigRespectsExistingConfig(t *testing.T) {
+func TestNewAgentRunnerAtRecordsWorkdir(t *testing.T) {
 	dir := t.TempDir()
-
-	if err := os.WriteFile(filepath.Join(dir, "opencode.json"), []byte(`{"existing": true}`), 0o644); err != nil {
-		t.Fatalf("writing existing config: %v", err)
-	}
-
-	cleanup, err := WriteReadOnlyConfig(dir)
-	if err != nil {
-		t.Fatalf("WriteReadOnlyConfig: %v", err)
-	}
-	cleanup()
-
-	data, err := os.ReadFile(filepath.Join(dir, "opencode.json"))
-	if err != nil {
-		t.Fatalf("reading config: %v", err)
-	}
-	if !strings.Contains(string(data), `"existing": true`) {
-		t.Errorf("existing config should be preserved, got: %s", string(data))
+	runner := NewAgentRunnerAt(true, dir)
+	if runner.workdir != dir {
+		t.Fatalf("workdir: got %q, want %q", runner.workdir, dir)
 	}
 }

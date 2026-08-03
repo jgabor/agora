@@ -527,6 +527,8 @@ func formatHaltedBy(reason string) string {
 		return "Interrupted: budget exhausted"
 	case reason == "user_interrupt":
 		return "Interrupted by user"
+	case strings.HasPrefix(reason, "evidence_error:"):
+		return "Evidence failed: " + strings.TrimSpace(strings.TrimPrefix(reason, "evidence_error:"))
 	case strings.HasPrefix(reason, "research_error:"):
 		return "Research failed: " + strings.TrimSpace(strings.TrimPrefix(reason, "research_error:"))
 	case strings.HasPrefix(reason, "error:"):
@@ -544,7 +546,7 @@ func haltColor(reason string) string {
 		return "2"
 	case strings.HasPrefix(reason, "time_limit"), strings.HasPrefix(reason, "budget_exceeded"), reason == "user_interrupt":
 		return "3"
-	case strings.HasPrefix(reason, "error:"), strings.HasPrefix(reason, "research_error:"):
+	case strings.HasPrefix(reason, "error:"), strings.HasPrefix(reason, "evidence_error:"), strings.HasPrefix(reason, "research_error:"):
 		return "1"
 	default:
 		return "6"
@@ -554,6 +556,11 @@ func haltColor(reason string) string {
 // HaltedByDisplay returns a humanized, colored halt reason string for inline use.
 func (o *OutputManager) HaltedByDisplay(haltedBy string) string {
 	return o.renderer.Styled(formatHaltedBy(haltedBy), haltColor(haltedBy))
+}
+
+// HaltedByText returns the unstyled human-readable halt reason.
+func (o *OutputManager) HaltedByText(haltedBy string) string {
+	return formatHaltedBy(haltedBy)
 }
 
 func agentStatsRow(label string, s types.AgentTurnStats) []string {

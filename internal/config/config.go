@@ -17,10 +17,11 @@ type rawConfig struct {
 	Agents             []types.AgentConfig `yaml:"agents"`
 	ConsensusThreshold int                 `yaml:"consensus_threshold"`
 	MinRounds          int                 `yaml:"min_rounds"`
+	Workdir            string              `yaml:"workdir"`
 	SynthesisModel     *string             `yaml:"synthesis_model"`
 	Research           *bool               `yaml:"research"`
 	Ledger             *bool               `yaml:"ledger"`
-	Context            []string            `yaml:"context"`
+	Context            *[]string           `yaml:"context"`
 }
 
 // LoadConfig loads and validates a deliberation configuration from a YAML file.
@@ -77,9 +78,13 @@ func loadConfigFromBytes(data []byte, gconf Config, applyNonAutoDefaults bool) (
 		Topology:           topology,
 		ConsensusThreshold: raw.ConsensusThreshold,
 		MinRounds:          raw.MinRounds,
+		Workdir:            raw.Workdir,
 		SynthesisModel:     raw.SynthesisModel,
 		Ledger:             raw.Ledger,
-		ContextPaths:       append([]string(nil), raw.Context...),
+	}
+	if raw.Context != nil {
+		cfg.ContextConfigured = true
+		cfg.ContextPaths = append([]string(nil), (*raw.Context)...)
 	}
 	if raw.Research != nil {
 		cfg.ResearchEnabled = *raw.Research

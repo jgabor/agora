@@ -318,6 +318,7 @@ type transcriptMetadataOutput struct {
 	Topology           types.Topology     `json:"topology,omitempty"`
 	ConsensusThreshold int                `json:"consensus_threshold,omitempty"`
 	MinRounds          int                `json:"min_rounds,omitempty"`
+	Workdir            string             `json:"workdir,omitempty"`
 	SynthesisModel     *string            `json:"synthesis_model,omitempty"`
 	Research           bool               `json:"research"`
 	ContextPaths       []string           `json:"context_paths,omitempty"`
@@ -366,6 +367,7 @@ func transcriptMetadataData(metadata *types.TranscriptMetadata) transcriptMetada
 		out.Topology = metadata.Config.Topology
 		out.ConsensusThreshold = metadata.Config.ConsensusThreshold
 		out.MinRounds = metadata.Config.MinRounds
+		out.Workdir = metadata.Config.Workdir
 		out.SynthesisModel = metadata.Config.SynthesisModel
 		out.Research = metadata.Config.ResearchEnabled
 		out.ContextPaths = append([]string(nil), metadata.Config.ContextPaths...)
@@ -613,6 +615,7 @@ func configSummaryData(cfg *types.DeliberationConfig) map[string]any {
 		"agent_count":         len(cfg.Agents),
 		"consensus_threshold": cfg.ConsensusThreshold,
 		"min_rounds":          cfg.MinRounds,
+		"workdir":             cfg.Workdir,
 		"synthesis_model":     cfg.SynthesisModel,
 		"research":            cfg.ResearchEnabled,
 		"context":             cfg.ContextPaths,
@@ -626,6 +629,9 @@ func configMarkdownRows(cfg *types.DeliberationConfig) [][]string {
 	}
 	if cfg.MinRounds > 0 {
 		rows = append(rows, []string{"Min rounds", fmt.Sprintf("%d", cfg.MinRounds)})
+	}
+	if cfg.Workdir != "" {
+		rows = append(rows, []string{"Workdir", cfg.Workdir})
 	}
 	if cfg.SynthesisModel != nil {
 		rows = append(rows, []string{"Synthesis model", *cfg.SynthesisModel})
@@ -1099,7 +1105,7 @@ func transcriptMetadataContract() map[string]any {
 		"fields": []map[string]any{
 			{"name": "schema_version", "type": "integer", "default": 1},
 			{"name": "cast", "type": "array", "items": []string{"id", "name", "persona", "provider_model", "color"}},
-			{"name": "config", "type": "object", "fields": []string{"agents", "topology", "consensus_threshold", "min_rounds", "synthesis_model", "research", "context"}},
+			{"name": "config", "type": "object", "fields": []string{"agents", "topology", "consensus_threshold", "min_rounds", "workdir", "synthesis_model", "research", "context"}},
 		},
 	}
 }

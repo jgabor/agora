@@ -107,7 +107,9 @@ Optional (all have sensible defaults):
   --full-context           Show last K messages from ALL agents (not just predecessor)
   --research               Enable topic-inferred web research before deliberation
   --no-research            Disable config-enabled web research for this run
+  --no-context             Disable config-enabled local context for this run
   --context PATH           Local text context path to include before deliberation (repeatable)
+  --workdir PATH           Base directory for agent execution and relative context paths
   --dry-run                Run with simulated agent responses (no LLM calls)
   --auto LEVEL             Auto-generate agent config (quick, normal, deep, yolo)
   -M, --model MODEL        Model for auto config generation and deliberation agents
@@ -257,12 +259,13 @@ Reads and writes the global `config.yaml` file. `agora config init` creates it w
 |---|---|---|---|
 | `topology` | string | `ring` | `ring`, `star`, or `mesh` |
 | `consensus_threshold` | int | `0` | Consecutive consensus signals to trigger early stop (0 = disabled) |
+| `workdir` | string | caller directory | Base directory for agent execution and relative local-context paths |
 | `synthesis_model` | string | — | Override model for final synthesis (defaults to first agent's model) |
 | `research` | bool | `false` | Enable topic-inferred web research before deliberation for runs using this config |
-| `context` | list | `[]` | Local text files or directories to include before deliberation |
+| `context` | list | `.` with explicit workdir; otherwise `[]` | Local text files or directories to include before deliberation |
 | `agents` | list | required | Agent configs with `id`, `model`, and optional `system_prompt` |
 
-CLI flags override project config. For evidence, `--research` enables web research, `--no-research` disables config-enabled research, and any `--context` flags replace config `context` paths for that run.
+CLI flags override project config. `--workdir` overrides config `workdir`; a relative CLI value is based on the caller directory, while a relative config value is based on the config file's directory. Relative `context` paths are then based on the effective workdir. When a workdir is explicitly selected and `context` is omitted, Agora includes `.` by default. Use `context: []` or `--no-context` to opt out. For evidence, `--research` enables web research, `--no-research` disables config-enabled web research, and any `--context` flags replace config `context` paths for that run.
 
 Global `config.yaml` can be managed with `agora config`. It may set CLI defaults and evidence caps, but does not silently enable web access:
 
@@ -287,11 +290,11 @@ When these evidence caps are unset in `config.yaml`, auto mode raises their fall
 
 ### Research and Local Context
 
-Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal respects `.gitignore`, skips VCS directories, binary files, and secret-looking files such as `.env` and private key names, but does not blanket-skip hidden project directories.
+Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal respects `.gitignore`, skips VCS directories, binary files, secret-looking files such as `.env` and private key names, and unreadable nested entries, but does not blanket-skip hidden project directories. An unreadable explicit context root remains an error.
 
-All model calls are given this read-only filesystem guard: `CRITICAL: DO NOT MODIFY OR WRITE TO ANY FILES! You are only permitted to read and explore files.` Agora also avoids OpenCode's dangerous auto-approval flag when launching agents.
+All model calls are given this read-only filesystem guard: `CRITICAL: DO NOT MODIFY OR WRITE TO ANY FILES! You are only permitted to read and explore files.` Agora also supplies the matching OpenCode permission policy through `OPENCODE_CONFIG_CONTENT`, so it does not create or replace `opencode.json` in the launch or project directory. Project OpenCode configuration still loads, with Agora's inline permission policy taking later precedence. Agora avoids OpenCode's dangerous auto-approval flag when launching agents.
 
-Agora prints a pre-deliberation evidence summary before agent turns. Web query/source limits and local file, byte, and depth limits are soft caps: Agora includes what fits, truncates local text at the byte cap, skips paths beyond caps, and warns in the evidence summary when a cap is hit. Agora still halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if explicit local context paths cannot be resolved. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths without model cost.
+Agora prints a pre-deliberation evidence summary before agent turns. Web query/source limits and local file, byte, and depth limits are soft caps: Agora includes what fits, truncates local text at the byte cap, skips paths beyond caps, and warns in the evidence summary when a cap is hit. Agora still halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if explicit local context paths cannot be resolved. Such evidence failures are reported as failures and return a non-zero process status. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths without model cost.
 
 Current limitations: local context is text-only; PDF, DOCX, binary parsing, browser rendering, source/domain allowlists, persistent source caching, and replay-perfect research refresh are not implemented.
 

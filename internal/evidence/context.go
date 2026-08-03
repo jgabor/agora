@@ -13,20 +13,21 @@ import (
 )
 
 type contextResolver struct {
-	refs            []types.SourceReference
-	documents       []types.ContextDocument
-	maxSources      int
-	maxBytes        int64
-	maxDepth        int
-	totalBytes      int64
-	ignoredGit      int
-	fileCapHit      bool
-	byteCapHit      bool
-	depthCapHit     bool
-	skippedFileCap  int
-	skippedByteCap  int
-	skippedDepthCap int
-	truncatedFiles  int
+	refs              []types.SourceReference
+	documents         []types.ContextDocument
+	maxSources        int
+	maxBytes          int64
+	maxDepth          int
+	totalBytes        int64
+	ignoredGit        int
+	fileCapHit        bool
+	byteCapHit        bool
+	depthCapHit       bool
+	skippedFileCap    int
+	skippedByteCap    int
+	skippedDepthCap   int
+	skippedUnreadable int
+	truncatedFiles    int
 }
 
 func (r *contextResolver) add(path string) error {
@@ -35,7 +36,7 @@ func (r *contextResolver) add(path string) error {
 		return fmt.Errorf("resolving context %q: %w", path, err)
 	}
 	if !info.IsDir() {
-		return r.addFile(path, info)
+		return r.addFile(path, info, true)
 	}
 	if shouldAlwaysSkipContextDir(info.Name()) {
 		return nil
@@ -45,11 +46,22 @@ func (r *contextResolver) add(path string) error {
 	ignore := newGitignoreMatcher(root)
 	return filepath.WalkDir(root, func(current string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return fmt.Errorf("resolving context %q: %w", current, walkErr)
+			if current == root {
+				return fmt.Errorf("resolving context %q: %w", current, walkErr)
+			}
+			r.skippedUnreadable++
+			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
-			return fmt.Errorf("resolving context %q: %w", current, err)
+			if current == root {
+				return fmt.Errorf("resolving context %q: %w", current, err)
+			}
+			r.skippedUnreadable++
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if entry.IsDir() && shouldAlwaysSkipContextDir(entry.Name()) {
 			if current != root {
@@ -76,11 +88,11 @@ func (r *contextResolver) add(path string) error {
 		if entry.IsDir() {
 			return nil
 		}
-		return r.addFile(current, info)
+		return r.addFile(current, info, false)
 	})
 }
 
-func (r *contextResolver) addFile(path string, info os.FileInfo) error {
+func (r *contextResolver) addFile(path string, info os.FileInfo, explicit bool) error {
 	if !info.Mode().IsRegular() || shouldSkipContextFile(info.Name()) {
 		return nil
 	}
@@ -95,12 +107,24 @@ func (r *contextResolver) addFile(path string, info os.FileInfo) error {
 		r.skippedByteCap++
 		return nil
 	}
-	if !isTextFile(path, info) {
+	isText, err := isTextFile(path, info)
+	if err != nil {
+		if explicit {
+			return fmt.Errorf("resolving context %q: %w", path, err)
+		}
+		r.skippedUnreadable++
+		return nil
+	}
+	if !isText {
 		return nil
 	}
 	text, truncated, err := readContextText(path, remaining)
 	if err != nil {
-		return fmt.Errorf("resolving context %q: %w", path, err)
+		if explicit {
+			return fmt.Errorf("resolving context %q: %w", path, err)
+		}
+		r.skippedUnreadable++
+		return nil
 	}
 	if strings.Contains(text, "\x00") || !utf8.ValidString(text) {
 		return nil
@@ -178,6 +202,9 @@ func (r *contextResolver) summary(requestedPaths int) string {
 	}
 	if r.depthCapHit {
 		lines = append(lines, fmt.Sprintf("WARNING: local context depth cap reached at depth %d; skipped %d deeper path(s).", r.maxDepth, r.skippedDepthCap))
+	}
+	if r.skippedUnreadable > 0 {
+		lines = append(lines, fmt.Sprintf("WARNING: skipped %d unreadable nested local context path(s).", r.skippedUnreadable))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -361,24 +388,24 @@ func pathWithin(path, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
-func isTextFile(path string, info os.FileInfo) bool {
+func isTextFile(path string, info os.FileInfo) (bool, error) {
 	if info.Size() == 0 {
-		return true
+		return true, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer func() { _ = file.Close() }()
 
 	buf := make([]byte, 8000)
 	n, err := file.Read(buf)
 	if err != nil && n == 0 {
-		return false
+		return false, err
 	}
 	sample := buf[:n]
 	if strings.Contains(string(sample), "\x00") {
-		return false
+		return false, nil
 	}
-	return utf8.Valid(sample)
+	return utf8.Valid(sample), nil
 }

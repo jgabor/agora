@@ -105,3 +105,27 @@ func TestResolveRequestConfigDoNotEnableResearch(t *testing.T) {
 		t.Fatal("ResearchEnabled: got true, want false because config must not enable web access")
 	}
 }
+
+func TestResolveRequestEmptyContextOverrideDisablesConfigContext(t *testing.T) {
+	cfg := &types.DeliberationConfig{ContextPaths: []string{"config.md"}}
+	request := ResolveRequest(cfg, 0, 0, 0, Overrides{ContextSet: true, ContextPaths: nil})
+	if len(request.ContextPaths) != 0 {
+		t.Fatalf("ContextPaths: got %#v, want empty override", request.ContextPaths)
+	}
+}
+
+func TestResolveRequestDefaultsOmittedContextToDot(t *testing.T) {
+	cfg := &types.DeliberationConfig{Workdir: "/project"}
+	request := ResolveRequest(cfg, 0, 0, 0, Overrides{DefaultContextToDot: true})
+	if len(request.ContextPaths) != 1 || request.ContextPaths[0] != "." {
+		t.Fatalf("ContextPaths: got %#v, want [.]", request.ContextPaths)
+	}
+}
+
+func TestResolveRequestPreservesExplicitEmptyContext(t *testing.T) {
+	cfg := &types.DeliberationConfig{Workdir: "/project", ContextConfigured: true}
+	request := ResolveRequest(cfg, 0, 0, 0, Overrides{DefaultContextToDot: true})
+	if len(request.ContextPaths) != 0 {
+		t.Fatalf("ContextPaths: got %#v, want explicit empty", request.ContextPaths)
+	}
+}

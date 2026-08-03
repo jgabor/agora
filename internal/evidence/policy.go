@@ -13,10 +13,11 @@ type Defaults struct {
 
 // Overrides captures CLI-level evidence policy choices.
 type Overrides struct {
-	Research     *bool
-	ContextSet   bool
-	ContextPaths []string
-	Defaults     Defaults
+	Research            *bool
+	ContextSet          bool
+	ContextPaths        []string
+	DefaultContextToDot bool
+	Defaults            Defaults
 }
 
 // DefaultsForAutoLevel returns larger evidence fallback caps for broader auto runs.
@@ -44,6 +45,9 @@ func ResolveRequest(cfg *types.DeliberationConfig, researchMaxSources int, conte
 		MaxSources:      positiveOrDefault(researchMaxSources, defaults.MaxSources),
 		MaxBytes:        positiveInt64OrDefault(contextMaxBytes, defaults.MaxBytes),
 		MaxDepth:        positiveOrDefault(contextMaxDepth, defaults.MaxDepth),
+	}
+	if overrides.DefaultContextToDot && !cfg.ContextConfigured && len(cfg.ContextPaths) == 0 {
+		request.ContextPaths = []string{"."}
 	}
 
 	if overrides.Research != nil {

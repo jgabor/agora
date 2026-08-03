@@ -28,7 +28,7 @@ const (
 	maxNonAutoWindow             = 8
 )
 
-var version = "0.4.1"
+var version = "0.4.2"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")
@@ -67,8 +67,10 @@ type runFlagValues struct {
 	Yes         bool
 	Research    bool
 	NoResearch  bool
+	NoContext   bool
 	NoLedger    bool
 	Context     []string // local text context paths (repeatable)
+	Workdir     string
 }
 
 var (
@@ -93,6 +95,8 @@ var runCmd = &cobra.Command{
 	Short: "Run a multi-agent deliberation",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var cfg *types.DeliberationConfig
+		var configPath string
+		var workdir string
 		var autoLevel types.AutoLevel
 		var levelCaps types.LevelCaps
 		autoMode := runFlags.Auto != ""
@@ -117,6 +121,10 @@ var runCmd = &cobra.Command{
 			if err := requireAutoApprovalForNonTTY(runFlags.Yes, runFlags.DryRun); err != nil {
 				return err
 			}
+			workdir, err = resolveWorkdir(cmd, runFlags, nil, "")
+			if err != nil {
+				return err
+			}
 
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 
@@ -126,7 +134,7 @@ var runCmd = &cobra.Command{
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			} else {
-				runner := agent.NewAgentRunner(false)
+				runner := agent.NewAgentRunnerAt(false, workdir)
 				stop := outMgr.Activity("Config generation")
 				cfg, err = autogen.GenerateConfig(runFlags.Topic, level, runFlags.Model, runner)
 				stop()
@@ -134,6 +142,7 @@ var runCmd = &cobra.Command{
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			}
+			clearGeneratedWorkdir(cfg)
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
@@ -145,19 +154,17 @@ var runCmd = &cobra.Command{
 			}
 		} else {
 			var err error
-			cfg, err = loadConfigArtifact(runFlags.Config)
+			cfg, configPath, err = loadConfigArtifact(runFlags.Config)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+			workdir, err = resolveWorkdir(cmd, runFlags, cfg, configPath)
+			if err != nil {
+				return err
 			}
 			applyNonAutoRunShape(cmd, &runFlags, cfg)
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
-
-		// Enforce read-only at the tool-execution layer by writing a minimal
-		// opencode.json with permission denies. Falls back gracefully if the
-		// directory already contains a config or the write fails.
-		readOnlyCleanup, _ := agent.WriteReadOnlyConfig(".")
-		defer readOnlyCleanup()
 
 		var budget *float64
 		if runFlags.BudgetSet {
@@ -169,13 +176,16 @@ var runCmd = &cobra.Command{
 			return err
 		}
 		evidenceOverrides := runEvidenceOverrides(cmd, autoMode, autoLevel)
+		evidenceOverrides.DefaultContextToDot = shouldDefaultContextToDot(cmd, cfg, autoMode)
 		evidenceRequest := evidence.ResolveRequest(cfg, gconf.ResearchMaxSources, gconf.ContextMaxBytes, gconf.ContextMaxDepth, evidenceOverrides)
+		evidenceRequest.ContextPaths = resolveContextPaths(evidenceRequest.ContextPaths, workdir)
 		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, gconf)
 
 		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
 		req := session.RunRequest{
 			Topic:        runFlags.Topic,
 			Config:       cfg,
+			Workdir:      workdir,
 			OutputPath:   outputPath,
 			Window:       runFlags.Window,
 			MaxTurns:     runFlags.MaxTurns,
@@ -196,9 +206,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		printSessionResult(outMgr, result, fmt.Sprintf("Deliberation complete (%d agent turns)", result.Stats.TotalTurns))
-
-		return nil
+		return printSessionResult(outMgr, result, fmt.Sprintf("Deliberation complete (%d agent turns)", result.Stats.TotalTurns))
 	},
 }
 
@@ -215,6 +223,10 @@ func init() {
 		}
 		if cmd.Flags().Changed("research") && cmd.Flags().Changed("no-research") {
 			return fmt.Errorf("cannot use --research and --no-research together")
+		}
+		noContext, _ := cmd.Flags().GetBool("no-context")
+		if noContext && cmd.Flags().Changed("context") {
+			return fmt.Errorf("cannot use --context and --no-context together")
 		}
 		if err := applyConfigDefaults(cmd, &runFlags.Model, &runFlags.Auto); err != nil {
 			return err
@@ -260,10 +272,16 @@ func researchOverrides(cmd *cobra.Command) evidence.Overrides {
 		research = &enabled
 	}
 
+	noContext, _ := cmd.Flags().GetBool("no-context")
+	contextSet := cmd.Flags().Changed("context") || (cmd.Flags().Changed("no-context") && noContext)
+	contextPaths := append([]string(nil), runFlags.Context...)
+	if noContext {
+		contextPaths = nil
+	}
 	return evidence.Overrides{
 		Research:     research,
-		ContextSet:   cmd.Flags().Changed("context"),
-		ContextPaths: append([]string(nil), runFlags.Context...),
+		ContextSet:   contextSet,
+		ContextPaths: contextPaths,
 	}
 }
 
@@ -273,6 +291,16 @@ func runEvidenceOverrides(cmd *cobra.Command, autoMode bool, level types.AutoLev
 		overrides.Defaults = evidence.DefaultsForAutoLevel(level)
 	}
 	return overrides
+}
+
+func shouldDefaultContextToDot(cmd *cobra.Command, cfg *types.DeliberationConfig, autoMode bool) bool {
+	return cmd.Flags().Changed("workdir") || (!autoMode && cfg != nil && cfg.Workdir != "")
+}
+
+func clearGeneratedWorkdir(cfg *types.DeliberationConfig) {
+	if cfg != nil {
+		cfg.Workdir = ""
+	}
 }
 
 func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, gconf config.Config) *bool {
@@ -291,7 +319,7 @@ func resolveLedgerPolicy(cmd *cobra.Command, cfg *types.DeliberationConfig, gcon
 }
 
 func resumeEvidenceRequestChanged(cmd *cobra.Command) bool {
-	return cmd.Flags().Changed("research") || cmd.Flags().Changed("no-research") || cmd.Flags().Changed("context")
+	return cmd.Flags().Changed("research") || cmd.Flags().Changed("no-research") || cmd.Flags().Changed("context") || cmd.Flags().Changed("no-context")
 }
 
 func sessionAutoCaps(cmd *cobra.Command, caps types.LevelCaps) *session.AutoCaps {
@@ -338,8 +366,12 @@ func sessionHooks(outMgr *output.OutputManager) session.Hooks {
 	}
 }
 
-func printSessionResult(outMgr *output.OutputManager, result session.Result, completeMsg string) {
+func printSessionResult(outMgr *output.OutputManager, result session.Result, completeMsg string) error {
 	outMgr.FinalStats(result.Records, result.State)
+	if result.Failure != nil {
+		outMgr.Info(fmt.Sprintf("Transcript: %s", result.OutputPath))
+		return fmt.Errorf("%s", outMgr.HaltedByText(result.HaltedBy))
+	}
 	if result.Synthesis != nil {
 		outMgr.SynthesizeHeader()
 		outMgr.SynthesisResult(result.Synthesis)
@@ -358,6 +390,7 @@ func printSessionResult(outMgr *output.OutputManager, result session.Result, com
 	outMgr.Success(completeMsg)
 	outMgr.Success(fmt.Sprintf("Transcript: %s", result.OutputPath))
 	outMgr.Success(outMgr.HaltedByDisplay(result.HaltedBy))
+	return nil
 }
 
 func synthesisUnresolvedAfterConsensus(result session.Result) bool {
@@ -694,6 +727,8 @@ var resumeCmd = &cobra.Command{
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var cfg *types.DeliberationConfig
+		var configPath string
+		var workdir string
 		var levelCaps types.LevelCaps
 		autoMode := resumeFlags.Auto != ""
 		outputPath, err := resolveTranscriptOutput(cmd, resumeFlags.Output, resumeFlags.Topic)
@@ -720,6 +755,10 @@ var resumeCmd = &cobra.Command{
 			if err := requireAutoApprovalForNonTTY(resumeFlags.Yes, resumeFlags.DryRun); err != nil {
 				return err
 			}
+			workdir, err = resolveWorkdir(cmd, resumeFlags, nil, "")
+			if err != nil {
+				return err
+			}
 
 			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
 
@@ -729,7 +768,7 @@ var resumeCmd = &cobra.Command{
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			} else {
-				runner := agent.NewAgentRunner(false)
+				runner := agent.NewAgentRunnerAt(false, workdir)
 				stop := outMgr.Activity("Config generation")
 				cfg, err = autogen.GenerateConfig(resumeFlags.Topic, level, resumeFlags.Model, runner)
 				stop()
@@ -737,6 +776,7 @@ var resumeCmd = &cobra.Command{
 					return fmt.Errorf("auto config generation: %w", err)
 				}
 			}
+			clearGeneratedWorkdir(cfg)
 
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
@@ -747,17 +787,17 @@ var resumeCmd = &cobra.Command{
 				}
 			}
 		} else {
-			cfg, err = loadConfigArtifact(resumeFlags.Config)
+			cfg, configPath, err = loadConfigArtifact(resumeFlags.Config)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+			workdir, err = resolveWorkdir(cmd, resumeFlags, cfg, configPath)
+			if err != nil {
+				return err
 			}
 			applyNonAutoRunShape(cmd, &resumeFlags, cfg)
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
-
-		// Enforce read-only at the tool-execution layer (see run command).
-		readOnlyCleanup, _ := agent.WriteReadOnlyConfig(".")
-		defer readOnlyCleanup()
 
 		sourceRecords, err := loadTranscriptFileLenient(sourcePath)
 		if err != nil {
@@ -780,6 +820,7 @@ var resumeCmd = &cobra.Command{
 			RunRequest: session.RunRequest{
 				Topic:       resumeFlags.Topic,
 				Config:      cfg,
+				Workdir:     workdir,
 				OutputPath:  outputPath,
 				Window:      resumeFlags.Window,
 				MaxTurns:    resumeFlags.MaxTurns,
@@ -800,9 +841,7 @@ var resumeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		printSessionResult(outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d agent turns)", result.Stats.TotalTurns))
-
-		return nil
+		return printSessionResult(outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d agent turns)", result.Stats.TotalTurns))
 	},
 }
 
@@ -835,8 +874,10 @@ func sharedRunFlags(cmd *cobra.Command, prefix string) {
 	budgetDesc := "Cost cap in dollars"
 	researchDesc := "Enable topic-inferred web research before deliberation"
 	noResearchDesc := "Disable config-enabled web research for this run"
+	noContextDesc := "Disable config-enabled local context for this run"
 	noLedgerDesc := "Disable per-round debate ledger injection for this run"
 	contextDesc := "Local text context path to include before deliberation (repeatable)"
+	workdirDesc := "Base directory for agent execution and relative context paths"
 
 	if prefix == "resume" {
 		timeDesc = "Additional time limit in seconds"
@@ -845,6 +886,7 @@ func sharedRunFlags(cmd *cobra.Command, prefix string) {
 		budgetDesc = "Remaining cost budget"
 		researchDesc = "Rejected on resume: evidence is reused from the transcript"
 		noResearchDesc = "Rejected on resume: evidence is reused from the transcript"
+		noContextDesc = "Rejected on resume: evidence is reused from the transcript"
 		contextDesc = "Rejected on resume: evidence is reused from the transcript"
 	}
 
@@ -868,8 +910,10 @@ func sharedRunFlags(cmd *cobra.Command, prefix string) {
 	cmd.Flags().BoolVar(&v.Yes, "yes", false, "Skip preview confirmation prompt")
 	cmd.Flags().BoolVar(&v.Research, "research", false, researchDesc)
 	cmd.Flags().BoolVar(&v.NoResearch, "no-research", false, noResearchDesc)
+	cmd.Flags().BoolVar(&v.NoContext, "no-context", false, noContextDesc)
 	cmd.Flags().BoolVar(&v.NoLedger, "no-ledger", false, noLedgerDesc)
 	cmd.Flags().StringArrayVar(&v.Context, "context", nil, contextDesc)
+	cmd.Flags().StringVar(&v.Workdir, "workdir", "", workdirDesc)
 }
 
 func liveOutputMode(quiet, verbose bool) output.OutputMode {

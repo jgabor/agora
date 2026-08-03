@@ -28,6 +28,7 @@ type AutoCaps struct {
 type RunRequest struct {
 	Topic        string
 	Config       *types.DeliberationConfig
+	Workdir      string
 	OutputPath   string
 	Window       int
 	MaxTurns     int
@@ -62,6 +63,7 @@ type Result struct {
 	Records    []types.TurnRecord
 	OutputPath string
 	HaltedBy   string
+	Failure    error
 	Synthesis  map[string]any
 	State      *types.DeliberationState
 }
@@ -78,7 +80,7 @@ func Run(req RunRequest, hooks Hooks) (Result, error) {
 		return Result{}, err
 	}
 
-	return execute(state, tm, req.OutputPath, req.DryRun, req.Synthesize, req.Evidence, hooks)
+	return execute(state, tm, req.Workdir, req.OutputPath, req.DryRun, req.Synthesize, req.Evidence, hooks)
 }
 
 // Resume continues deliberation from existing transcript records.
@@ -99,7 +101,7 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 		return Result{}, err
 	}
 
-	return execute(state, tm, req.OutputPath, req.DryRun, req.Synthesize, types.EvidenceRequest{}, hooks)
+	return execute(state, tm, req.Workdir, req.OutputPath, req.DryRun, req.Synthesize, types.EvidenceRequest{}, hooks)
 }
 
 // ApplyAutoCaps applies auto-level defaults to state. Explicit CLI limits win.
@@ -180,13 +182,14 @@ func prepareResumeTranscript(req ResumeRequest) (*transcript.TranscriptManager, 
 func execute(
 	state *types.DeliberationState,
 	tm *transcript.TranscriptManager,
+	workdir string,
 	outputPath string,
 	dryRun bool,
 	synthesize bool,
 	evidenceReq types.EvidenceRequest,
 	hooks Hooks,
 ) (Result, error) {
-	runner := agent.NewAgentRunner(dryRun)
+	runner := agent.NewAgentRunnerAt(dryRun, workdir)
 	orch := orchestrator.NewOrchestrator(state, tm, runner)
 	orch.SetLedgerUpdater(ledger.NewUpdater(runner))
 	if seed := lastLedgerFromRecords(tm.Records()); seed != nil {
@@ -206,7 +209,7 @@ func execute(
 	stats := orch.Run()
 
 	var synthesis map[string]any
-	if synthesize {
+	if synthesize && state.Failure == nil {
 		synthesis = orch.Synthesize()
 	}
 
@@ -215,6 +218,7 @@ func execute(
 		Records:    tm.Records(),
 		OutputPath: outputPath,
 		HaltedBy:   state.HaltedBy,
+		Failure:    state.Failure,
 		Synthesis:  synthesis,
 		State:      state,
 	}, nil

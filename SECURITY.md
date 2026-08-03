@@ -18,10 +18,12 @@ Agora orchestrates LLM agents through OpenCode and may read local files you pass
 - **`config.yaml`** — managed by `agora config`; may contain model identifiers. `agora prime` and `agora config get --all` redact secret-like values, but the on-disk file is still user-owned data.
 - **Transcripts** — JSONL deliberation logs under the configured transcript store can contain full agent responses and topic text. Back them up and share them only when appropriate.
 - **Local context paths** — `--context` reads bounded text from files and directories you specify. Agora skips common secret-looking filenames and binary files, but you remain responsible for what paths you include.
+- **Execution root** — config `workdir` or `--workdir` controls the directory available to OpenCode and the base for relative context paths. Prefer a narrow project directory rather than your home directory.
 
 ## Safe defaults
 
 - Agora does not enable web research unless you opt in (`--research` or config `research: true`).
+- Agora passes its read-only OpenCode permission policy as inline runtime configuration and does not create `opencode.json` in the selected workdir.
 - Model subprocesses receive a read-only filesystem guard and avoid OpenCode dangerous auto-approval flags.
 - Resume reuses prior evidence and rejects evidence-changing flags to avoid accidental re-fetch.
 

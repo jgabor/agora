@@ -355,6 +355,47 @@ agents:
 	if len(cfg.ContextPaths) != len(want) || cfg.ContextPaths[0] != want[0] || cfg.ContextPaths[1] != want[1] {
 		t.Fatalf("ContextPaths: got %#v, want %#v", cfg.ContextPaths, want)
 	}
+	if !cfg.ContextConfigured {
+		t.Fatal("ContextConfigured: got false, want true")
+	}
+}
+
+func TestLoadConfigWorkdir(t *testing.T) {
+	yaml := `
+workdir: ../project
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Workdir != "../project" {
+		t.Fatalf("Workdir: got %q, want %q", cfg.Workdir, "../project")
+	}
+	if cfg.ContextConfigured {
+		t.Fatal("ContextConfigured: got true for omitted context")
+	}
+}
+
+func TestLoadConfigExplicitEmptyContext(t *testing.T) {
+	yaml := `
+workdir: ../project
+context: []
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.ContextConfigured || len(cfg.ContextPaths) != 0 {
+		t.Fatalf("context: configured=%v paths=%#v, want explicit empty", cfg.ContextConfigured, cfg.ContextPaths)
+	}
 }
 
 func TestLoadConfigLedgerExplicitTrue(t *testing.T) {

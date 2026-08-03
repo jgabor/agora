@@ -190,6 +190,9 @@ func TestRunHaltsWhenResearchProducesNoReferences(t *testing.T) {
 	if !strings.Contains(state.HaltedBy, "no source references") {
 		t.Fatalf("HaltedBy: got %q, want no source references", state.HaltedBy)
 	}
+	if !strings.HasPrefix(state.HaltedBy, "evidence_error:") || state.Failure == nil {
+		t.Fatalf("failure state: halted=%q failure=%v, want typed evidence failure", state.HaltedBy, state.Failure)
+	}
 }
 
 func TestRunWritesAuditableEvidenceReferencesToTranscript(t *testing.T) {
@@ -363,6 +366,9 @@ func TestRunHaltsWhenContextProducesNoReferences(t *testing.T) {
 	}
 	if !strings.Contains(state.HaltedBy, "no source references") {
 		t.Fatalf("HaltedBy: got %q, want no source references", state.HaltedBy)
+	}
+	if !strings.HasPrefix(state.HaltedBy, "evidence_error:") || state.Failure == nil {
+		t.Fatalf("failure state: halted=%q failure=%v, want typed evidence failure", state.HaltedBy, state.Failure)
 	}
 }
 

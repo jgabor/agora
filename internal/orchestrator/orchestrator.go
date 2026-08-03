@@ -99,10 +99,15 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 
 	if len(o.transcript.Records()) == 0 {
 		if !o.collectEvidence() {
-			_ = o.transcript.WriteAll()
+			if err := o.transcript.WriteAll(); err != nil {
+				o.fail("error:", err)
+			}
 			return types.ComputeStats(o.transcript.Records())
 		}
 		o.emitSeed()
+		if o.state.Failure != nil {
+			return types.ComputeStats(o.transcript.Records())
+		}
 	}
 
 	for o.state.Running && (o.state.MaxTurns <= 0 || o.state.Turn < o.state.MaxTurns) {
@@ -120,8 +125,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			continue
 		}
 		if err := o.transcript.Append(turnRecord); err != nil {
-			o.state.Running = false
-			o.state.HaltedBy = fmt.Sprintf("error: %v", err)
+			o.fail("error:", err)
 			break
 		}
 		o.consensusStreak = transcript.ConsecutiveAgentConsensusCount(o.transcript.Records())
@@ -139,7 +143,9 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		o.state.HaltedBy = fmt.Sprintf("max_turns (%d)", o.state.MaxTurns)
 	}
 
-	_ = o.transcript.WriteAll()
+	if err := o.transcript.WriteAll(); err != nil {
+		o.fail("error:", err)
+	}
 
 	if o.state.HaltedBy == "user_interrupt" {
 		os.Exit(130)
@@ -158,34 +164,34 @@ func (o *Orchestrator) collectEvidence() bool {
 		request.ResearchModel = o.state.Config.Agents[0].Model
 	}
 	if o.evidence == nil {
-		o.state.Running = false
-		o.state.HaltedBy = "research_error: evidence collector unavailable"
+		o.fail("evidence_error:", fmt.Errorf("evidence collector unavailable"))
 		return false
 	}
 
-	stop := o.activity("Research")
+	stop := o.activity("Evidence")
 	bundle, err := o.evidence.Collect(request)
 	stop()
 	if err != nil {
-		o.state.Running = false
-		o.state.HaltedBy = fmt.Sprintf("research_error: %v", err)
+		o.fail("evidence_error:", err)
 		return false
 	}
 	if bundle == nil || len(bundle.SourceReferences) == 0 {
-		o.state.Running = false
-		o.state.HaltedBy = "research_error: no source references produced"
+		o.fail("evidence_error:", fmt.Errorf("no source references produced"))
 		return false
 	}
 	o.sharedEvidence = bundle
 	auditEvidence := *bundle
 	auditEvidence.ContextDocuments = nil
-	_ = o.transcript.Append(types.TurnRecord{
+	if err := o.transcript.Append(types.TurnRecord{
 		Turn:      -2,
 		AgentID:   "moderator",
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   bundle.Summary,
 		Evidence:  &auditEvidence,
-	})
+	}); err != nil {
+		o.fail("error:", err)
+		return false
+	}
 	if o.onEvidence != nil {
 		o.onEvidence(auditEvidence)
 	}
@@ -206,12 +212,17 @@ func (o *Orchestrator) Synthesize() map[string]any {
 	result := synthesis.Synthesize(o.runner, o.transcript.Records(), o.state.Topic, o.synthesizeModel())
 
 	content, _ := json.Marshal(result)
-	_ = o.transcript.Append(types.TurnRecord{
+	if err := o.transcript.Append(types.TurnRecord{
 		AgentID:   "synthesizer",
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   string(content),
-	})
-	_ = o.transcript.WriteAll()
+	}); err != nil {
+		o.fail("error:", err)
+		return result
+	}
+	if err := o.transcript.WriteAll(); err != nil {
+		o.fail("error:", err)
+	}
 
 	return result
 }
@@ -316,7 +327,9 @@ func (o *Orchestrator) emitSeed() {
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   fmt.Sprintf("Begin deliberating on the following topic: %s", o.state.Topic),
 	}
-	_ = o.transcript.Append(seed)
+	if err := o.transcript.Append(seed); err != nil {
+		o.fail("error:", err)
+	}
 }
 
 func (o *Orchestrator) checkTerminationConditions() {
@@ -425,6 +438,12 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		ConsensusIgnored:   consensusIgnored,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
+}
+
+func (o *Orchestrator) fail(prefix string, err error) {
+	o.state.Running = false
+	o.state.Failure = err
+	o.state.HaltedBy = fmt.Sprintf("%s %v", prefix, err)
 }
 
 func (o *Orchestrator) buildCastRoster() []map[string]string {

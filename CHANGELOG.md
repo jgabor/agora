@@ -2,11 +2,20 @@
 
 ## [Unreleased]
 
+_No user-facing changes yet._
+
+## [0.4.2] - 2026-08-03
+
 ### Changed
 - Global preferences file renamed from `settings.yaml` to `config.yaml` and the holding type from `Settings` to `Config` (load/save/path APIs renamed accordingly, e.g. `LoadDefaultSettings` → `LoadDefaultGlobalConfig`, `SettingsPath` → `GlobalConfigPath`). An existing `settings.yaml` is no longer read; run `agora config init --force` (or rename the file) to migrate.
+- `run` and `resume` now support config `workdir` and `--workdir`; relative local-context paths and OpenCode subprocesses use the resolved workdir, so globally stored deliberation configs behave consistently from any launch directory. Config slugs also search Agora's platform config directory.
+- Agora now applies its read-only OpenCode policy through `OPENCODE_CONFIG_CONTENT` instead of creating a temporary `opencode.json` in the launch directory.
 
 ### Fixed
 - `agora prime` and `agora config get --all` machine contracts: the JSON keys `settings` and `settings_keys` (and the Markdown "Settings" sections) are now `config` and `config_keys`. Callers that parsed the prior keys need updating.
+- Local-context failures are now labeled as evidence failures, return a non-zero status, and no longer print successful completion. Legacy transcript `research_error` reasons remain readable.
+- Unreadable nested context entries are skipped with a warning instead of aborting the run; unreadable explicit roots remain errors. `--no-context` now provides a direct override for config-enabled local context.
+- Configs with an explicit `workdir` now default omitted local context to `.`, while `context: []` and `--no-context` remain explicit opt-outs.
 
 ## [0.4.1] - 2026-07-08
 

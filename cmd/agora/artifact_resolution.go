@@ -82,20 +82,30 @@ func resolveConfigArtifact(input string, roots []string) (string, error) {
 	return "", fmt.Errorf("no config found for slug %q in %s", input, strings.Join(roots, ", "))
 }
 
-func loadConfigArtifact(input string) (*types.DeliberationConfig, error) {
+func loadConfigArtifact(input string) (*types.DeliberationConfig, string, error) {
 	path, err := resolveConfigArtifact(input, configArtifactRoots())
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return config.LoadConfig(path)
+	cfg, err := config.LoadConfig(path)
+	return cfg, path, err
 }
 
 func configArtifactRoots() []string {
-	return []string{".", "examples"}
+	roots := []string{".", "examples"}
+	if dir, err := config.ConfigDir(); err == nil {
+		roots = appendUniquePath(roots, dir)
+	}
+	return roots
 }
 
 func configSlugMatches(slug string, roots []string) ([]string, error) {
 	var matches []string
+	seen := make(map[string]bool)
+	var globalConfig string
+	if path, err := config.GlobalConfigPath(); err == nil {
+		globalConfig, _ = filepath.Abs(path)
+	}
 	for _, root := range roots {
 		files, err := os.ReadDir(root)
 		if err != nil {
@@ -113,12 +123,35 @@ func configSlugMatches(slug string, roots []string) ([]string, error) {
 				continue
 			}
 			if strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())) == slug {
-				matches = append(matches, filepath.Join(root, file.Name()))
+				candidate := filepath.Join(root, file.Name())
+				absolute, err := filepath.Abs(candidate)
+				if err != nil {
+					return nil, fmt.Errorf("resolving config candidate %s: %w", candidate, err)
+				}
+				if (globalConfig != "" && absolute == globalConfig) || seen[absolute] {
+					continue
+				}
+				seen[absolute] = true
+				matches = append(matches, candidate)
 			}
 		}
 	}
 	sort.Strings(matches)
 	return matches, nil
+}
+
+func appendUniquePath(paths []string, candidate string) []string {
+	want, err := filepath.Abs(candidate)
+	if err != nil {
+		return append(paths, candidate)
+	}
+	for _, path := range paths {
+		got, err := filepath.Abs(path)
+		if err == nil && got == want {
+			return paths
+		}
+	}
+	return append(paths, candidate)
 }
 
 func existingPath(input string) bool {
