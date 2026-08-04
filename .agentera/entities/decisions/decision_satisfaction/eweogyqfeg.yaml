@@ -1,0 +1,9 @@
+id: eweogyqfeg
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: --auto flag at cmd/agora/main.go:90-99. Auto level types at internal/types/types.go:24-28. Config generation via internal/autogen/. Preview-before-confirm at cmd/agora/main.go:130. Synthesis always on for auto at main.go:179.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: jttbeouslq

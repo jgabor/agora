@@ -272,20 +272,21 @@ type RunMetadata struct {
 
 // TurnRecord represents a single turn in the deliberation transcript.
 type TurnRecord struct {
-	Turn               int                 `yaml:"turn" json:"turn"`
-	AgentID            string              `yaml:"agent_id" json:"agent_id"`
-	Model              *string             `yaml:"model,omitempty" json:"model,omitempty"`
-	Transcript         *TranscriptMetadata `yaml:"transcript,omitempty" json:"transcript,omitempty"`
-	Timestamp          float64             `yaml:"timestamp" json:"timestamp"`
-	Content            string              `yaml:"content" json:"content"`
-	Evidence           *EvidenceBundle     `yaml:"evidence,omitempty" json:"evidence,omitempty"`
-	Ledger             *DebateLedger       `yaml:"ledger,omitempty" json:"ledger,omitempty"`
-	Tokens             TokenUsage          `yaml:"tokens" json:"tokens"`
-	Cost               *float64            `yaml:"cost,omitempty" json:"cost,omitempty"`
-	Consensus          bool                `yaml:"consensus" json:"consensus"`
-	ConsensusStatement string              `yaml:"consensus_statement" json:"consensus_statement"`
-	ConsensusIgnored   bool                `yaml:"consensus_ignored,omitempty" json:"consensus_ignored,omitempty"`
-	Elapsed            float64             `yaml:"elapsed" json:"elapsed"`
+	Turn               int                       `yaml:"turn" json:"turn"`
+	AgentID            string                    `yaml:"agent_id" json:"agent_id"`
+	Model              *string                   `yaml:"model,omitempty" json:"model,omitempty"`
+	Transcript         *TranscriptMetadata       `yaml:"transcript,omitempty" json:"transcript,omitempty"`
+	Timestamp          float64                   `yaml:"timestamp" json:"timestamp"`
+	Content            string                    `yaml:"content" json:"content"`
+	Evidence           *EvidenceBundle           `yaml:"evidence,omitempty" json:"evidence,omitempty"`
+	Ledger             *DebateLedger             `yaml:"ledger,omitempty" json:"ledger,omitempty"`
+	Control            *DeliberationControlState `yaml:"control,omitempty" json:"control,omitempty"`
+	Tokens             TokenUsage                `yaml:"tokens" json:"tokens"`
+	Cost               *float64                  `yaml:"cost,omitempty" json:"cost,omitempty"`
+	Consensus          bool                      `yaml:"consensus" json:"consensus"`
+	ConsensusStatement string                    `yaml:"consensus_statement" json:"consensus_statement"`
+	ConsensusIgnored   bool                      `yaml:"consensus_ignored,omitempty" json:"consensus_ignored,omitempty"`
+	Elapsed            float64                   `yaml:"elapsed" json:"elapsed"`
 }
 
 // DeliverableGate describes a topic-required artifact before consensus halt.
@@ -337,6 +338,7 @@ type ConsensusEvent struct {
 // DeliberationState tracks the runtime state of an ongoing deliberation.
 type DeliberationState struct {
 	Config      *DeliberationConfig
+	Control     *DeliberationControlState
 	Topic       string
 	Window      int
 	MaxTurns    int

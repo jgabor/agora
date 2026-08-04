@@ -1,0 +1,20 @@
+id: corcohwhan
+artifact: plan
+record:
+  name: Final state sync and release verification
+  depends_on:
+    - wudpmngihx
+    - gcsqbkzjyj
+    - vfrtijepkq
+    - kgthugrlgf
+    - gahqkhmvkr
+    - sjgwmfbowy
+    - bbmpxmkvbu
+  status: pending
+  acceptance:
+    - GIVEN all behavior tasks are complete WHEN focused and repository-wide checks run THEN tests, restricted-path race and coverage checks, lint, vet, and build pass without weakening existing assertions.
+    - GIVEN the CLI changed WHEN an end-to-end dry run is executed THEN it uses the newly built checkout binary and produces typed terminal evidence consistent with the recorded halt outcome.
+    - GIVEN the work contains user-facing features WHEN version and release notes are checked THEN the feature-minor version bump and changelog describe the authoritative ledger, active moderation, evidence status, and compatibility boundary.
+    - GIVEN the three critical TODOs are complete WHEN project state is synchronized THEN README, decisions, progress, docs state, plan status, and TODO agree and the critical section contains no completed work.
+    - Test proportionality target — retain the narrow regressions from every task and complete one successful integrated run plus one explicit no-consensus integrated run.
+  plan: josxwbovpf

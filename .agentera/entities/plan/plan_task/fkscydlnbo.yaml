@@ -1,0 +1,11 @@
+id: fkscydlnbo
+artifact: plan
+record:
+  name: Fix list table
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN `agora list` runs WHEN the table renders THEN the
+    - GIVEN transcripts are listed WHEN the first column displays THEN no raw Unix millisecond IDs appear in the
+  plan: vntrvzrbjo

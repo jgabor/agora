@@ -1,0 +1,14 @@
+id: qumzjhanol
+artifact: plan
+record:
+  name: Resume, dry-run, and failure behavior
+  depends_on:
+    - mimwzaialf
+  status: complete
+  acceptance:
+    - GIVEN a transcript with prior research references WHEN resuming THEN Agora does not rerun research
+    - GIVEN `agora resume` is passed new research or context flags WHEN resuming THEN Agora rejects the changed evidence request
+    - GIVEN `--dry-run --research` WHEN running THEN Agora reports deterministic planned research behavior without live web tool calls
+    - GIVEN `--dry-run --context` with local paths WHEN running THEN local context validation is exercised without model cost
+    - GIVEN enabled research fails WHEN running THEN no agent turn is appended
+  plan: aswrgqsfai

@@ -1,0 +1,12 @@
+id: xccsyhmhra
+artifact: plan
+record:
+  name: Set meaningful autogen default for consensus_threshold
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN autogen generates a config for N agents WHEN the config is inspected THEN consensus_threshold is set to N (the number of agents).
+    - GIVEN a config already has consensus_threshold set explicitly WHEN it is used THEN the autogen default does not override it.
+    - GIVEN consensus_threshold is N (=numAgents) WHEN N consecutive agents signal [CONSENSUS] THEN the deliberation halts via the existing termination check.
+  plan: fohfraaest

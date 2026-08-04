@@ -1,0 +1,18 @@
+id: zucpuzsznn
+artifact: plan
+record:
+  name: Final state sync — version, changelog, decisions, todo
+  depends_on:
+    - bdhhrwidxu
+    - madmapkdee
+    - uzvxuuuogo
+    - qocqpdbati
+    - ttuchnvowf
+  status: complete
+  acceptance:
+    - GIVEN the ledger feature is complete and the test suite passes WHEN the version is checked THEN the minor version has been bumped per the docs.yaml feat-minor policy
+    - GIVEN the ledger feature is complete WHEN CHANGELOG.md is read THEN the Unreleased section records the new debate-ledger and self-history capabilities under Added
+    - GIVEN the design decision is recorded WHEN DECISIONS.md is read THEN a new entry states that the mid-deliberation ledger uses a separate updater path producing typed ledger records, distinct from the post-hoc synthesis path producing essay-shape JSON, with the reasoning captured and confidence labeled
+    - "GIVEN the ledger feature is complete WHEN TODO.md is read THEN roadmap Missing Pieces #1 (Debate ledger) and #2 (Self-history) are removed from the open Roadmap section, with completion recorded via CHANGELOG and progress.yaml rather than a Resolved section, matching TODO.md's stated convention that completed items live in git history, CHANGELOG.md, and .agentera/progress.yaml"
+    - GIVEN the ledger feature is complete WHEN PROGRESS.md is read THEN a build-cycle entry records what shipped, including observed-output verification per the behavioral verification gate — a sample deliberation running against real project state with ledger records visible in the transcript
+  plan: dgfnfhprlm

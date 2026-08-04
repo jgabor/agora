@@ -1,0 +1,6 @@
+id: kqureiefth
+artifact: decisions
+record:
+  state: open
+  evidence: Decision recorded by the debate-ledger plan's Task 6 state-sync. The separate-updater path shipped in Tasks 2-5 (internal/ledger/updater.go with UpdateDryRun/Update; typed DebateLedger persisted to transcript via the TurnRecord.Ledger field). The validator allowlist for decision.satisfaction.state is open|provisionally_satisfied|user_confirmed_satisfied; "open" is the conformant semantic for a decision awaiting user confirmation.
+  decision: efsaacjmqq

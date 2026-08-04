@@ -1,0 +1,11 @@
+id: dugwnnkxbx
+artifact: plan
+record:
+  name: Clean up plain agentCastLine format
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN plain mode renders an agent cast line WHEN the line is inspected THEN it shows AGENT [A1 skeptic] Solon skeptic without all-caps inline labels.
+    - GIVEN the plain mode format is compared to rich mode WHEN both render THEN both use the same clean display conventions.
+  plan: vamibixwmj

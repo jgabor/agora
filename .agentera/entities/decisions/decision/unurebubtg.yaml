@@ -1,0 +1,20 @@
+id: unurebubtg
+artifact: decisions
+record:
+  date: 2026-05-10
+  question: How should Agora scale research and local context caps across auto levels?
+  context: Auto levels already scale agents, turns, and time, but evidence caps stayed fixed at the base config defaults. Deep runs that passed a directory as `--context` could halt before turn 0 with `research_error` after only 20 local text files, even when the user intentionally chose `--auto deep` and larger runtime limits. The fix must preserve explicit user config and avoid making context unbounded by default.
+  alternatives:
+    - name: Keep fixed evidence caps
+      status: rejected
+      description: "Leave `research_max_sources`, `context_max_bytes`, and `context_max_depth` at base defaults for every auto level. Win: simplest behavior. Lose: contradicts user expectations that broader auto modes can ingest broader evidence."
+    - name: Make YOLO evidence unlimited
+      status: rejected
+      description: "Treat `--auto yolo` as unlimited for evidence too. Win: matches the spirit of uncapped turns/time. Lose: unsafe for large directories, noisy repos, and accidental cost/token growth."
+    - name: Auto-level-aware fallback caps
+      status: chosen
+      description: "Raise evidence fallback defaults by auto level only when the user has not set explicit caps in `config.yaml`. Win: deep/yolo runs get broader bounded context while config remain authoritative."
+  choice: "Auto mode scales evidence fallback caps by level: quick keeps `research_max_sources=20`, `context_max_bytes=1048576`, and `context_max_depth=5`; normal uses `40`, `4194304`, and `6`; deep uses `300`, `16777216`, and `8`; yolo uses `1000`, `67108864`, and `12`. Explicit `config.yaml` values for `research_max_sources`, `context_max_bytes`, and `context_max_depth` continue to override these auto-level fallbacks. Local context caps are soft: traversal includes what fits, truncates text at the byte cap, skips files or deeper paths beyond caps, and reports included counts plus warnings in the evidence summary. Directory context traversal respects `.gitignore` and VCS/secret safety skips without blanket-skipping hidden project directories."
+  reasoning: Evidence breadth is part of the auto-level contract because broader deliberation is undermined if the pre-deliberation research/context phase remains at quick-run limits. Keeping caps finite preserves bounded-context safety, while soft caps prevent oversized directory context from aborting before deliberation starts. Respecting `.gitignore` lets project-owned ignore policy exclude generated dependency/tooling trees such as `node_modules` without hiding intentional state directories like `.agentera`. Treating the auto values as fallbacks, not overrides, preserves the established explicit config precedence and lets power users choose tighter or looser policies globally.
+  confidence: firm
+  feeds_into: README.md, internal/config/research_policy.go, internal/orchestrator/evidence.go, cmd/agora/main.go, cmd/agora/main_test.go, internal/config/config_test.go, internal/orchestrator/evidence_test.go

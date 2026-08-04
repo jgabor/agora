@@ -1,0 +1,9 @@
+id: tuqpdpvqpi
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Evidence package at internal/evidence/ with collector.go, context.go, policy.go. Evidence request at internal/evidence/evidence.go. '--research'/'--no-research' flags at cmd/agora/main.go:207-213,243-254.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: vvqvbywfvw

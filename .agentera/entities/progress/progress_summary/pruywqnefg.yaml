@@ -1,0 +1,7 @@
+id: pruywqnefg
+artifact: progress
+record:
+  summary: "Cycle 22 (2026-05-05): Implemented Task 5 evidence delivery and transcript audit by attaching the shared evidence bundle to..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 994067a1097ede566bbe96da15b99d17410aa31c6e1adc36063f7a89a57e7669

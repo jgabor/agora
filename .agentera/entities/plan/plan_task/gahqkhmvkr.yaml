@@ -1,0 +1,15 @@
+id: gahqkhmvkr
+artifact: plan
+record:
+  name: Add explicit phases and state-driven directives
+  depends_on:
+    - wudpmngihx
+    - gcsqbkzjyj
+  status: pending
+  acceptance:
+    - GIVEN a new deliberation begins WHEN the opening phase runs THEN every active agent receives one opportunity to state an independent opening position before state-driven speaker selection begins.
+    - GIVEN the debate advances WHEN phase criteria are met THEN control state moves through opening, rebuttal, drafting, and voting without skipping required work.
+    - GIVEN a turn is directed at a crux or objection WHEN the selected agent receives its envelope THEN the directive identifies the required response, verification, proposal revision, or vote.
+    - GIVEN a phased run is persisted and resumed WHEN deliberation continues THEN the current phase and outstanding directive remain consistent.
+    - Test proportionality target — one pass and one fail per phase transition and directive kind, including resume and illegal-transition coverage.
+  plan: josxwbovpf

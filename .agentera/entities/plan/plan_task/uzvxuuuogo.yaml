@@ -1,0 +1,16 @@
+id: uzvxuuuogo
+artifact: plan
+record:
+  name: Inject ledger and self-history into per-turn envelope with disable flag
+  depends_on:
+    - bdhhrwidxu
+  status: complete
+  acceptance:
+    - GIVEN a deliberation in progress after at least one round WHEN an agent is about to take its turn THEN the envelope handed to that agent contains the most recent ledger
+    - GIVEN an agent whose own prior turn exists in the transcript WHEN the agent is about to take its next turn THEN the envelope handed to that agent contains that agent's own immediately preceding turn regardless of topology
+    - GIVEN the default self-history count WHEN an agent has multiple prior own turns THEN the envelope includes only the most recent one of the agent's own turns by default, not all of them
+    - GIVEN an envelope whose predecessor-history already contains the agent's own prior turn WHEN the envelope is built THEN self-history is not duplicated as a separate entry
+    - GIVEN a user who sets the disable-ledger flag at any precedence layer (CLI flag, config key, or settings key) WHEN the deliberation runs THEN no ledger is injected into any envelope while self-history injection remains in effect
+    - GIVEN an explicit CLI disable flag, a config enable value, and a settings enable value WHEN precedence is resolved THEN the explicit CLI flag wins per the three-layer precedence contract
+    - Test proportionality target — one pass + one fail per testable unit (ledger-injection success, self-history-injection success, dedupe success, disable-flag-wins success, malformed-disable-value failure)
+  plan: dgfnfhprlm

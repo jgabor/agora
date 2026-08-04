@@ -1,0 +1,42 @@
+id: olbyaqdkvt
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-05-04
+    status: archived
+    reviewed: ""
+    critic_issues: ""
+    revised: ""
+    title: Global settings and managed transcript store
+  what: Cross-platform global user settings (`~/.config/agora/settings.yaml` or equivalent) and a managed transcript store (`XDG_DATA_HOME/agora/transcripts/<datetime>-<slug>.jsonl`). Settings provide defaults for model, auto level, topology, and output directory. Transcripts persist automatically to the store; `agora list` shows history; `agora resume <slug>` resumes by topic match. `--file` flag preserves explicit path resume. `--output` flag always wins over managed paths.
+  why: Users currently track `.jsonl` files manually and repeat `--model` / `--auto` on every invocation. A settings layer and managed store turn Agora from a per-directory tool into a personal deliberation history — consistent with VISION.md's "run a kumbaja on it" becoming routine.
+  constraints: |-
+    - Existing `agora resume TRANSCRIPT --config ...` must continue working unchanged
+    - `--output` flag always wins; no `--output` saves to the managed store
+    - Settings only fill gaps, never override explicit deliberation config values or CLI flags
+    - Cross-platform: Linux (XDG), macOS (Application Support), Windows (LOCALAPPDATA)
+    - No new external dependencies for XDG — Go stdlib `os`, `path/filepath`, `runtime` only
+    - Four settings keys max: default_model, default_auto_level, default_topology, default_output_dir
+    - Breaking change acknowledged: scripts relying on implicit `./transcript.jsonl` must add `--output transcript.jsonl`
+  scope:
+    included:
+      - XDG dirs, settings YAML loading, settings-aware CLI defaults, config merge, datetime-slug output paths, `list` command, slug-based resume, `--file` flag, default_auto_level wiring
+    excluded:
+      - Settings migration, encrypted settings, cloud sync, transcript compression, `agora delete`
+    deferred:
+      - Settings validation schema, topic slug customisation, `agora prune` for old transcripts
+  design: |-
+    - `internal/config/xdg.go`: `ConfigDir()`, `DataDir()` resolving XDG / macOS / Windows paths. Linux uses `XDG_CONFIG_HOME` and `XDG_DATA_HOME` with `~/.config` / `~/.local/share` fallbacks. macOS uses `~/Library/Application Support/agora/`. Windows uses `%LOCALAPPDATA%/agora/`.
+    - `internal/config/settings.go`: `Settings` struct with four string fields, `LoadSettings(path)` returning zero value when file missing, error on invalid YAML.
+    - Config merge: `LoadConfig` path fills missing agent `model` fields from `settings.default_model` before validation. Topology omitted in deliberation config defaults to `settings.default_topology` then `"ring"`.
+    - CLI defaults: `--model`, `--auto`, and `--topology` flags use empty string defaults. After settings load, empty flag values resolve to settings defaults. Explicit flags always win.
+    - Output path generation: when `--output` omitted, filename is `<datetime>-<slug>.jsonl`. Datetime in Go reference format `20060102-150405`. Slug is topic lowercased, spaces replaced with hyphens, non-alphanumeric-hyphen chars stripped, truncated to 50 characters. Directory is `settings.default_output_dir` if set, else XDG data dir `agora/transcripts/`.
+    - `agora list`: reads output dir, parses filenames matching `\d{8}-\d{6}-.+\.jsonl`, prints date / slug / filename table. Non-matching files ignored.
+    - `agora resume`: bare arg checked with `os.Stat`. If file exists, treated as path (existing behavior). If not, treated as slug: latest filename containing the slug is selected. `--file` flag forces path mode and makes bare arg optional.
+  overall_acceptance: |-
+    ▸ GIVEN a fresh machine with no settings file WHEN `agora run --auto quick --topic "Test" --dry-run` THEN transcript is saved to the default XDG data directory
+    ▸ GIVEN a settings file with preferred defaults WHEN `agora run --topic "Test" --dry-run` THEN defaults apply and explicit flags override them
+    ▸ GIVEN transcripts in the managed store WHEN `agora list` THEN all transcripts are visible with dates and slugs
+    ▸ GIVEN a slug matching multiple transcripts WHEN `agora resume <slug>` THEN the latest matching transcript is used
+  surprises: ""

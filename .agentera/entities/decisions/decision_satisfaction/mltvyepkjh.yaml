@@ -1,0 +1,9 @@
+id: mltvyepkjh
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Go implementation at cmd/agora/ and internal/. No Python source files remain. Go module at go.mod. All tests pass.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: vtiupivzef

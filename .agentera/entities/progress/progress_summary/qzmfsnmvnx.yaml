@@ -1,0 +1,7 @@
+id: qzmfsnmvnx
+artifact: progress
+record:
+  summary: "Cycle 28 (2026-05-06): Completed Task 4 turn progress and status output by making turn-completion lines use plain semantic..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 1d52399cc9e67c2177886416b1fd9e6b189cf3ab710bb7911ac25a7dc083a648

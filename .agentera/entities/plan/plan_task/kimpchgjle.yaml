@@ -1,0 +1,13 @@
+id: kimpchgjle
+artifact: plan
+record:
+  name: Non-avatar identity contract
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN an agent has no extra identity metadata WHEN output renders THEN the exact `agent_id` and stable badge remain sufficient to identify the participant
+    - GIVEN an agent has supported non-avatar identity metadata WHEN output renders THEN the metadata enriches display without hiding or replacing `agent_id`
+    - GIVEN old configs or transcripts are used WHEN identity is resolved THEN they continue to render without requiring new fields
+    - GIVEN plain/no-color output is active WHEN identity metadata renders THEN text labels preserve meaning without color or glyph dependence
+  plan: hqpimtfmbc

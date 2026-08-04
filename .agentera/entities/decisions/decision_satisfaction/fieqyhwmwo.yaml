@@ -1,0 +1,9 @@
+id: fieqyhwmwo
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Auto-level fallback caps at internal/evidence/policy.go:23-34. ResolveRequest merges config overrides at internal/evidence/policy.go:39-57. Soft caps via positive_or_default at internal/evidence/collector.go:65-67,91. Caps tuning bound to TODO
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: unurebubtg

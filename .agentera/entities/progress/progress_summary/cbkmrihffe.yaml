@@ -1,0 +1,7 @@
+id: cbkmrihffe
+artifact: progress
+record:
+  summary: "Cycle 51 (2026-05-16): Retried only Task 1 after evaluation failure by making Markdown inspection output carry the same..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: a80dea5f894f9c0c4029acafca0382ebd724327d09d94137816874afdfadbc4a

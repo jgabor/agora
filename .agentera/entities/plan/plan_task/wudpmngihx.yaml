@@ -1,0 +1,14 @@
+id: wudpmngihx
+artifact: plan
+record:
+  name: Define the versioned deliberation protocol
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a new deliberation starts WHEN its control state is created THEN the state identifies a protocol version and carries the current phase, canonical proposal version, objections and dispositions, votes, claim evidence status, moderator action, convergence signals, and terminal outcome.
+    - GIVEN control state contains duplicate identities, unknown references, duplicate current votes from one agent, or an invalid lifecycle transition WHEN it is validated THEN validation fails before the state can control a turn or halt.
+    - GIVEN a canonical proposal is revised WHEN the next version becomes current THEN votes for earlier versions are stale and non-counting while unresolved objections and evidence gaps remain visible.
+    - GIVEN a transcript predates the typed protocol WHEN it is loaded THEN it is identified as legacy input and remains readable without being mistaken for typed consensus.
+    - Test proportionality target — one pass and one fail per testable protocol rule, with explicit cases for invalid references, duplicate votes, stale votes, and legacy input.
+  plan: josxwbovpf

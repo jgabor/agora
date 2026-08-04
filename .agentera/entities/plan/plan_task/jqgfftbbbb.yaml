@@ -1,0 +1,16 @@
+id: jqgfftbbbb
+artifact: plan
+record:
+  name: Verification and documentation checkpoint
+  depends_on:
+    - kimpchgjle
+    - iulvkhyxpy
+    - cawfmqyxrm
+    - dpfpyvejom
+  status: complete
+  acceptance:
+    - GIVEN the feature is complete WHEN tests run THEN identity, activity, progress, and fallback behavior are covered by semantic assertions
+    - GIVEN representative rich and plain CLI runs are inspected WHEN output is reviewed THEN no avatar dependency is required for the theater improvements
+    - GIVEN maintainers inspect output conventions or user docs WHEN adding future theater work THEN avatar exclusions, identity rules, and progress/status rules are clear
+    - GIVEN normal verification runs WHEN the plan completes THEN the project test suite passes
+  plan: hqpimtfmbc

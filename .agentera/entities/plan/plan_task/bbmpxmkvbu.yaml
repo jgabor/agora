@@ -1,0 +1,15 @@
+id: bbmpxmkvbu
+artifact: plan
+record:
+  name: Ground synthesis and CLI surfaces in terminal state
+  depends_on:
+    - kgthugrlgf
+    - sjgwmfbowy
+  status: pending
+  acceptance:
+    - GIVEN synthesis runs after deliberation WHEN it receives terminal state THEN it receives the canonical proposal, current votes, objections and dispositions, evidence status, dissents, and halt reason.
+    - GIVEN terminal state records no consensus WHEN synthesis and user-facing output are produced THEN neither presents an independent recommendation as group consensus.
+    - GIVEN typed deliberation records are inspected or resumed WHEN CLI text and machine formats are used THEN phase, proposal version, votes, dissents, evidence gaps, convergence, and halt reason remain stable and legacy transcripts remain readable.
+    - GIVEN the typed path is the sole writer of new deliberation state WHEN obsolete behavior is checked THEN free-text consensus markers, rejection patterns, marker streaks, topic-specific deliverable regular expressions, and their prompt hints no longer control new runs.
+    - Test proportionality target — one pass and one fail per synthesis and CLI contract, including unresolved evidence, non-consensus synthesis, structured output, and legacy show/resume behavior.
+  plan: josxwbovpf

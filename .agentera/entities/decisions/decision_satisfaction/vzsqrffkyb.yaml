@@ -1,0 +1,9 @@
+id: vzsqrffkyb
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Ring-topology Go orchestrator at internal/session/. JSONL transcripts via internal/transcript/. Dual termination caps (max_turns, time_limit) at cmd/agora/main.go:174-175. Halt-on-failure at internal/session/runner.go.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: jwljiuswop

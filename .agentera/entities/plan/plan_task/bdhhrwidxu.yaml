@@ -1,0 +1,14 @@
+id: bdhhrwidxu
+artifact: plan
+record:
+  name: Define ledger domain types
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation in progress with multiple agent positions WHEN the ledger is updated THEN the ledger holds each agent's most recent stated position, the set of points agents have agreed on, the unresolved disagreements currently open, and the current draft proposal if one exists, with an explicit no-draft status when none exists
+    - GIVEN a ledger with content WHEN the ledger is persisted to a transcript record THEN reloading the transcript reproduces the ledger exactly
+    - GIVEN a ledger with no current draft proposal WHEN any consumer checks whether halting is permitted THEN the ledger reports no endorsable proposal
+    - GIVEN a ledger update that produces no positions, no agreements, and no cruxes WHEN the result is consumed THEN the empty ledger is accepted as a valid initial state, not an error
+    - Test proportionality target — one pass + one fail per testable unit (round-trip success, no-draft report success, empty-ledger success, malformed-persistence failure)
+  plan: dgfnfhprlm

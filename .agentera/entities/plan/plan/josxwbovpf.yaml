@@ -1,0 +1,41 @@
+id: josxwbovpf
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-08-03
+    status: open
+    reviewed: 2026-08-03
+    critic_issues: 7 found, 7 addressed, 0 dismissed
+    title: "Plan: Authoritative Ledger-Controlled Deliberation"
+  what: Make the typed debate ledger the authoritative control plane for proposals, objections, votes, decisive claims, evidence status, deliberation phases, moderator actions, convergence signals, halting, and synthesis. Consensus becomes endorsement by unique agents of one current versioned proposal under explicit acceptance rules. Runs that do not satisfy those rules end with an explicit no-consensus outcome that preserves dissents and unresolved gaps.
+  why: Agora currently treats free-text consensus markers and topic-specific regular expressions as control signals even though agents can endorse incompatible statements. Its moderator exists only as configuration, speaker order stays static, and decisive claims can reach synthesis without a durable account of their evidence status. A single typed control plane lets Agora direct the deliberation, stop for the reason it reports, and present a final artifact that distinguishes group consensus from a model-generated recommendation.
+  constraints: "Preserve the minimal-orchestrator boundary from Decision 1: models may produce typed debate and control decisions, while the orchestrator validates and applies them without inventing debate content. Preserve the Go-only static binary, existing configuration precedence, bounded model calls, references-only transcript policy from Decision 6, and the separate mid-deliberation ledger and post-hoc synthesis lifecycles from Decision 10. New transcripts must use the typed protocol while legacy transcripts remain readable. Verification initially uses the evidence bundle already supplied to the deliberation; new mid-run external retrieval is out of scope unless separately approved. Use the newly built checkout binary for CLI verification. Keep tests with their implementation commits, preserve the user's current TODO scope, and do not create bookkeeping-only commits."
+  scope:
+    included:
+      - Versioned canonical proposals, objections and dispositions, unique-agent votes, decisive claims, evidence status, phases, moderator actions, convergence signals, and terminal outcomes
+      - Validated structured contributions from deliberation agents
+      - Proposal-revision invalidation of stale votes with preservation of unresolved objections and evidence gaps
+      - Evidence citation and verification against supplied source references
+      - Typed consensus and explicit no-consensus evaluation
+      - Opening, rebuttal, drafting, and voting phases with state-driven directives and speaker selection
+      - Round-boundary and stagnation-triggered moderator actions
+      - Synthesis, transcript, show, stats, resume, prime, and machine-contract integration
+      - Legacy transcript read compatibility and retirement of new writes to heuristic consensus fields
+      - Regression coverage, feature-minor version bump, documentation, decision, progress, and TODO state sync
+    excluded:
+      - New mid-deliberation web or local evidence collection
+      - Research source allowlists, research refresh controls, and non-text context support
+      - New topologies beyond ring, star, and mesh
+      - Named profiles, output themes, cast palettes, and auto-mode cap tuning
+      - Changes that let synthesis manufacture or override the recorded group outcome
+    deferred:
+      - Agent-requested external retrieval beyond the supplied evidence bundle
+  design: Work proceeds through one typed lifecycle. First establish and validate the versioned protocol. Then capture agent contributions and attach durable evidence state before any vote can affect halting. Replace consensus heuristics with an evaluator over the current proposal version. Add phase transitions and directives, then let the moderator use unresolved cruxes, objections, evidence requests, and stagnation signals to choose the next action and speaker. Finally ground synthesis and every CLI inspection surface in the recorded terminal outcome and remove obsolete heuristic writers. Tasks 1 through 6 form separate verified implementation commits. Task 1 also carries the approved plan and the current TODO scope. Tasks 7 and 8 share the final implementation commit so version, documentation, evaluator evidence, and terminal state stay with the user-facing integration rather than forming a bookkeeping-only commit.
+  unknowns:
+    - question: Should an objection's verification request be limited to the evidence bundle already supplied to the run, or may it trigger new mid-deliberation retrieval?
+      affects_task: 3
+      resolve_by: "Apply Decision 6 and the current approved scope: verify against supplied evidence and keep unsupported claims explicitly unverified; re-invoke Plan before adding new retrieval."
+  overall_acceptance: A new Agora deliberation uses one versioned typed control state for proposal evolution, objections, votes, decisive claims, evidence status, phases, moderation, convergence, and termination. Consensus is recorded only for one current proposal version when unique current votes meet the configured threshold after minimum rounds and all deliverable and objection-disposition requirements pass. Every other bounded termination records no consensus with dissents and unresolved evidence. The moderator changes phase, directive, and speaker choice from debate state without creating false consensus. Synthesis and all CLI surfaces preserve the recorded outcome and distinguish verified facts, inferences, assumptions, and recommendations. Legacy transcripts remain readable, new transcripts do not depend on free-text consensus or topic-specific deliverable regular expressions, and all required verification passes using the newly built checkout binary.
+  surprises:
+    []

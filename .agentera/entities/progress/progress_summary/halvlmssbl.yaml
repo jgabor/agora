@@ -1,0 +1,7 @@
+id: halvlmssbl
+artifact: progress
+record:
+  summary: "Cycle 49 (2026-05-07): Completed Task 7 plan-level freshness checkpoint for the transcript show and slug-first CLI UX plan..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 810212b98c3ff67dc5d126ed071576dab1089718a48ec9f9bf944442758f0ab9

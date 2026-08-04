@@ -1,0 +1,6 @@
+id: wbdfmkswsb
+artifact: todo
+record:
+  severity: critical
+  status: open
+  description: Add active deliberation control driven by the typed ledger. Run a

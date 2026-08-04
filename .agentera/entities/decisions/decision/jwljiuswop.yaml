@@ -1,0 +1,29 @@
+id: jwljiuswop
+artifact: decisions
+record:
+  date: 2026-05-03
+  question: How should the closed-loop multi-agent deliberation system be architected?
+  context: Need a simple, deterministic script that calls `opencode run` with configurable heterogeneous agents, ring topology, time limits, and raw transcript output. Inspired by karpathy/autoresearch and anthropic/ralph-loop. Agents should argue and deliberate on a provided goal.
+  alternatives:
+    - name: Shared history topology
+      status: rejected
+      description: "agents see the last K messages from the global transcript regardless of author. Win: more context for each turn. Lose: less adversarial tension, more complex orchestrator state."
+    - name: Go implementation
+      status: rejected
+      description: "compile to a single static binary. Win: portable, profile signal is strong. Lose: slower iteration, more code for subprocess/JSONL handling in a glue script."
+    - name: Orchestrator-composed prompts
+      status: rejected
+      description: "orchestrator assembles the full prompt including system prompt, topic, and history formatting. Win: full control over prompt engineering. Lose: orchestrator becomes prompt-aware, violates minimalism principle."
+    - name: Raw text history in envelope
+      status: rejected
+      description: "history array contains just strings. Win: fewer tokens, simpler parsing. Lose: agents cannot address predecessor by role or name."
+    - name: Synthesized output
+      status: rejected
+      description: "a final dedicated agent produces a summary after the timer stops. Win: human-readable artifact. Lose: extra model call, additional complexity, summary quality variance."
+    - name: Ring topology + minimal orchestrator
+      status: chosen
+      description: agents arranged in a ring, each seeing predecessor and topic. Orchestrator sends structured envelope to opencode run and appends response. No prompt engineering in orchestrator.
+  choice: Ring topology with annotated history objects, Python implementation, minimal orchestrator with structured JSON envelope, rich JSONL transcript to file, dual termination caps (time OR max turns), halt-on-failure, orchestrator seed message.
+  reasoning: "Ring topology preserves adversarial tension with trivial handoff logic ( predecessor = (i-1) mod N ). Python minimizes friction for subprocess orchestration and JSONL handling. Minimal orchestrator keeps the script dumb and the agents smart: it only pipes a structured envelope to `opencode run` stdin and appends the response to the transcript. Raw transcript avoids synthesis complexity. Dual caps prevent runaway cost. Halt-on-failure keeps semantics simple."
+  confidence: firm
+  feeds_into: standalone (this is the project itself)

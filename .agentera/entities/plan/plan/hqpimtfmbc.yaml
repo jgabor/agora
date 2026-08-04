@@ -1,0 +1,39 @@
+id: hqpimtfmbc
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-05-06
+    status: archived
+    reviewed: 2026-05-06
+    critic_issues: 4 found, 4 addressed, 0 dismissed
+    title: Agent identity and theater dynamics without avatars
+  what: Add a production agent-identity and theater-dynamics layer that makes Agora runs easier to scan and more memorable without rendering agent avatars. The work includes optional non-avatar identity metadata, stronger cast identity in preview/header/turns, long-running activity indicators, progress-style metric presentation, and consistent plain-terminal fallbacks.
+  why: Avatar work is still experimental and should not block the rest of the CLI personality system. Users can get meaningful gains from named cast roles, stable badges, readable agent metadata, dynamic wait/progress feedback, and metric bars before any portrait rendering is ready. This preserves Decision 7's Charm v2 theater direction while avoiding the visual and fallback risk of avatars.
+  constraints: Avatars, generated faces, portrait glyphs, external image assets, and avatar-specific config are out of scope. Non-avatar identity fields are allowed when they preserve exact visible `agent_id` and degrade cleanly. Preserve command behavior, transcript replay compatibility, deliberation behavior, exit semantics, and model output fields. Color, motion, bars, and symbols are decorative; labels and text must carry meaning in `NO_COLOR`, CI, dumb-terminal, and narrow-width output.
+  scope:
+    included:
+      - optional non-avatar agent identity metadata for display and cast readability
+      - cast preview and deliberation header identity treatment
+      - turn progress identity treatment and long-running activity feedback
+      - progress-style presentation for bounded metrics such as turns, time, budget, tokens, or consensus where available
+      - final stats and transcript stats identity consistency
+      - plain/no-color/narrow fallback behavior and tests
+    excluded:
+      - agent avatars or portraits
+      - generated pixel faces
+      - image assets or network-loaded identity assets
+      - interactive full-screen TUI
+      - changing deliberation topology or agent turn semantics
+    deferred:
+      - user-selectable theme packs
+      - avatar/portrait production integration
+      - screenshot-based visual regression tests
+  design: Treat identity as structured metadata first and ornament second. The canonical identity remains the exact `agent_id` plus stable run-local badge. Optional non-avatar identity metadata may enrich display, but never replaces the canonical label. Treat spinners, bars, and richer status rows as adaptive terminal affordances that appear only when they improve scanability and fall back to plain labels, counts, percentages, and text.
+  overall_acceptance:
+    - GIVEN a normal Agora run WHEN users watch preview, waiting phases, turns, stats, and synthesis THEN agents feel consistently identifiable and the run feels active without avatars
+    - GIVEN old configs and transcripts WHEN rendered after the change THEN exact `agent_id` identity and existing semantics remain intact
+    - GIVEN plain, CI, dumb-terminal, narrow, or no-color output WHEN all theater surfaces render THEN labels and text preserve all critical meaning
+    - GIVEN avatar prototypes remain unmerged WHEN this plan completes THEN no production behavior depends on portrait rendering
+  surprises:
+    []

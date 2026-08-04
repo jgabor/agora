@@ -1,0 +1,13 @@
+id: dpfpyvejom
+artifact: plan
+record:
+  name: Metric progress presentation
+  depends_on:
+    - iulvkhyxpy
+  status: complete
+  acceptance:
+    - GIVEN bounded turn, time, budget, token, or consensus data is available WHEN progress or stats render THEN users can read both the value and its progress toward the bound
+    - GIVEN a metric has no meaningful bound WHEN output renders THEN it is shown as a labeled value rather than a misleading bar
+    - GIVEN color or Unicode is unavailable WHEN metric progress renders THEN labels, numbers, and percentages remain readable
+    - GIVEN final stats render WHEN a run completes THEN metric presentation stays consistent with live progress output
+  plan: hqpimtfmbc

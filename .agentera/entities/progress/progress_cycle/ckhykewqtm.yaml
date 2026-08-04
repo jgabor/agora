@@ -1,0 +1,17 @@
+id: ckhykewqtm
+artifact: progress
+record:
+  timestamp: 2026-05-16 09:18
+  type: test
+  phase: audit
+  what: Completed Task 8 plan-level freshness checkpoint for the prime/formatted-inspection plan. Agentera CLI startup and plan state showed Tasks 1-7 complete and Task 8 as the only pending task before closeout; `agentera progress --format json` still returned zero entries, so raw `.agentera/progress.yaml` was used as the progress evidence fallback with that caveat preserved. TODO.md and CHANGELOG.md were reviewed and already accurately reflected the completed `agora prime`, shared formatted inspection outputs, command-contract verification, and remaining deferred work, so no human-facing artifact edits were needed for closeout.
+  commit: none
+  inspiration: Task 8 is a freshness and handoff checkpoint only. It must close the plan after verification without changing `.agentera/vision.yaml`, adding a `--json` alias, changing `--context` semantics, altering transcript JSONL storage, or committing changes.
+  discovered: The Agentera app is fresh at 2.10.0 via `/home/jgabor/.local/share/agentera`. CLI decision state still carries satisfaction/context review caveats, and retry attempt state is not recorded by the CLI; no final decision satisfaction was inferred. `agentera progress --format json` reported an empty entries list despite raw progress cycles, matching the known progress CLI caveat.
+  verified: "Full repository verification passed with `go test -count=1 ./...`. Build verification passed with `go build ./...`. Focused command-contract verification passed with `go test -count=1 ./cmd/agora -run 'TestCommandContract|TestEnumRejections|TestReadmeContract'`. Diff hygiene passed with `git diff --check`. Formatted CLI sampling wrote outputs under `/tmp/opencode/agora-task8-samples` for `agora prime`, `agora metadata`, `agora list`, `agora show /tmp/opencode/agora-format-contract.jsonl`, `agora stats /tmp/opencode/agora-format-contract.jsonl`, `agora validate examples/quick-sanity-check.yaml`, and `agora config get --all`, each in text, JSON, and Markdown. JSON samples parsed successfully and agreed with text/Markdown samples on checked command facts: schema version 1, supported formats `text/json/markdown`, show record count 2 with agents `analyst/critic`, stats total turns 2 with one consensus event, valid config status, seven config settings, and list transcript store facts."
+  next: "Plan is complete after final verification. Handoff report: verified build, tests, command-contract tests, diff hygiene, Agentera CLI state, TODO/CHANGELOG freshness, and representative text/JSON/Markdown inspection outputs. Out of scope remain live `run`/`resume` output formatting, a `--json` alias, named reusable profiles, output themes/palettes, evidence refresh/replay, source allowlists, non-text context support, raw transcript export/schema changes, decision satisfaction review, and CLI retry-state recording. No commit or push was performed."
+  context:
+    intent: implement only Task 8 plan-level freshness checkpoint and closeout
+    constraints: no `.agentera/vision.yaml` edits, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit, preserve unrelated worktree changes
+    scope: .agentera/plan.yaml, .agentera/progress.yaml
+    sampled_outputs: /tmp/opencode/agora-task8-samples

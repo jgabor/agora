@@ -1,0 +1,7 @@
+id: vjirrumasn
+artifact: progress
+record:
+  summary: "Cycle 52 (2026-05-16): Completed Task 2 prime startup briefing by adding the read-only `agora prime` command with default..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 30362cee95c3088ef10e938260ca6d1d21f6695484d2a8db7a7fedd86da66c43

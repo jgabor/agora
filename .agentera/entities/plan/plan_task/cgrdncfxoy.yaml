@@ -1,0 +1,15 @@
+id: cgrdncfxoy
+artifact: plan
+record:
+  name: Settings-aware config merge and CLI default resolution
+  depends_on:
+    - qwyecwscwb
+  status: complete
+  acceptance:
+    - 'GIVEN settings with `default_model: "gpt-4"` and a deliberation config omitting agent `model` WHEN loading THEN agent model is filled from settings before validation succeeds'
+    - 'GIVEN settings with `default_model: "gpt-4"` and a deliberation config with agent `model: "claude"` WHEN loading THEN agent model remains `"claude"`'
+    - 'GIVEN settings with `default_auto_level: "normal"` WHEN running `agora run --topic "X"` without `--auto` THEN auto mode uses `"normal"` level'
+    - 'GIVEN `--model o1` flag and settings `default_model: "gpt-4"` WHEN running THEN model flag wins and settings default is ignored'
+    - 'GIVEN `--auto quick` flag and settings `default_auto_level: "normal"` WHEN running THEN auto level `"quick"` wins'
+    - 'GIVEN `--config example.yaml` without `--model` and settings `default_model: "gpt-4"` WHEN running THEN settings model fills any empty agent model but explicit config values remain unchanged'
+  plan: olbyaqdkvt

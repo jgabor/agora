@@ -1,0 +1,16 @@
+id: mlxfyhdnzw
+artifact: progress
+record:
+  timestamp: 2026-05-16 08:58
+  type: test
+  phase: audit
+  what: Completed Task 6 command-contract verification by adding a focused contract test suite that compares the canonical command contract with live Cobra command flags and metadata output. The check now covers canonical verbs, supported formats, canonical flags, settings keys, enum values, schema versions, prime metadata sections, README contract markers, and expected-use/failure path proportionality for the changed inspection surfaces.
+  commit: none
+  inspiration: Task 6 was limited to verification of the Task 1-5 command surface. The implementation uses explicit contract data and hidden README markers rather than fragile prose scraping, and does not add a `--json` alias, change `--context` semantics, alter transcript JSONL storage, or implement Task 7 documentation/version closeout.
+  discovered: Existing tests covered many formatted output success and rejection paths, but no single static contract failed when live commands, flags, settings keys, enum values, schema versions, or prime metadata drifted from the intended command surface. README examples also had no explicit contract-checked marker mechanism.
+  verified: Focused verification passed with `go test ./cmd/agora -run 'TestCommandContract|TestEnumRejections'`, covering live command and metadata alignment, valid enum exposure on rejection messages, README marker alignment against active command paths and flags, and one expected-use plus one failure-path check for `list`, `stats`, `show`, `validate`, `config get --all`, `metadata`, and `prime`. Broader verification passed with `go test ./...`. Diff hygiene passed with `git diff --check`.
+  next: Task 6 is complete. Tasks 7-8 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: implement only Task 6 command-contract verification
+    constraints: no later task scope, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no Task 7 docs/version closeout beyond minimal README contract markers, no commit
+    scope: cmd/agora/command_contract_test.go, README.md, .agentera/plan.yaml, .agentera/progress.yaml

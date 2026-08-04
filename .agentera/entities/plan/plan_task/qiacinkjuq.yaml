@@ -1,0 +1,10 @@
+id: qiacinkjuq
+artifact: plan
+record:
+  name: Add meta_model config field
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - meta_model falls back to synthesis_model then agent[0].model
+  plan: glogpszfnw

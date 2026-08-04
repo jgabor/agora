@@ -1,0 +1,16 @@
+id: bndghfoqof
+artifact: progress
+record:
+  timestamp: 2026-05-16 09:05
+  type: test
+  phase: audit
+  what: Retried only Task 6 after the AC3 evaluation failure. Command-contract verification now derives the supported command and subcommand tree by walking the live Cobra `rootCmd`, and metadata/prime use the same live tree instead of a separate hand-listed command metadata list.
+  commit: none
+  inspiration: The evaluator found that new supported subcommands or flags could pass unless manually added to the old command-contract map or a README marker. The retry keeps the scope limited to Task 6 command-contract verification and does not implement later docs/version or freshness closeout work.
+  discovered: "`config init` and `config set` were live supported Cobra subcommands but were absent from the canonical contract and metadata command list, so drift such as adding a new `config init` flag would not fail the contract verification."
+  verified: AC3 is specifically covered by `go test -count=1 ./cmd/agora -run 'TestCommandContract|TestEnumRejections|TestReadmeContract'`, which now fails if the recursively discovered live Cobra tree differs from the contract commands or if any live command flag differs from the contract. The contract includes `agora config init --force`, `agora config get --all --format`, and `agora config set`; metadata and prime are generated from the same live tree. Proportionality now includes expected-use and failure-path checks for `config init`, `config get --all`, and `config set`. Broader verification passed with `go test -count=1 ./cmd/agora`, `go test -count=1 ./...`, and `git diff --check`.
+  next: Task 6 remains complete after the retry. Tasks 7-8 remain pending and were not implemented. No commit or push was performed.
+  context:
+    intent: retry only Task 6 command-contract verification after AC3 evaluation failure
+    constraints: no later task scope, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit
+    scope: cmd/agora/main.go, cmd/agora/format.go, cmd/agora/command_contract_test.go, .agentera/progress.yaml

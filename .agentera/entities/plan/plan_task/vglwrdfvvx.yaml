@@ -1,0 +1,13 @@
+id: vglwrdfvvx
+artifact: plan
+record:
+  name: Documentation and freshness checkpoint
+  depends_on:
+    - qumzjhanol
+  status: complete
+  acceptance:
+    - GIVEN the feature is implemented WHEN reading CLI help THEN `--research` and `--context` behavior is discoverable
+    - GIVEN the feature is implemented WHEN reading README examples THEN web research and local context examples are present
+    - GIVEN the feature is implemented WHEN reading CHANGELOG THEN the research/context capability is recorded under Unreleased
+    - GIVEN implementation surfaces new follow-up work WHEN checking TODO THEN relevant follow-ups are captured
+  plan: aswrgqsfai

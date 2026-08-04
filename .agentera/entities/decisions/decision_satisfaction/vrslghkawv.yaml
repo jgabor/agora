@@ -1,0 +1,6 @@
+id: vrslghkawv
+artifact: decisions
+record:
+  state: open
+  evidence: "Default math shipped in Task 1 (commit 0d0d17e): applyNonAutoRunShape in cmd/agora/main.go with constants perTurnLatencyCeilingSeconds = 30 and maxNonAutoWindow = 8; consensus_threshold and min_rounds defaults in internal/config/config.go defaultConsensusThreshold/defaultMinRounds gated into loadConfigFromBytes(..., applyNonAutoDefaults bool). Situational envelope shipped in Task 2 (commit adddeff). Dry-run on examples/example-default.yaml (5 agents) confirms Time 450s / Turns 15 / Window 5 / Agreement target 5 in cycle 66 verified field. Build, vet, and full test suite (14 packages) pass. Caveat: confidence is provisional because the 30s per_turn_latency_ceiling is a build-time estimate that may need tuning per model, and consensus_threshold defaulting to numAgents (unanimous) is strict; a supermajority option would be future work."
+  decision: hqwlrjlntj

@@ -1,0 +1,6 @@
+id: uhndulkcgf
+artifact: todo
+record:
+  severity: annoying
+  status: open
+  description: Add source/domain allowlists for web research evidence when users need stricter provenance controls

@@ -1,0 +1,13 @@
+id: lavcllvlcn
+artifact: plan
+record:
+  name: Hide Agreement bar and header when threshold is 0
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a config has consensus_threshold=0 WHEN the deliberation header renders THEN no "Agreement target" or "Consensus threshold" line appears.
+    - GIVEN a config has consensus_threshold=0 WHEN the turn card renders THEN no "Agreement" progress bar is shown.
+    - GIVEN a config has consensus_threshold=N>0 WHEN the turn card renders THEN the "Agreement" progress bar is shown as before.
+    - GIVEN a config has consensus_threshold=0 WHEN the summary table renders THEN no "Consensus streak" row appears.
+  plan: fohfraaest

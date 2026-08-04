@@ -1,0 +1,6 @@
+id: oowkozctdp
+artifact: todo
+record:
+  severity: annoying
+  status: open
+  description: Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots

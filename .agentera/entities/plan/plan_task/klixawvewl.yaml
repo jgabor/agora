@@ -1,0 +1,20 @@
+id: klixawvewl
+artifact: plan
+record:
+  name: Recompute better non-auto defaults for time, max-turns, window, consensus_threshold, and min_rounds
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a non-auto `agora run` with N agents and no explicit --time, --max-turns, --window, consensus_threshold, or MinRounds override WHEN the run shape is computed THEN the effective time limit and max_turns are jointly sufficient for at least three full rounds of N agents to complete before the clock or turn count can terminate the run, where sufficient means time_limit >= 3 × N × per_turn_latency_ceiling and max_turns >= 3 × N, with the per_turn_latency_ceiling value chosen at build time and recorded in the decisions record
+    - GIVEN a non-auto `agora run` with five agents and no explicit --window override WHEN the run shape is computed THEN the effective window is at least one full round (five messages) so each agent sees a complete predecessor round, not two messages
+    - GIVEN a non-auto `agora run` with a large cast (more than ten agents) and no explicit --window override WHEN the run shape is computed THEN the effective window is bounded by a maximum to prevent per-turn token-budget explosion
+    - GIVEN a non-auto `agora run` with two or more agents and no explicit consensus_threshold override WHEN the run shape is computed THEN the effective consensus threshold is greater than zero so consensus can early-halt the run before max_turns
+    - GIVEN a non-auto `agora run` with two or more agents and no explicit MinRounds override WHEN the run shape is computed THEN the effective minimum-rounds floor is at least three so consensus cannot halt before the deliberation has had three rounds to develop
+    - GIVEN an explicit --time, --max-turns, --window flag, a config consensus_threshold, or a config MinRounds value WHEN the deliberation runs THEN the explicit value wins at its existing precedence layer and the new default is not used
+    - GIVEN an auto-mode invocation (quick/normal/deep/yolo) WHEN the run shape is computed THEN the auto-level MaxTurns and TimeLimits from Decision 4 are unchanged
+    - GIVEN an `agora resume` invocation with no explicit --time, --max-turns, or --window flag WHEN the resume run shape is computed THEN the effective defaults for those three match the new non-auto run defaults
+    - GIVEN the new consensus_threshold and min_rounds defaults are applied at the config-loading layer WHEN existing tests that construct a DeliberationConfig struct directly run THEN those tests are unaffected by the new default because the default is not applied in the types or orchestrator constructors
+    - GIVEN existing tests that exercise config-loaded configs with implicit zero consensus_threshold or zero min_rounds WHEN the new default is applied at config-loading THEN those tests are updated to reflect the new default rather than breaking silently
+    - "Test proportionality target — one pass + one fail per testable unit (three-rounds-time-success, one-full-round-window-success, window-max-cap-success, threshold-enabled-success, min-rounds-floor-success, explicit-flag-wins-success, auto-mode-unchanged-success, resume-defaults-match-success; failure: explicit-zero-threshold-and-min-rounds properly honored as override)"
+  plan: xfjloxtdaf

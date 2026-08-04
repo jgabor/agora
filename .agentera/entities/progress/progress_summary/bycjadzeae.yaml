@@ -1,0 +1,7 @@
+id: bycjadzeae
+artifact: progress
+record:
+  summary: "Cycle 34 (2026-05-06): Completed Task 1 non-avatar identity contract by adding optional agent identity metadata fields and rendering..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: d87307ae292c559f3d0c13e7a2a99329df85d53218568bb5091e2388631d7f06

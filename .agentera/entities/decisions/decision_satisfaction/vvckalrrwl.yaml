@@ -1,0 +1,9 @@
+id: vvckalrrwl
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Lipgloss v2 at internal/output/renderer_rich.go:24-198. Glamour v2 for prose at renderer_rich.go:177-198. Plain fallback at internal/output/renderer_plain.go. Charm v2 deps in go.mod:6-7.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: rsqtiiknah

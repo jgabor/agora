@@ -1,0 +1,15 @@
+id: madmapkdee
+artifact: plan
+record:
+  name: Build mid-deliberation ledger updater as a separate path
+  depends_on:
+    - bdhhrwidxu
+  status: complete
+  acceptance:
+    - GIVEN the transcript of a deliberation round just completed WHEN the updater runs THEN it produces a ledger holding every active agent's position, the points of agreement, the open cruxes, and either a current draft proposal or an explicit no-draft status
+    - GIVEN a transcript where two agents produced explicit agreement text on a point WHEN the updater runs on that transcript THEN the points-of-agreement section of the produced ledger is non-empty
+    - GIVEN a transcript where an agent raised an objection another agent did not address WHEN the updater runs THEN the open-cruxes section of the produced ledger is non-empty
+    - GIVEN malformed or unparseable model output from the summarizer WHEN the updater is consumed THEN the updater returns a structured error identifying the failure, not an empty or partial ledger silently
+    - GIVEN the post-hoc synthesis agent is invoked on a finished transcript WHEN its output is inspected THEN its output retains the existing essay-shape contract and does not produce a typed ledger, proving the two paths remain separate
+    - Test proportionality target — one pass + one fail per testable unit (typed-ledger success, agreement-detection success, crux-detection success, malformed-output failure, synthesis-path-separation success)
+  plan: dgfnfhprlm

@@ -126,8 +126,13 @@ func buildState(req RunRequest, existingTurns int) *types.DeliberationState {
 		maxTurns = existingTurns + req.MaxTurns
 		turn = existingTurns
 	}
+	agentIDs := make([]string, len(req.Config.Agents))
+	for i := range req.Config.Agents {
+		agentIDs[i] = req.Config.Agents[i].ID
+	}
 	return &types.DeliberationState{
 		Config:              req.Config,
+		Control:             types.NewDeliberationControlState(agentIDs, 0),
 		Topic:               req.Topic,
 		Window:              req.Window,
 		MaxTurns:            maxTurns,

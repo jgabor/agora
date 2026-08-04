@@ -1,0 +1,12 @@
+id: occdjaxvup
+artifact: plan
+record:
+  name: Fix turn count 11/10 mismatch
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation completes all planned turns WHEN the summary shows turns completed THEN the count matches correctly (e.g. 10/10 not 11/10).
+    - GIVEN a deliberation halts early WHEN the summary shows turns completed THEN the count correctly reflects actual vs planned turns.
+    - GIVEN turns are counted in the progress bar WHEN the deliberation runs THEN the bar does not exceed 100%.
+  plan: vntrvzrbjo

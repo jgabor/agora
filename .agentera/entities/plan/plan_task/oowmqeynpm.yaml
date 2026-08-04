@@ -1,0 +1,12 @@
+id: oowmqeynpm
+artifact: plan
+record:
+  name: Suppress raw JSON synthesis error in dry-run mode
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation runs with --dry-run WHEN synthesis completes THEN no raw JSON decoder error is shown to the user.
+    - GIVEN a deliberation runs live WHEN synthesis truly fails on LLM output THEN an informative message is shown instead of a raw Go error.
+    - GIVEN synthesis output is tested WHEN no syntheses attempted THEN the synthesis section is omitted or shows "Synthesis skipped".
+  plan: vntrvzrbjo

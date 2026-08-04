@@ -1,0 +1,37 @@
+id: vamibixwmj
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-05-26
+    status: archived
+    reviewed: 2026-05-26
+    critic_issues: 1 found, 1 addressed, 0 dismissed
+    title: Cast Display Metadata Cleanup
+  what: Remove stale and noisy metadata from agent cast display in Generated Config, Deliberation Start, and plain-mode render paths. Context always shows the same sandbox boilerplate, offering no per-agent information. Color is a render implementation detail with no user-facing value. Model per-agent is useful but the plain-mode rendering still uses raw all-caps labels.
+  why: The "context" line in every agent's cast display always reads "You are operating in a read-only sandbox. Your tools are limited to reading, searching, and exploring files." It is identical across all agents, never changes, and tells the user nothing about the agent's role or expertise. Removing it tightens the display by 2-3 lines per agent. The "color" slot number is an internal render detail with zero diagnostic value.
+  constraints: Keep Go-only implementation and existing render architecture. Do not change the firstPromptLine utility — it may be useful for --verbose diagnostics. Only change the call sites that display context, color, and model in the agent cast output. The model value per agent is useful and should be retained.
+  scope:
+    included:
+      - Remove context from rich agentCastTree in Generated Config and Deliberation Start panels
+      - Remove context from richAgentCastLine metadata line
+      - Remove context from plain agentCastLine (CONTEXT label)
+      - Remove color from rich agentCastTree tree child nodes
+      - Remove color from richAgentCastLine metadata line
+      - Remove color from plain agentCastLine (COLOR label)
+      - Clean up plain-mode agentCastLine to use clean format without all-caps inline labels
+      - Update tests to match new format
+    excluded:
+      - firstPromptLine utility removal
+      - Model removal from any render path
+      - Context removal from --verbose diagnostic output
+      - Changing the turn card Agent line (already fixed in Task 1)
+    deferred:
+      []
+  design: "Surgical changes at the three call sites that render context/color/model in agent cast display. The approach is minimal: pass `false` for includeContext instead of `true` in the four call sites that render config headers, and remove the color line from agent metadata. Model remains. The plain agentCastLine gets the same treatment as castDisplay got in Task 1 — remove the all-caps label prefix, just emit the value cleanly."
+  overall_acceptance:
+    - GIVEN the fixes are applied WHEN a deliberation runs in rich mode THEN the config panels show agent badge, name, persona, and model — no context or color.
+    - GIVEN the fixes are applied WHEN a deliberation runs in plain mode THEN the same clean agent display is shown without all-caps labels.
+    - GIVEN the changes are applied WHEN the full test suite runs THEN all tests pass.
+  surprises:
+    []

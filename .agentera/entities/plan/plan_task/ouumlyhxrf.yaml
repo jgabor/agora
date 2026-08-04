@@ -1,0 +1,13 @@
+id: ouumlyhxrf
+artifact: plan
+record:
+  name: Topic-inferred web query contract
+  depends_on:
+    - eexrnxgpgg
+  status: complete
+  acceptance:
+    - GIVEN web research is enabled WHEN the topic is provided THEN Agora derives a bounded set of research queries from that topic
+    - GIVEN query generation fails or produces no queries WHEN research is enabled THEN deliberation does not start
+    - GIVEN research caps are configured WHEN queries are derived THEN query count stays within those caps
+    - GIVEN a deliberation model is selected WHEN research queries are derived THEN the same model identity is used for the research step
+  plan: aswrgqsfai

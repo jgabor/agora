@@ -1,0 +1,15 @@
+id: zitldwlith
+artifact: plan
+record:
+  name: Transcript show command
+  depends_on:
+    - zxvpwjmxfj
+    - xyvrxccdwu
+  status: complete
+  acceptance:
+    - GIVEN a saved transcript WHEN `show <slug>` runs THEN turns render in order with agent identity and response content.
+    - GIVEN transcript evidence records WHEN shown THEN source summaries and references remain visible without exposing omitted full source contents.
+    - GIVEN consensus markers WHEN shown THEN consensus statements appear at the relevant turns.
+    - GIVEN an empty transcript WHEN shown THEN the command fails with a clear message.
+    - GIVEN transcript display is verified WHEN checks run THEN there is at least one successful display case and one failure case.
+  plan: vrfvtwztvt

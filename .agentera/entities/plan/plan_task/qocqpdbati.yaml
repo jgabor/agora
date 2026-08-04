@@ -1,0 +1,16 @@
+id: qocqpdbati
+artifact: plan
+record:
+  name: Update ledger per round through orchestrator round lifecycle
+  depends_on:
+    - madmapkdee
+    - uzvxuuuogo
+  status: complete
+  acceptance:
+    - GIVEN a deliberation begins with an opening round WHEN the first agent in the round finishes its turn THEN no ledger update has been triggered yet and the ledger is empty
+    - GIVEN an in-progress round WHEN the last agent in the round finishes its turn THEN a ledger update runs before any agent in the next round takes its turn
+    - GIVEN a run interrupted mid-round (max turns hit, time limit hit, or user interrupt) WHEN the final state is recorded THEN the transcript reflects the most recently completed ledger, not a partial mid-round update
+    - GIVEN a dry-run deliberation WHEN each round completes THEN the ledger updater returns a deterministic placeholder ledger without making real model calls
+    - GIVEN the disable-ledger flag is set WHEN the deliberation runs THEN no ledger update is triggered per round and no extra model calls are made
+    - Test proportionality target — one pass + one fail per testable unit (round-boundary update success, round-0 empty success, mid-round-interrupt success, dry-run placeholder success, disable-flag-skips-update success)
+  plan: dgfnfhprlm

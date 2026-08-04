@@ -1,0 +1,7 @@
+id: rtixcffknv
+artifact: progress
+record:
+  summary: "Cycle 26 (2026-05-06): Completed Task 1 output inventory and dependency checkpoint for the Charm v2 agent theater output..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 9010aac083da4359ef11128bf71d40b304a8a12a1f0e2f267f64419daaf8d0ee

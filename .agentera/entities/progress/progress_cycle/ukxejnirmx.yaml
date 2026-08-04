@@ -1,0 +1,16 @@
+id: ukxejnirmx
+artifact: progress
+record:
+  timestamp: 2026-05-16 09:10
+  type: docs
+  phase: audit
+  what: Completed Task 7 documentation and version update for the prime/formatted-inspection plan. README now documents `agora prime` separately from deliberation `--context PATH`, lists the shared `--format text|json|markdown` selector for every supported inspection surface including `prime`, `metadata`, `list`, `show`, `stats`, `validate`, and `config get --all`, and explains the default text plus non-ANSI JSON/Markdown contract. CHANGELOG records `prime`, formatted inspection output, and command-contract verification. CLI version now follows the feature/minor policy as `0.3.0`. TODO entries for implemented prime, formatted inspection output, and command-contract verification are resolved.
+  commit: none
+  inspiration: Task 7 is a documentation/version/TODO closeout for already-implemented Tasks 1-6. It must not implement Task 8 plan-level freshness closeout or change runtime behavior beyond the feature-release version constant.
+  discovered: The README CLI reference still omitted `agora prime`, `agora metadata`, and the shared `--format` contract, while TODO still listed prime formatted output, inspection formats, and command-contract verification as open despite completed implementation evidence. Adding README contract markers for the newly documented inspection surfaces required the existing command-contract marker count to be updated from 9 to 11 so README verification stayed aligned with the documented command surface.
+  verified: Focused command-contract verification passed with `go test -count=1 ./cmd/agora -run 'TestCommandContract|TestEnumRejections|TestReadmeContract'`. Full repository verification passed with `go test -count=1 ./...`. Version smoke passed with `go run ./cmd/agora --version`, which printed `agora version 0.3.0`. Diff hygiene passed with `git diff --check`. Task 7 was marked complete only after these checks passed; Task 8 remains pending and no freshness closeout was performed.
+  next: Task 7 is complete. Task 8 remains pending for a separate plan-level freshness checkpoint. No commit or push was performed.
+  context:
+    intent: implement only Task 7 documentation, version, TODO, and artifact updates
+    constraints: no Task 8 freshness closeout, no runtime behavior changes beyond version constant, no `--json` alias, no `--context` semantic change, no transcript JSONL storage schema change, no commit
+    scope: README.md, CHANGELOG.md, TODO.md, cmd/agora/main.go, cmd/agora/command_contract_test.go, .agentera/docs.yaml, .agentera/plan.yaml, .agentera/progress.yaml

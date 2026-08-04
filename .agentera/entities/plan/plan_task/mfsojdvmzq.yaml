@@ -1,0 +1,13 @@
+id: mfsojdvmzq
+artifact: plan
+record:
+  name: Agent display format — remove NAME/PERSONA labels in turn card
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation is running in rich mode WHEN a turn card renders THEN the Agent line shows the badge, name, and persona without NAME/PERSONA label prefixes.
+    - GIVEN a deliberation is running in plain mode WHEN a turn card renders THEN the Agent line uses the same clean format without NAME/PERSONA labels.
+    - GIVEN a transcript is shown with `show` WHEN agent identities appear THEN the format is consistent with the live output format.
+    - GIVEN the Per-Agent Stats table WHEN it renders THEN agent names use the same clean format without NAME/PERSONA labels.
+  plan: vntrvzrbjo

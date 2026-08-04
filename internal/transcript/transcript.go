@@ -19,6 +19,14 @@ type TranscriptManager struct {
 	metadata *types.TranscriptMetadata
 	records  []types.TurnRecord
 	written  int
+	protocol ProtocolInfo
+}
+
+// ProtocolInfo classifies a loaded transcript without treating legacy
+// free-text consensus fields as typed protocol state.
+type ProtocolInfo struct {
+	Version string
+	Legacy  bool
 }
 
 // NewTranscriptManager creates a new TranscriptManager for the given file path.
@@ -41,6 +49,11 @@ func (tm *TranscriptManager) Metadata() *types.TranscriptMetadata {
 	return tm.metadata
 }
 
+// Protocol returns the protocol classification from the last successful load.
+func (tm *TranscriptManager) Protocol() ProtocolInfo {
+	return tm.protocol
+}
+
 // LoadExisting loads an existing JSONL transcript file into memory.
 func (tm *TranscriptManager) LoadExisting() ([]types.TurnRecord, error) {
 	if _, err := os.Stat(tm.path); os.IsNotExist(err) {
@@ -54,7 +67,36 @@ func (tm *TranscriptManager) LoadExisting() ([]types.TurnRecord, error) {
 	tm.records = loaded
 	tm.written = len(loaded)
 	tm.metadata = metadataFromRecords(loaded)
+	tm.protocol, err = ProtocolFromRecords(loaded)
+	if err != nil {
+		return nil, err
+	}
 	return loaded, nil
+}
+
+// ProtocolFromRecords classifies transcripts without a typed control state as
+// legacy. Legacy consensus fields remain readable but do not establish typed
+// consensus. Typed control snapshots are validated in order.
+func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
+	var previous *types.DeliberationControlState
+	for i := range records {
+		control := records[i].Control
+		if control == nil {
+			continue
+		}
+		if previous == nil {
+			if err := control.Validate(); err != nil {
+				return ProtocolInfo{}, fmt.Errorf("control state at record %d: %w", i, err)
+			}
+		} else if err := types.ValidateDeliberationTransition(previous, control); err != nil {
+			return ProtocolInfo{}, fmt.Errorf("control state at record %d: %w", i, err)
+		}
+		previous = control
+	}
+	if previous == nil {
+		return ProtocolInfo{Legacy: true}, nil
+	}
+	return ProtocolInfo{Version: previous.ProtocolVersion}, nil
 }
 
 // LoadFileStrict loads a JSONL transcript and rejects malformed non-blank records.
@@ -69,6 +111,7 @@ func LoadFileStrict(path string) ([]types.TurnRecord, error) {
 	defer func() { _ = f.Close() }()
 
 	var loaded []types.TurnRecord
+	var previousControl *types.DeliberationControlState
 	scanner := bufio.NewScanner(f)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -83,6 +126,12 @@ func LoadFileStrict(path string) ([]types.TurnRecord, error) {
 		}
 		if err := validateLedgerSentinel(r); err != nil {
 			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
+		}
+		if err := validateControlState(previousControl, r.Control); err != nil {
+			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
+		}
+		if r.Control != nil {
+			previousControl = r.Control
 		}
 		loaded = append(loaded, r)
 	}
@@ -104,6 +153,7 @@ func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
 	defer func() { _ = f.Close() }()
 
 	var loaded []types.TurnRecord
+	var previousControl *types.DeliberationControlState
 	scanner := bufio.NewScanner(f)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -123,6 +173,12 @@ func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
 		if err := validateLedgerSentinel(r); err != nil {
 			warnf(w, "warning: %s:%d: %v (skipping ledger record)\n", path, lineNumber, err)
 			continue
+		}
+		if err := validateControlState(previousControl, r.Control); err != nil {
+			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
+		}
+		if r.Control != nil {
+			previousControl = r.Control
 		}
 		loaded = append(loaded, r)
 	}
@@ -180,6 +236,22 @@ func validateLedgerSentinel(r types.TurnRecord) error {
 	}
 	if err := r.Ledger.Validate(); err != nil {
 		return fmt.Errorf("ledger record: %w", err)
+	}
+	return nil
+}
+
+func validateControlState(previous, current *types.DeliberationControlState) error {
+	if current == nil {
+		return nil
+	}
+	if previous == nil {
+		if err := current.Validate(); err != nil {
+			return fmt.Errorf("invalid control state: %w", err)
+		}
+		return nil
+	}
+	if err := types.ValidateDeliberationTransition(previous, current); err != nil {
+		return fmt.Errorf("invalid control state transition: %w", err)
 	}
 	return nil
 }

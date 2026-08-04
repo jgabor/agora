@@ -1,0 +1,7 @@
+id: pphpbilayp
+artifact: progress
+record:
+  summary: "Cycle 42 (2026-05-07): Retried Task 1 after evaluation found config-consuming commands bypassed the shared config artifact resolver. `run`,..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 227a1046bf1bba5013b7d11410ffc4adec469f6dc2fc42e0dcea1e2db6747b51

@@ -1,0 +1,17 @@
+id: omsawbtqnw
+artifact: progress
+record:
+  timestamp: 2026-08-04 10:08
+  type: feat
+  phase: build
+  what: Defined the versioned typed deliberation control substrate in internal/types/protocol.go, initialized it for fresh session state, and added strict typed/legacy transcript classification. Validation covers identity uniqueness, reference integrity, one current vote per agent, append-only proposal/debate history, monotonic proposal versions, and terminal lifecycle invariants.
+  context:
+    intent: "Execute only Task wudpmngihx: define and validate the versioned deliberation protocol substrate."
+    constraints: Preserve Decisions 1, 2, 6, and 10; no runtime dependency; no orchestration behavior from Tasks 2-7; do not user-confirm Decision 10 satisfaction.
+    unknowns: No Task 1 unknown remained. Profile grounding is unavailable because the profile is oversized; Decision 10 satisfaction remains open.
+    scope: CHANGELOG.md; internal/types/protocol.go and tests; TurnRecord/runtime state wiring; session initialization test; transcript validation/classification and tests; Agentera v3 plan/progress state.
+  inspiration: Task wudpmngihx establishes validation-only protocol state so later tasks can ingest model decisions and drive orchestration without the orchestrator inventing debate content. Evidence remains bounded to integer references into the shared source bundle, and synthesis remains separate.
+  discovered: "Existing transcripts expose only free-text consensus fields and optional debate-ledger snapshots; no versioned control state or typed/legacy classification existed. Agentera profile grounding remained unavailable with repair_needed: oversized. A default Go build was dynamically linked in this environment, so authoritative verification rebuilt with CGO_ENABLED=0 and confirmed a static checkout artifact."
+  verified: "Acceptance 1: TestNewDeliberationControlState and TestRunCreatesVersionedDeliberationControlState passed, proving fresh state identifies agora.deliberation.v1 and serializes every required control field. Acceptance 2: TestDeliberationControlStateRejectsInvalidReferences, TestDeliberationControlStateRejectsDuplicateCurrentVote, duplicate-identity coverage, and TestValidateDeliberationTransitionRejectsInvalidLifecycle passed. Acceptance 3: TestProposalRevisionStalesVotesAndPreservesOpenState passed, proving only v2 votes count after revision while the v1 objection and evidence gap remain visible; its removal case fails. Acceptance 4: TestLoadExistingIdentifiesLegacyTranscriptWithoutTypedConsensus and TestLoadFileStrictValidatesTypedProtocol passed, proving legacy records remain readable but untyped and malformed typed state fails. Targeted restricted-PATH tests passed for internal/types, internal/transcript, and internal/session. env PATH=GOROOT/bin:/usr/bin:/bin go test ./... -race passed all 14 packages with coverage. go vet ./... and golangci-lint run ./... passed. CGO_ENABLED=0 go build produced a statically linked ./agora; that local artifact ran ./agora metadata --format json successfully. git diff --check passed; gopls reported no errors (one unrelated modernization hint)."
+  next: Task 1 is complete. Stop before Task 2; structured contribution ingestion, evidence verification behavior, typed halting, phase advancement, active moderation, and synthesis/CLI integration remain plan-owned follow-up work.
+  publication_order: 1

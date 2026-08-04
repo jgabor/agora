@@ -1,0 +1,7 @@
+id: shxpgmimeu
+artifact: progress
+record:
+  summary: "Cycle 36 (2026-05-06): Completed Task 3 long-running activity feedback by adding adaptive phase activity lifecycle output for config..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 9614327d017afb473a4daaec414b195a86b5b7c3dd647a4573f017039019968a

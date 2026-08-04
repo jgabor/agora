@@ -1,0 +1,15 @@
+id: vfrtijepkq
+artifact: plan
+record:
+  name: Enforce claim evidence and verification state
+  depends_on:
+    - wudpmngihx
+    - gcsqbkzjyj
+  status: pending
+  acceptance:
+    - GIVEN a decisive factual claim supports the current proposal WHEN it enters the ledger THEN it cites a supplied source reference or remains explicitly unverified.
+    - GIVEN an objection requests verification WHEN the supplied evidence is checked THEN the claim records a verified, conflicting, unsupported, or failed-verification result without inventing a source.
+    - GIVEN a proposal is revised WHEN unresolved evidence gaps still apply THEN those gaps remain attached to the current debate state and are available to later votes and synthesis.
+    - GIVEN the final artifact presents claims WHEN each claim is rendered THEN verified facts, inferences, assumptions, and recommendations are distinguishable.
+    - Test proportionality target — one pass and one fail per verification outcome, including unsupported code claims, conflicting evidence, failed verification, and missing source references.
+  plan: josxwbovpf

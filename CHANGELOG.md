@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-_No user-facing changes yet._
+### Added
+- Versioned typed deliberation control state for proposal revisions, objections and dispositions, unique-agent votes, claim evidence status, moderation, convergence, and terminal outcomes, with strict validation and explicit legacy transcript classification.
 
 ## [0.4.2] - 2026-08-03
 

@@ -1,0 +1,12 @@
+id: fhzysyzvtk
+artifact: plan
+record:
+  name: Pass consensus state into agent context envelope
+  depends_on:
+    - vssmfdmpng
+  status: complete
+  acceptance:
+    - GIVEN a deliberation is running WHEN an agent receives its context envelope THEN the envelope includes the current consensus streak and last consensus statement.
+    - GIVEN no consensus has been reached WHEN the agent context is built THEN the consensus fields are empty or zero-valued.
+    - GIVEN consensus has been reached WHEN the next agent turn executes THEN the envelope includes the streak count and the statement text.
+  plan: fohfraaest

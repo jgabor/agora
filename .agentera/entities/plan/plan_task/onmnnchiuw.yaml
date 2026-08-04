@@ -1,0 +1,15 @@
+id: onmnnchiuw
+artifact: plan
+record:
+  name: Update tests and verify
+  depends_on:
+    - vksziqwszl
+    - ujaobfglix
+    - dugwnnkxbx
+  status: complete
+  acceptance:
+    - GIVEN all render changes are applied WHEN `go build ./...` runs THEN it passes.
+    - GIVEN all render changes are applied WHEN `go test ./...` runs THEN tests pass or are updated to match new format.
+    - GIVEN the changes are applied WHEN `scripts/e2e-rmux.sh` runs THEN all e2e checks pass.
+    - GIVEN a dry-run deliberation runs WHEN the output is reviewed THEN no stale context or color text appears.
+  plan: vamibixwmj

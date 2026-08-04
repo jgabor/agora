@@ -1,0 +1,7 @@
+id: zvvupgieou
+artifact: progress
+record:
+  summary: "Cycle 31 (2026-05-06): Completed Task 6 test migration and verification checkpoint for the Charm v2 agent theater output..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 6b44c694507e9651a99458c8d034424a99bc1523987c8db021b848874b205402

@@ -1,0 +1,6 @@
+id: kzhpfqkdhu
+artifact: todo
+record:
+  severity: annoying
+  status: open
+  description: Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence

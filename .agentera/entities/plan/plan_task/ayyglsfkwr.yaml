@@ -1,0 +1,14 @@
+id: ayyglsfkwr
+artifact: plan
+record:
+  name: OpenCode-backed web evidence collection
+  depends_on:
+    - ouumlyhxrf
+  status: complete
+  acceptance:
+    - GIVEN web research is enabled WHEN OpenCode web tools are available THEN source references are produced from web search/fetch results
+    - GIVEN OpenCode web tools are unavailable WHEN research is enabled THEN Agora fails before the first deliberation turn
+    - GIVEN the research response is malformed WHEN Agora reads it THEN Agora reports a parse failure and does not start deliberation
+    - GIVEN web research produces zero source references WHEN research is enabled THEN deliberation does not start
+    - GIVEN web research succeeds WHEN the transcript is written THEN source references include enough metadata to audit where evidence came from
+  plan: aswrgqsfai

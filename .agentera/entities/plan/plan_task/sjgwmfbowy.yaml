@@ -1,0 +1,16 @@
+id: sjgwmfbowy
+artifact: plan
+record:
+  name: Activate moderation and stagnation control
+  depends_on:
+    - vfrtijepkq
+    - kgthugrlgf
+    - gahqkhmvkr
+  status: pending
+  acceptance:
+    - GIVEN a round ends or stagnation is detected WHEN moderation runs THEN it emits one validated action that selects the leading unresolved crux and either directs an agent, requests verification or revision, calls a vote, or records no consensus.
+    - GIVEN opening positions are complete WHEN the moderator selects a speaker THEN selection responds to unresolved debate state rather than remaining fixed round-robin and no active agent can be starved indefinitely.
+    - GIVEN turn-over-turn content converges or repeats WHEN metrics are computed THEN convergence and repetition are visible in control state and can trigger moderation.
+    - GIVEN the moderator call fails or returns invalid output WHEN the run continues or stops THEN prior valid control state is preserved and no false consensus is created.
+    - Test proportionality target — one pass and one fail per moderator action and trigger, including stagnation, fairness, invalid output, and explicit dissent preservation.
+  plan: josxwbovpf

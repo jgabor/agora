@@ -617,6 +617,55 @@ func TestLoadFileStrictLoadsValidLedgerRecordInOrder(t *testing.T) {
 	}
 }
 
+func TestLoadExistingIdentifiesLegacyTranscriptWithoutTypedConsensus(t *testing.T) {
+	tm := newTestTranscript(t)
+	legacy := mkRecord(0, "alpha", "[CONSENSUS: legacy marker]", true, "legacy marker")
+	if err := os.WriteFile(tm.path, []byte(marshalLine(t, legacy)+"\n"), 0o644); err != nil {
+		t.Fatalf("write legacy transcript: %v", err)
+	}
+	records, err := tm.LoadExisting()
+	if err != nil {
+		t.Fatalf("load legacy transcript: %v", err)
+	}
+	if !tm.Protocol().Legacy || tm.Protocol().Version != "" {
+		t.Fatalf("protocol classification: %#v, want legacy", tm.Protocol())
+	}
+	if len(records) != 1 || !records[0].Consensus || records[0].Content == "" {
+		t.Fatalf("legacy record was not preserved: %#v", records)
+	}
+}
+
+func TestLoadFileStrictValidatesTypedProtocol(t *testing.T) {
+	validPath := filepath.Join(t.TempDir(), "typed.jsonl")
+	state := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	record := mkRecord(0, "alpha", "opening", false, "")
+	record.Control = state
+	if err := os.WriteFile(validPath, []byte(marshalLine(t, record)+"\n"), 0o644); err != nil {
+		t.Fatalf("write typed transcript: %v", err)
+	}
+	records, err := LoadFileStrict(validPath)
+	if err != nil {
+		t.Fatalf("load typed transcript: %v", err)
+	}
+	info, err := ProtocolFromRecords(records)
+	if err != nil {
+		t.Fatalf("classify typed transcript: %v", err)
+	}
+	if info.Legacy || info.Version != types.DeliberationProtocolVersion {
+		t.Fatalf("typed protocol classification: %#v", info)
+	}
+
+	invalidPath := filepath.Join(t.TempDir(), "invalid-typed.jsonl")
+	invalid := mkRecord(0, "alpha", "opening", false, "")
+	invalid.Control = types.NewDeliberationControlState([]string{"alpha", "alpha"}, 0)
+	if err := os.WriteFile(invalidPath, []byte(marshalLine(t, invalid)+"\n"), 0o644); err != nil {
+		t.Fatalf("write invalid typed transcript: %v", err)
+	}
+	if _, err := LoadFileStrict(invalidPath); err == nil || !strings.Contains(err.Error(), "invalid control state") {
+		t.Fatalf("invalid typed protocol error: got %v", err)
+	}
+}
+
 func TestLoadFileLenientWarnsOnMalformedLedgerRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "transcript.jsonl")
 	malformedLedger := `{"turn": -3, "agent_id": "ledger", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0}`

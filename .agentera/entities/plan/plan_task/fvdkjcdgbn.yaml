@@ -1,0 +1,14 @@
+id: fvdkjcdgbn
+artifact: plan
+record:
+  name: Live output modes
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN `run` or `resume` runs without output-mode flags WHEN an agent turn completes THEN response content is displayed by default.
+    - GIVEN `--quiet` is passed WHEN an agent turn completes THEN output matches the prior metadata-only behavior.
+    - GIVEN `--verbose` is passed WHEN an agent turn completes THEN response content plus expanded diagnostics are displayed.
+    - GIVEN verbose diagnostics are displayed WHEN token or cost details exist THEN input/output/reasoning tokens, cumulative cost, elapsed timing, and consensus progress are visible where available.
+    - GIVEN incompatible output-mode flags are passed WHEN the command starts THEN the command rejects the combination clearly.
+  plan: vrfvtwztvt

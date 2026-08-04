@@ -1,0 +1,7 @@
+id: uiepxoywqo
+artifact: progress
+record:
+  summary: "Cycle 32 (2026-05-06): Recovered the final-inspection failure by making turn progress reuse stable config-order agent badges when the..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 6f84845f9ef9966b2bd67d8585ac09d9798b9d5302ce00f6dffb6d433f55517b

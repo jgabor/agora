@@ -1,0 +1,10 @@
+id: emvqkmwsbx
+artifact: plan
+record:
+  name: Add moderator system prompt
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - moderator prompt describes role (clarify, redirect, introduce)
+  plan: glogpszfnw

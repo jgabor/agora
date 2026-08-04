@@ -1,0 +1,12 @@
+id: ildviwkqyv
+artifact: plan
+record:
+  name: Make auto-mode previews honor explicit limits
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN auto mode with an explicit `--time` flag WHEN the config preview renders THEN the displayed time limit matches the user's value, not the caps default
+    - GIVEN auto mode with an explicit `--max-turns` flag WHEN the config preview renders THEN the displayed max turns matches the user's value, not the caps default
+    - GIVEN auto mode without `--time` or `--max-turns` WHEN the config preview renders THEN the caps defaults are shown as before
+  plan: spjlovpyvr

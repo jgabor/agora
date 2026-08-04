@@ -1,0 +1,14 @@
+id: gcsqbkzjyj
+artifact: plan
+record:
+  name: Capture typed agent contributions in the ledger
+  depends_on:
+    - wudpmngihx
+  status: pending
+  acceptance:
+    - GIVEN an agent completes a turn WHEN its contribution is accepted THEN its position, responses, concessions, proposal action, objections, vote, and claims are bound to that agent and turn in typed state.
+    - GIVEN an agent emits malformed or incomplete structured output WHEN the contribution is processed THEN the failure is explicit and cannot create a proposal endorsement or resolved objection.
+    - GIVEN multiple contributions update the debate WHEN the ledger advances THEN only valid current contributions affect the canonical state and the update remains deterministic for identical input.
+    - GIVEN a contribution revises the proposal WHEN the revision is accepted THEN prior votes become stale and unresolved objections and evidence gaps survive unless explicitly disposed.
+    - Test proportionality target — one pass and one fail per contribution family, including malformed output, incompatible endorsements, and deterministic dry-run behavior.
+  plan: josxwbovpf

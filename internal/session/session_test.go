@@ -72,6 +72,33 @@ func TestApplyAutoCapsPreservesYOLOUnlimitedDefault(t *testing.T) {
 	}
 }
 
+func TestRunCreatesVersionedDeliberationControlState(t *testing.T) {
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: "test/model"}},
+	}
+	result, err := session.Run(session.RunRequest{
+		Topic:      "protocol substrate",
+		Config:     cfg,
+		OutputPath: t.TempDir() + "/run.jsonl",
+		MaxTurns:   1,
+		TimeLimit:  60,
+		DryRun:     true,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.State.Control == nil {
+		t.Fatal("run state is missing deliberation control state")
+	}
+	if err := result.State.Control.Validate(); err != nil {
+		t.Fatalf("run control state: %v", err)
+	}
+	if result.State.Control.ProtocolVersion != types.DeliberationProtocolVersion {
+		t.Fatalf("protocol version: got %q", result.State.Control.ProtocolVersion)
+	}
+}
+
 func TestResumePreservesSourceMetadata(t *testing.T) {
 	dir := t.TempDir()
 	outputPath := dir + "/resume.jsonl"

@@ -1,0 +1,47 @@
+id: dgfnfhprlm
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-07-07
+    status: archived
+    reviewed: 2026-07-08
+    critic_issues: 7 found, 7 addressed, 0 dismissed
+    title: "Plan: Debate Ledger (Shared State) and Agent Self-History"
+  what: Introduce an orchestrator-maintained, per-round compacted debate state that each agent receives in its per-turn envelope, alongside the agent's own immediately preceding turn regardless of topology. The ledger carries each agent's current stated position, points of agreement surfaced across the deliberation, currently open cruxes, and the current draft proposal if one exists. A distinct mid-deliberation updater path produces the typed ledger from the running transcript after each completed round; it is separate from the post-hoc synthesis agent, which retains its existing essay-shape output contract. Ledger updates persist as typed transcript records so that show and resume can replay them. A disable flag overrides injection through the project's established three-layer precedence.
+  why: "The TODO roadmap and the prior design review independently identify the missing shared debate state as the single biggest reason deliberation does not deepen across rounds: with the default window an agent never sees its own previous turn in any topology, every turn re-derives a position from a tiny text slice, the evidence bundle decays out of the window, and consensus is attempted on no shared object. Injecting a typed ledger into every envelope simultaneously fixes continuity, the small-window problem, evidence decay, and per-round token pressure, because the model no longer needs to reconstruct state from flat history. Including self-history with the ledger avoids reopening the same envelope code path twice. This is the foundational Missing Piece #1 from the roadmap; items 3, 4, 5, 6, and 8 all build on the ledger as substrate."
+  constraints: "Minimal orchestrator (Decision 1, firm): the ledger is data injected into the envelope; the orchestrator must not compose prompts from ledger contents. Go-only single static binary (Decision 2, firm): no external services or subprocesses beyond the existing agent runtime. Three-layer precedence (Decision 5, firm): the disable flag follows CLI flag > config > settings, matching the project's existing precedence for evidence and topology flags. References-only transcripts (Decision 6, firm): ledger records persist the typed state, not full prose; the transcript record's shape is the typed ledger, not a re-injection of essay-shape JSON. Backward compatibility: transcripts from prior releases without ledger records continue to load, show, and resume in legacy mode without failure. Charm v2 visual system (Decision 7, firm): ledger records render through the existing output module; no new visual dependency. Off-limits: the consensus regex mechanism, the existing synthesis engine's output contract, and the deliverable-gate regex are not modified in this plan; they are reserved for the item-3 proposal-and-voting plan that supersedes them."
+  scope:
+    included:
+      - Typed ledger domain model (positions, points of agreement, open cruxes, current draft)
+      - Mid-deliberation ledger updater as a separate path from post-hoc synthesis
+      - Per-turn envelope injection of the latest ledger
+      - Agent self-history injection (most recent own turn) regardless of topology
+      - Round-completion trigger for ledger updates
+      - Transcript persistence of ledger records
+      - Show integration with strict loading for malformed ledger records
+      - Resume integration with warn-continue for malformed ledger records
+      - Legacy transcript load and resume without ledger injection
+      - Disable flag through three-layer precedence (CLI flag, config key, settings key)
+      - Dry-run deterministic placeholder ledger
+      - Separation of ledger-updater cost from per-agent deliberation cost in stats
+      - Decision record for the separate-updater mechanism choice
+      - Minor version bump per docs.yaml feat-minor policy
+      - CHANGELOG entry and TODO cleanup for items 1 and 2
+    excluded:
+      - Active moderator loop (roadmap item 4)
+      - First-class proposal artifact with real voting (roadmap item 3)
+      - Phase structure — opening, rebuttal, convergence (roadmap item 5)
+      - Convergence and stalemate metrics (roadmap item 6)
+      - Situational-awareness envelope fields beyond self-history (roster, turn number, budget, halting rule) — broader scope of roadmap item 7
+      - Human-in-the-loop pause point and hook to inject a human turn
+      - Topologies beyond ring, star, and mesh
+      - Cross-run memory and decision-satisfaction feedback
+      - Interplay between the ledger and --full-context mode; this plan ships the default-mode behavior only and a follow-up plan owns the full-context interaction
+    deferred:
+      - Situational-awareness envelope fields (roster, turn counter, remaining budget, halting rule) — roadmap item 7 broader scope, deferred to a follow-on plan that reopens the same envelope code path
+      - --full-context mode interaction with the ledger, deferred to a follow-on plan
+      - Active moderator consuming the ledger, deferred until the ledger substrate ships
+  design: Six phases run in dependency order. Phase 1 establishes the typed ledger domain model — the state each round produces and each agent consumes. Phase 2 builds the summarization subsystem, a mid-deliberation updater that consumes the running transcript and produces the typed ledger; it is deliberately distinct from the existing post-hoc synthesis agent because the two have different output contracts and lifecycles — the ledger is a compact typed state, synthesis is an essay-shape report. Phase 3 integrates the ledger and self-history into the per-turn data carrier handed to each agent; the disable flag is wired through the project's three-layer precedence at this layer. Phase 4 owns round lifecycle — the orchestrator triggers a ledger update after each full round of agent turns, mid-round turns reuse the prior ledger, and dry-run produces a deterministic placeholder. Phase 5 persists ledger updates as transcript records so show and resume can replay them; show enforces the existing strict-loading contract, resume warns and continues, and legacy transcripts without ledger records load in legacy mode. Phase 6 is state sync — documentation, decisions record for the separate-updater choice, version bump per the project's feat-minor policy, and TODO cleanup for roadmap items 1 and 2.
+  overall_acceptance: A deliberation run with the ledger enabled produces a transcript containing at least one ledger record per completed round, every agent envelope contained the most recent ledger at the time of that agent's turn, every agent envelope contained the agent's immediately preceding own turn, and agora stats reports ledger-updater cost separately from per-agent deliberation cost. A deliberation run with the ledger disabled via the disable flag at any precedence layer produces a transcript with no ledger records, no extra model calls were made per round, and every agent envelope still contained self-history. A transcript from a release before the ledger feature loads, renders, or resumes in legacy mode without failure and without ledger injection when show or resume is invoked. A dry-run deliberation with the ledger enabled produces a transcript with deterministic placeholder ledger records and every agent envelope contained a placeholder ledger. The project's test suite, build, and lint commands all pass and the diff hygiene check is clean.
+  surprises: ""

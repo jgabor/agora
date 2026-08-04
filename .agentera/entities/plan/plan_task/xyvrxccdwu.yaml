@@ -1,0 +1,13 @@
+id: xyvrxccdwu
+artifact: plan
+record:
+  name: Transcript command resolution and strict loading
+  depends_on:
+    - zxvpwjmxfj
+  status: complete
+  acceptance:
+    - GIVEN a stored transcript slug WHEN `resume` uses it THEN the latest matching transcript is selected without requiring `--file`.
+    - GIVEN a stored transcript slug WHEN `stats` uses it THEN statistics are computed from that transcript.
+    - GIVEN a transcript contains malformed non-blank records WHEN `resume`, `stats`, or `show` reads it THEN the command fails with a transcript-specific error.
+    - GIVEN legacy path-based transcript workflows WHEN the commands run THEN path compatibility remains intact.
+  plan: vrfvtwztvt

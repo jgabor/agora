@@ -1,0 +1,7 @@
+id: gbmbqsiptd
+artifact: progress
+record:
+  summary: "Cycle 50 (2026-05-16): Completed Task 1 metadata and format contract baseline by adding a shared `--format text|json|markdown` contract..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 9968e457fa36dfe75db70cbe9b20d134828c6127c27ba94611a406d56ac9f1e9

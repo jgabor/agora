@@ -1,0 +1,6 @@
+id: fhmdtxdfvn
+artifact: todo
+record:
+  severity: critical
+  status: open
+  description: Make the debate ledger the authoritative control plane for proposals,

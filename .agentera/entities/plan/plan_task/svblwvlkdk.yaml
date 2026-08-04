@@ -1,0 +1,10 @@
+id: svblwvlkdk
+artifact: plan
+record:
+  name: Rename orchestrator to moderator
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - seed records use "moderator" instead of "orchestrator"
+  plan: glogpszfnw

@@ -1,0 +1,6 @@
+id: ynlzskgutb
+artifact: todo
+record:
+  severity: annoying
+  status: open
+  description: Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety

@@ -1,0 +1,17 @@
+id: xicauqwadl
+artifact: plan
+record:
+  name: Plan-level freshness checkpoint
+  depends_on:
+    - zxvpwjmxfj
+    - xyvrxccdwu
+    - zitldwlith
+    - fvdkjcdgbn
+    - hrgzusmyyn
+    - adlnkwfygc
+  status: complete
+  acceptance:
+    - GIVEN the work is complete WHEN project state is updated THEN plan status, progress, TODO, and surprises reflect delivered behavior.
+    - GIVEN user-visible CLI behavior changed WHEN docs metadata is checked THEN no indexed documentation claims stale command behavior.
+    - GIVEN follow-up work remains WHEN the plan closes THEN it is recorded as deferred or TODO.
+  plan: vrfvtwztvt

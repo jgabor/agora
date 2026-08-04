@@ -1,0 +1,14 @@
+id: fqbhcckrli
+artifact: plan
+record:
+  name: Text-only local context safety
+  depends_on:
+    - eexrnxgpgg
+  status: complete
+  acceptance:
+    - GIVEN `--context` points at a readable text file WHEN running THEN the evidence bundle contains a reference to that file
+    - GIVEN `--context` points at a directory WHEN running THEN text files under that directory are considered within configured caps
+    - GIVEN a directory contains binary files, hidden VCS data, or secret-looking files WHEN resolving context THEN those files are not sent to agents
+    - GIVEN directory traversal would exceed file, byte, or depth caps WHEN resolving context THEN Agora reports a clear bounded-context error
+    - GIVEN context resolves to zero usable text sources WHEN running THEN deliberation does not start
+  plan: aswrgqsfai

@@ -1,0 +1,7 @@
+id: rtzkczgxbj
+artifact: progress
+record:
+  summary: "Cycle 27 (2026-05-06): Completed Task 2 visual language and fallback rules by adding the internal output conventions contract..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: de48c48b3c73ed623f38906b60ae6a22ba9dc8993e8ba2eb7261fdce6e750d1b

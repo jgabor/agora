@@ -1,0 +1,40 @@
+id: vrfvtwztvt
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-05-07
+    status: archived
+    reviewed: 2026-05-07
+    critic_issues: 12 found, 12 addressed, 0 dismissed
+    title: Transcript Show And Slug-First CLI UX
+  what: Add a transcript viewing command and make saved-artifact commands accept human-scale slugs by default while preserving explicit file paths. `agora show` displays transcripts, `run` and `resume` show agent responses by default, `--quiet` restores the current metadata-only output, and `--verbose` becomes expanded diagnostics.
+  why: "Users should not need generated JSONL paths to inspect, resume, or analyze deliberations. Showing responses by default better matches Agora's purpose: the deliberation content is the primary value, not just the metrics stream."
+  constraints: Keep Go-only implementation, managed transcript store behavior, existing explicit path support, resume evidence reuse, and the current terminal visual identity. Do not add a persistent config registry. Path-like missing inputs must fail as missing paths, not silently fall back to slug search.
+  scope:
+    included:
+      - "`show` command for transcript viewing"
+      - slug-or-path behavior for transcript-backed commands
+      - config slug-or-path behavior for `validate`
+      - normal/quiet/verbose live output modes
+      - strict malformed-transcript handling for user-facing transcript commands
+      - README, changelog, command help, and verification
+    excluded:
+      - transcript schema migration
+      - evidence refresh or replay controls
+      - transcript editing
+      - pager/TUI mode
+      - remote transcript storage
+    deferred:
+      - transcript search/filtering
+      - HTML or Markdown export
+      - persistent named config registry
+  design: "Use a clear artifact-resolution contract. Existing path-like inputs are paths; if missing, they fail. Transcript slugs search the managed transcript store with exact match before prefix match before substring match, selecting newest deterministically within a tier. Config slugs for `validate` resolve by file stem in the current directory and `examples/`, with collisions reported rather than guessed. Live output has three modes: quiet metadata, normal readable responses, and verbose expanded diagnostics."
+  overall_acceptance:
+    - GIVEN a managed transcript slug WHEN `show`, `stats`, or `resume` runs THEN the user does not need the generated JSONL path.
+    - GIVEN a config slug or path WHEN `validate` runs THEN validation remains one-argument and path-compatible.
+    - GIVEN a deliberation is running normally WHEN turns complete THEN agent responses are visible without `--verbose`.
+    - GIVEN quiet output is needed WHEN `--quiet` is used THEN the prior low-noise live output remains available.
+    - GIVEN diagnostics are needed WHEN `--verbose` is used THEN expanded metrics appear without hiding response content.
+  surprises:
+    []

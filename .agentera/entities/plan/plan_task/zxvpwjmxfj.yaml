@@ -1,0 +1,14 @@
+id: zxvpwjmxfj
+artifact: plan
+record:
+  name: Artifact resolution contract
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN an existing explicit path WHEN a supported command receives it THEN that path is used directly.
+    - GIVEN a path-like input that does not exist WHEN a supported command receives it THEN the command reports the missing path instead of searching slugs.
+    - GIVEN a transcript slug WHEN a transcript command resolves it THEN exact matches win before prefix matches before substring matches.
+    - GIVEN multiple transcript matches within the same match tier WHEN resolution succeeds THEN the newest matching transcript is selected deterministically.
+    - GIVEN resolution behavior is verified WHEN checks run THEN each artifact type has at least one success case and one failure case.
+  plan: vrfvtwztvt

@@ -1,0 +1,7 @@
+id: xmaztprjnv
+artifact: progress
+record:
+  summary: "Cycle 37 (2026-05-06): Retried Task 3 after Inspektera found redirected stdout under rich TERM emitted ANSI-styled activity status..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 4a76086a2573fcc68b8c556af6efaba5a43b51add926c9c1a8713bffa4085e9d

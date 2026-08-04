@@ -1,0 +1,13 @@
+id: cawfmqyxrm
+artifact: plan
+record:
+  name: Long-running activity feedback
+  depends_on:
+    - iulvkhyxpy
+  status: complete
+  acceptance:
+    - GIVEN Agora is waiting on generation, research, synthesis, or another long-running phase WHEN the terminal supports rich output THEN users see a live activity indicator with a clear phase label
+    - GIVEN the same phase runs in plain, CI, dumb-terminal, or redirected output WHEN status is emitted THEN users see readable text updates without spinner artifacts
+    - GIVEN an activity indicator is interrupted by completion or error WHEN final output prints THEN the terminal is left in a clean readable state
+    - GIVEN verbose output is enabled WHEN activity feedback appears THEN it does not obscure agent content or structured metadata
+  plan: hqpimtfmbc

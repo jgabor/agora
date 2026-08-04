@@ -1,0 +1,9 @@
+id: wzyqxynviz
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Module path github.com/jgabor/agora in go.mod. Binary named agora at cmd/agora/. All CLI help text and docs use Agora.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: yininwzfyb

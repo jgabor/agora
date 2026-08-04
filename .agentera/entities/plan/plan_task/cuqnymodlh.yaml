@@ -1,0 +1,11 @@
+id: cuqnymodlh
+artifact: plan
+record:
+  name: Remove redundant tree root in validation output
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN `agora validate` runs on a valid config WHEN the output renders THEN the box title "Configuration Valid" is not repeated as a tree root node.
+    - GIVEN `agora validate` runs on an invalid config WHEN the output renders THEN error information remains clear and complete.
+  plan: vntrvzrbjo

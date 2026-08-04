@@ -1,0 +1,13 @@
+id: iulvkhyxpy
+artifact: plan
+record:
+  name: Cast and turn identity surfaces
+  depends_on:
+    - kimpchgjle
+  status: complete
+  acceptance:
+    - GIVEN config preview renders WHEN agents are shown THEN each participant has consistent badge, `agent_id`, model, and readable role/context information
+    - GIVEN deliberation starts WHEN the header renders THEN cast ordering and run-local identity are clear before turns begin
+    - GIVEN a turn completes WHEN progress renders THEN the same participant identity appears as in the cast preview/header
+    - GIVEN an unknown or resumed agent appears WHEN output renders THEN it receives a clear fallback identity and is not dropped
+  plan: hqpimtfmbc

@@ -1,0 +1,7 @@
+id: bjyqchcjwh
+artifact: progress
+record:
+  summary: "Cycle 30 (2026-05-06): Resolved the stale Task 3 blocked marker after recovery inspection verified the current repository satisfies..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 2ea5688dcfb1258e738d57968f95553a689f0675eecd1027a6bfaf60c288f484

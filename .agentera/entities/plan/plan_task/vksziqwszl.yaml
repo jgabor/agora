@@ -1,0 +1,12 @@
+id: vksziqwszl
+artifact: plan
+record:
+  name: Remove context and color from rich agentCastTree (Generated Config + Deliberation Start)
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation starts in rich mode WHEN the Generated Config panel renders THEN no agent subtree child shows a "context" or "color" line.
+    - GIVEN a deliberation starts in rich mode WHEN the Deliberation Start panel renders THEN no agent subtree child shows a "context" or "color" line.
+    - GIVEN an agent has a model configured WHEN its tree node renders THEN the model value is still shown.
+  plan: vamibixwmj

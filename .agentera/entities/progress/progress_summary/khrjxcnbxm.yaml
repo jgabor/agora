@@ -1,0 +1,7 @@
+id: khrjxcnbxm
+artifact: progress
+record:
+  summary: "Cycle 23 (2026-05-05): Implemented Task 6 resume, dry-run, and failure behavior by making dry-run research planner/collector agents return..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 26e4b17969f3ae7a467c88e5ffbaa98e8abc61d687a13f70208c3cdd7b057438

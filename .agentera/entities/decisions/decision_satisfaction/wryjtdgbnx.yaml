@@ -1,0 +1,9 @@
+id: wryjtdgbnx
+artifact: decisions
+record:
+  state: user_confirmed_satisfied
+  evidence: Config struct at internal/config/settings.go:12. applyConfigDefaults at cmd/agora/main.go:889. 'agora list' and 'agora resume' commands at cmd/agora/main.go:485-598. 'agora config' command at cmd/agora/config_cmd.go.
+  user_confirmation:
+    confirmed_by: user
+    confirmed_at: 2026-05-26
+  decision: qwtkoqnbgg

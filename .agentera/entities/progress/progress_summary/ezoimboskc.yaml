@@ -1,0 +1,7 @@
+id: ezoimboskc
+artifact: progress
+record:
+  summary: "Cycle 56 (2026-05-16): Completed Task 5 transcript show formatted output. `agora show TRANSCRIPT --format json` now emits a..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: bffb81c8ba4915a5afa080f431bd567ca0f210bc42a3d805b43c67988ff6d4a7

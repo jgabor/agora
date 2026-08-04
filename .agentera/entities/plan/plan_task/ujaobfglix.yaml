@@ -1,0 +1,12 @@
+id: ujaobfglix
+artifact: plan
+record:
+  name: Remove context and color from richAgentCastLine (config header metadata)
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation starts in plain mode WHEN the agent cast line renders THEN no CONTEXT or COLOR label is appended.
+    - GIVEN an agent has a model configured WHEN the agent cast line renders THEN the model value is shown without an all-caps MODEL label.
+    - GIVEN plain mode renders the cast line WHEN the format is inspected THEN it uses clean inline format (badge name persona) with model as metadata, matching the rich path style.
+  plan: vamibixwmj

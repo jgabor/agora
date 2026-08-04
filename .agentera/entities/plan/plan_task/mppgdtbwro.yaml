@@ -1,0 +1,18 @@
+id: mppgdtbwro
+artifact: plan
+record:
+  name: Expand per-turn envelope with situational awareness fields
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation in progress at turn T with R rounds completed and an effective max_turns greater than zero WHEN an agent is about to take its turn THEN the envelope handed to that agent contains the agent's own ID, the current turn index, the current round number, the remaining turns, and the remaining rounds derived from max_turns
+    - GIVEN a deliberation whose only effective cap is a time limit (max_turns zero) WHEN an agent receives its envelope THEN the envelope contains the time remaining rather than turns or rounds remaining
+    - GIVEN a deliberation with no effective cap on turns or time (uncapped equivalent) WHEN an agent receives its envelope THEN the envelope indicates the run is uncapped rather than reporting an undefined remaining value
+    - GIVEN a deliberation with multiple agents WHEN any agent receives its envelope THEN the envelope contains the cast roster — each active agent's ID and display name if available — so the agent can address peers by ID
+    - GIVEN a deliberation whose effective halting rule includes consensus_threshold greater than zero, max_turns, a time limit, and a budget cap WHEN an agent receives its envelope THEN the halting rule field names every active cap and the value at which it triggers
+    - GIVEN a deliberation whose halting rule includes a deliverable gate (for example, the topic requires a numbered set of laws) WHEN an agent receives its envelope THEN the halting rule field surfaces the deliverable requirement, not only the numeric caps
+    - GIVEN a dry-run deliberation WHEN each turn starts THEN the envelope handed to the agent contains the same situational fields with deterministic placeholder or computed values, not a missing-fields envelope
+    - GIVEN an envelope built for an agent WHEN the orchestrator builds it THEN the orchestrator marshals the situational fields as envelope facts only — it does not compose prompt prose from their contents, preserving the minimal-orchestrator constraint
+    - "Test proportionality target — one pass + one fail per testable unit (fields-present-success, roster-success, time-only-success, uncapped-success, halting-rule-aggregate-success, deliverable-gate-surfaced-success, dry-run-deterministic-success; failure: orchestrator-must-not-compose-prompts-from-fields enforced)"
+  plan: xfjloxtdaf

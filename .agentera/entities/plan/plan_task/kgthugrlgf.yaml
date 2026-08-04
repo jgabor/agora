@@ -1,0 +1,16 @@
+id: kgthugrlgf
+artifact: plan
+record:
+  name: Replace heuristic consensus with typed halting
+  depends_on:
+    - wudpmngihx
+    - gcsqbkzjyj
+    - vfrtijepkq
+  status: pending
+  acceptance:
+    - GIVEN agents endorse different proposal versions WHEN halting is evaluated THEN the endorsements are incompatible and no consensus halt occurs.
+    - GIVEN one current proposal has enough unique current votes WHEN minimum rounds, deliverable requirements, and objection-disposition rules are also satisfied THEN the run halts with a typed consensus outcome naming that proposal version.
+    - GIVEN agents repeat agreement prose without valid current votes WHEN halting is evaluated THEN repetition does not advance consensus.
+    - GIVEN a turn, time, or budget cap ends the run before consensus WHEN terminal state is recorded THEN the result is explicit no-consensus with dissents, unresolved objections, and evidence gaps.
+    - Test proportionality target — one pass and one fail per halt precondition, including stale votes, repeated prose, max-turn no-consensus, and unmet deliverable requirements.
+  plan: josxwbovpf

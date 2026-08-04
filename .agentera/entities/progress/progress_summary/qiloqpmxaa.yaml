@@ -1,0 +1,7 @@
+id: qiloqpmxaa
+artifact: progress
+record:
+  summary: "Cycle 21 (2026-05-05): Implemented Task 4 OpenCode-backed web evidence collection by replacing the research placeholder with a bounded..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 8f743cf69d34e63661be0bb2a3a3c91d094fa980e221c843ae252cd0883307a1

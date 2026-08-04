@@ -1,0 +1,6 @@
+id: bcimzeorwv
+artifact: todo
+record:
+  severity: annoying
+  status: open
+  description: Evaluate named profiles after `prime` exists; current `config.yaml` covers defaults but not reusable identities

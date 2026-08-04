@@ -1,0 +1,15 @@
+id: mimwzaialf
+artifact: plan
+record:
+  name: Evidence delivery and transcript audit
+  depends_on:
+    - fqbhcckrli
+    - ayyglsfkwr
+  status: complete
+  acceptance:
+    - GIVEN multiple agents and a successful evidence bundle WHEN each agent takes its first turn THEN each receives the same evidence bundle once
+    - GIVEN an agent takes a later turn WHEN evidence was already delivered to that agent THEN raw evidence is not attached again
+    - GIVEN research/context evidence exists WHEN the transcript is written THEN an orchestrator research summary appears before agent turns
+    - GIVEN source references are written to the transcript WHEN inspecting the transcript THEN full source content is not present
+    - GIVEN no research or context is enabled WHEN running THEN deliberation behavior remains unchanged
+  plan: aswrgqsfai

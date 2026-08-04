@@ -1,0 +1,7 @@
+id: dxifpkjfgy
+artifact: progress
+record:
+  summary: "Cycle 55 (2026-05-16): Completed Task 4 transcript list and stats formatted outputs. `agora list --format json|markdown` now reports..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: a5a3bb48d534c9ac0f7ebe52e9ab7d63a725de830406f56d925d2845948b084f

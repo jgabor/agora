@@ -1,0 +1,16 @@
+id: adlnkwfygc
+artifact: plan
+record:
+  name: Verification, docs, and version note
+  depends_on:
+    - xyvrxccdwu
+    - zitldwlith
+    - fvdkjcdgbn
+    - hrgzusmyyn
+  status: complete
+  acceptance:
+    - GIVEN the implementation is complete WHEN project checks run THEN build, tests, and vet/lint equivalents pass.
+    - GIVEN users read command help or README examples THEN `list`, `show`, `stats`, `resume`, `validate`, `--quiet`, and `--verbose` behavior is clear.
+    - GIVEN the changelog is read THEN the new command, default-output change, and slug-first inputs are recorded as feature/user-visible changes.
+    - GIVEN command behavior changed WHEN tests are reviewed THEN each changed command has at least one expected-use and one failure-path check.
+  plan: vrfvtwztvt

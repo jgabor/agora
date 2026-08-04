@@ -1,0 +1,14 @@
+id: eexrnxgpgg
+artifact: plan
+record:
+  name: Research UX and policy contract
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN `agora run --research --topic "X"` WHEN web research is allowed by the runtime THEN Agora attempts web research before deliberation
+    - GIVEN repeated `--context` flags WHEN running THEN all declared local paths are considered part of the requested context
+    - GIVEN project config enables research WHEN running without `--research` THEN web research still runs
+    - GIVEN global settings contain research preferences WHEN no project config or CLI enables research THEN web research does not run
+    - GIVEN CLI flags and config disagree on research/context values WHEN running THEN CLI flags take precedence
+  plan: aswrgqsfai

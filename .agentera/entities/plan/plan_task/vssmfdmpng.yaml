@@ -1,0 +1,12 @@
+id: vssmfdmpng
+artifact: plan
+record:
+  name: Add [CONSENSUS] instructions to agent system prompts
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - "GIVEN an agent is created for a deliberation WHEN its system prompt is constructed THEN it includes an instruction to emit [CONSENSUS: ...] when agreement is reached."
+    - GIVEN the consensus instruction is added WHEN a dry-run deliberation runs THEN the agent output is not affected (consensus instructions are informational, not structural).
+    - GIVEN the system prompt has a consensus instruction WHEN it is prepended to the existing prompt THEN the read-only sandbox hint remains the first element.
+  plan: fohfraaest

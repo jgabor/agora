@@ -1,0 +1,13 @@
+id: hrgzusmyyn
+artifact: plan
+record:
+  name: Validate config slug UX
+  depends_on:
+    - zxvpwjmxfj
+  status: complete
+  acceptance:
+    - GIVEN a config file stem in the current directory or `examples/` WHEN `validate <slug>` runs THEN the intended config is validated.
+    - GIVEN a config path WHEN `validate <path>` runs THEN existing path-based validation still works.
+    - GIVEN multiple configs share a slug WHEN validation is requested THEN the command reports candidates instead of guessing.
+    - GIVEN no matching config exists WHEN validation is requested THEN the error describes the searched config locations.
+  plan: vrfvtwztvt

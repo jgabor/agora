@@ -1,0 +1,28 @@
+id: glogpszfnw
+artifact: plan
+record:
+  header:
+    level: light
+    created: 2026-05-26
+    status: archived
+    reviewed: 2026-05-26
+    critic_issues: 1 found, 1 addressed, 0 dismissed
+    title: Moderator Transformation
+  what: Add meta_model config field, rename orchestrator to moderator, add moderator system prompt. meta_model replaces synthesis_model with backward compatibility.
+  why: Enable active moderation role and simplify model config surface.
+  constraints: Backward compatible with existing synthesis_model configs.
+  scope:
+    included:
+      - meta_model field
+      - Rename orchestrator to moderator
+      - Moderator system prompt
+    excluded:
+      - Convergence check implementation
+      - Moderator turn loop
+    deferred:
+      []
+  design: Add MetaModel field with EffectiveMetaModel method. Rename agent ID string only. Add ModeratorPrompt constant and ModeratorConfig function.
+  overall_acceptance:
+    - Build passes, all tests pass, e2e passes
+  surprises:
+    []

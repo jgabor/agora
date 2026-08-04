@@ -1,0 +1,11 @@
+id: aehwcnxdlg
+artifact: plan
+record:
+  name: Filter [A?] internal agents from per-agent stats
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a deliberation completes WHEN the Per-Agent Stats table renders THEN orchestrator and synthesizer rows are not shown.
+    - GIVEN the internal agents are omitted WHEN total cost/tokens match THEN the internal agents' zero values are excluded from the count.
+  plan: vntrvzrbjo

@@ -1,0 +1,7 @@
+id: vtudafseuy
+artifact: progress
+record:
+  summary: "Cycle 47 (2026-05-07): Completed Task 5 validate config slug UX by making the validate command advertise `CONFIG|SLUG` and..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: ce43beebdc8f6a5b2c2223a67d7907a0b3dad84130d923c73dc19ccf5e23500e

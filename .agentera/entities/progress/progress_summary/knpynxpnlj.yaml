@@ -1,0 +1,7 @@
+id: knpynxpnlj
+artifact: progress
+record:
+  summary: "Cycle 43 (2026-05-07): Completed Task 2 transcript command resolution and strict loading by routing `stats` and positional `resume`..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 692ee10b1555d500fac406ed0a443ea6b29fe109983da7b09376cac980271059

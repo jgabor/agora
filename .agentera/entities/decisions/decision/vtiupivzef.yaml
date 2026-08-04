@@ -1,0 +1,17 @@
+id: vtiupivzef
+artifact: decisions
+record:
+  date: 2026-05-04
+  question: Should Kumbaja migrate from Python to Go as the canonical implementation?
+  context: "The Python version (Decision 1) validated the architecture across 9 modules. A full Go port has been built with identical behavior: same YAML config, JSONL transcript format, CLI flags, and termination logic. 43 tests pass with 35.6% coverage. The decision profile strongly favors Go for CLI infrastructure (confidence 95)."
+  alternatives:
+    - name: Keep both
+      status: rejected
+      description: "Python and Go side by side. Win: migration safety. Lose: maintenance burden, confusion about which is authoritative."
+    - name: Go only
+      status: chosen
+      description: "delete Python, Go becomes canonical. Win: single build surface, portable static binary. Lose: one-time deletion risk (recoverable via git)."
+  choice: Go only. Delete all Python source files, build artifacts, and Python-specific tooling.
+  reasoning: The Go port is complete and verified. A single implementation eliminates confusion and halves the maintenance surface. The Python implementation remains accessible in git history if ever needed.
+  confidence: firm
+  feeds_into: README.md, .gitignore, CI setup

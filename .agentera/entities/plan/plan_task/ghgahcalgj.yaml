@@ -1,0 +1,12 @@
+id: ghgahcalgj
+artifact: plan
+record:
+  name: Plan-level freshness checkpoint
+  depends_on:
+    - pjrtglvrdi
+  status: complete
+  acceptance:
+    - GIVEN all tasks complete WHEN checking `CHANGELOG.md` THEN `## [Unreleased]` has entries for settings, managed store, `list` command, and resume slug matching
+    - GIVEN all tasks complete WHEN checking `.agentera/PROGRESS.md` THEN a cycle entry summarises the whole plan
+    - GIVEN all tasks complete WHEN checking `TODO.md` THEN any new annoying items discovered during work are logged
+  plan: olbyaqdkvt

@@ -1,0 +1,17 @@
+id: yininwzfyb
+artifact: decisions
+record:
+  date: 2026-05-04
+  question: What should the project be named? "Kumbaja" was a codename.
+  context: "The tool runs adversarial deliberation loops — agents in a ring topology debating a topic. The VISION.md identity is clinical, rigorous, terse. Naming principle: pronounceable, searchable, not a pun."
+  alternatives:
+    - name: Classical arena
+      status: chosen
+      description: "Agora, Forum, Lyceum — ancient spaces of debate and judgment. Win condition: the name evokes deliberation without explanation."
+    - name: Coined word
+      status: rejected
+      description: "e.g. Rignet, Velox — unique, no baggage. Win condition: search results are entirely about this tool from day one."
+  choice: Agora — the Athenian marketplace and public square where citizens gathered to debate, challenge ideas, and deliberate.
+  reasoning: Agora is the most direct classical match for "space where adversarial deliberation happens." Five letters, pronounceable, distinctive in the Go CLI space. The marketplace connotation is acknowledged but accepted — the tool earns the word through its function.
+  confidence: firm
+  feeds_into: VISION.md

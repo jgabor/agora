@@ -1,0 +1,7 @@
+id: hcazhspwea
+artifact: progress
+record:
+  summary: "Cycle 19 (2026-05-05): Implemented Task 2 text-only local context safety with bounded file, byte, and depth caps; directory..."
+  migration_provenance:
+    source_path: .agentera/progress.yaml
+    source_record_sha256: 6a2b38322a04442c37b5c4f29d0dee38bbc0fdea827d216d3c75c35620cae359
