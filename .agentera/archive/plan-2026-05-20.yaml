@@ -1,7 +1,7 @@
 header:
   level: light
   created: 2026-05-20
-  status: active
+  status: completed
   title: Auto-mode config preview respects explicit --time and --max-turns overrides
 what: >
   Fix the auto-mode config preview so that when a user passes `--auto deep
@@ -20,7 +20,18 @@ constraints: >
   Preserve existing caps defaults when no explicit override is passed.
   Both `run` and `resume` auto-mode paths must be fixed.
 
+tasks:
+  - number: 1
+    name: Make auto-mode previews honor explicit limits
+    depends_on: []
+    status: complete
+    acceptance:
+      - GIVEN auto mode with an explicit `--time` flag WHEN the config preview renders THEN the displayed time limit matches the user's value, not the caps default
+      - GIVEN auto mode with an explicit `--max-turns` flag WHEN the config preview renders THEN the displayed max turns matches the user's value, not the caps default
+      - GIVEN auto mode without `--time` or `--max-turns` WHEN the config preview renders THEN the caps defaults are shown as before
+
 overall_acceptance:
   - GIVEN auto mode with an explicit `--time` flag WHEN the config preview renders THEN the displayed time limit matches the user's value, not the caps default
   - GIVEN auto mode with an explicit `--max-turns` flag WHEN the config preview renders THEN the displayed max turns matches the user's value, not the caps default
   - GIVEN auto mode without `--time` or `--max-turns` WHEN the config preview renders THEN the caps defaults are shown as before
+surprises: []

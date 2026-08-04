@@ -18,7 +18,7 @@ constraints: >-
   not silently fall back to slug search.
 scope:
   included:
-    - `show` command for transcript viewing
+    - "`show` command for transcript viewing"
     - slug-or-path behavior for transcript-backed commands
     - config slug-or-path behavior for `validate`
     - normal/quiet/verbose live output modes

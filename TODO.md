@@ -4,7 +4,36 @@ Open follow-up work for Agora. Completed items live in git history, `CHANGELOG.m
 
 ## ⇶ Critical
 
-_None._
+- [ ] Make the debate ledger the authoritative control plane for proposals,
+      objections, votes, halting, and synthesis. Replace free-text consensus
+      marker streaks with a versioned canonical proposal and structured votes
+      from unique agents against that exact version; revisions invalidate stale
+      endorsements. Halt for consensus only when one current proposal satisfies
+      the configured threshold, minimum rounds, deliverable contract, and
+      objection-disposition rules; otherwise record an explicit no-consensus
+      outcome with dissents. Give synthesis the proposal, votes, objections,
+      evidence status, and halt reason so it cannot present an independent
+      recommendation as group consensus. Remove the consensus-rejection and
+      topic-specific deliverable regexes once the structured protocol replaces
+      them. Cover incompatible endorsements, stale votes, repeated prose without
+      votes, max-turn no-consensus, and non-consensus synthesis in regression
+      tests.
+- [ ] Add active deliberation control driven by the typed ledger. Run a
+      moderator step at round boundaries and on stagnation to select the most
+      important unresolved crux, direct a specific agent to answer a specific
+      objection, request verification or a proposal revision, call a vote, or
+      declare no consensus with recorded dissents. Add explicit opening,
+      rebuttal, drafting, and voting phases plus convergence and repetition
+      signals so speaker selection and per-turn instructions respond to debate
+      state instead of remaining static round-robin prompts.
+- [ ] Make decisive factual claims evidence-backed. Let objections request
+      verification; require claims that materially support the current proposal
+      to cite supplied evidence or remain explicitly unverified; and preserve
+      unresolved evidence gaps through proposal revisions and synthesis. The
+      final artifact must distinguish verified facts, inferences, assumptions,
+      and recommendations. Cover unsupported code claims, conflicting evidence,
+      failed verification, and synthesis with unresolved evidence in regression
+      tests.
 
 ## ⇉ Degraded
 
@@ -22,50 +51,3 @@ _None._
 - [ ] Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
 - [ ] Evaluate named profiles after `prime` exists; current `config.yaml` covers defaults but not reusable identities
 - [ ] Tune auto mode level caps based on usage — Decision 4 caps are provisional
-
-## Roadmap
-
-What limits deliberation quality today
-
-1.  Consensus is free-text markers with regex heuristics, on no shared
-    object. ExtractConsensus matches [CONSENSUS: ...] and then filters
-    via hardcoded rejection phrases, including \brefine the laws\b and
-    the deliverableLawLine regex ^\d+\. An agent must in deliverable.go.
-    Those are overfit to one specific "three laws" test topic living in
-    general infrastructure. Worse, ConsecutiveAgentConsensusCount counts
-    consecutive marked turns without checking the statements refer to
-    the same thing. Agents can "reach consensus" while endorsing
-    different statements, and in ring topology an agent often can't
-    even see the statement it is supposedly agreeing with.
-
-2.  The moderator doesn't exist at runtime. ModeratorPrompt and
-    ModeratorConfig are defined but never invoked; "moderator" is just a
-    label on seed/evidence records. Nothing detects repetition or
-    stalemate, redirects drift, or forces a vote.
-
-### Missing pieces, ranked by impact
-
-1.  A first-class proposal artifact with real voting. Make consensus an
-    endorsement of a versioned canonical draft (proposal v3), not a
-    free-text marker streak. Agents emit structured output (position,
-    responds_to, concessions, vote: endorse|object(reason)). This
-    deletes consensusRejectionPatterns, the deliverable-gate regex, and
-    the autogen prompt hack ("agents must not mark CONSENSUS until the
-    draft is endorsed verbatim"), replacing hope-based prompting with a
-    mechanism.
-
-2.  An active moderator loop. Run the already-written moderator every
-    round or on trigger: summarize into the ledger, name the crux,
-    select the next speaker (disagreement-driven instead of
-    round-robin), call the vote, or declare "no consensus, recording
-    dissents" instead of stalling until max_turns.
-
-3.  Phase structure. Opening positions (parallelizable, independent) →
-    rebuttal rounds → drafting/convergence → vote. Per-turn instructions
-    in the envelope ("round 2 of 3; you must address X's objection to
-    point 2") rather than the same static persona prompt each turn.
-
-4.  Convergence and stalemate metrics. Turn-over-turn similarity (even
-    lexical) to detect repetition; surfaced in stats and used as a
-    moderator trigger. Right now nothing measures whether the debate is
-    moving.

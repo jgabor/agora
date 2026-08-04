@@ -17,7 +17,16 @@ audits:
     info: 2
     filtered_by_confidence: 0
   trajectory: first audit — no baseline
-  grades: {}
+  grades:
+    Architecture Alignment: B
+    Pattern Consistency: A
+    Coupling Health: A
+    Complexity Hotspots: B
+    Test Health: D
+    Dependency Health: A
+    Artifact Freshness: A
+    Prose Health: A
+    Security Hygiene: A
   dimension_details:
   - name: Architecture Alignment
     grade: B
@@ -180,7 +189,10 @@ audits:
     info: 0
     filtered_by_confidence: 0
   trajectory: improving implementation health, flagged artifact hygiene
-  grades: {}
+  grades:
+    Artifact Hygiene: B
+    Verification Health: A
+    Implementation Risk: A
   dimension_details:
   - name: Artifact Hygiene
     grade: B
@@ -218,7 +230,8 @@ audits:
     info: 0
     filtered_by_confidence: 0
   trajectory: clean after artifact hygiene fix
-  grades: {}
+  grades:
+    Artifact Hygiene: A
   dimension_details:
   - name: Artifact Hygiene
     grade: A
@@ -247,7 +260,17 @@ audits:
     info: 5
     filtered_by_confidence: 0
   trajectory: 'improving — high-B (5 A, 5 B, 0 C/D/F) vs Audit #1''s B-with-test-D. Debate-ledger subsystem ships clean; module-path warning resolved; test coverage up sharply. Held back by a dead-code redundancy, a stale docs registry, and two bonus follow-up latent bugs documented-not-fixed.'
-  grades: {}
+  grades:
+    Architecture Alignment: B
+    Pattern Consistency: B
+    Coupling Health: A
+    Complexity Hotspots: B
+    Test Health: A
+    Dependency Health: A
+    Version Health: A
+    Artifact Freshness: B
+    Security Hygiene: A
+    Prose Health: B
   overall_grade: B+
   scope: 'Post-plan health audit across the 8 Debate-Ledger commits (fac3b14..d9aa36f) plus the archived plan. Focus: new ledger subsystem (internal/ledger, types, orchestrator wiring, transcript persistence, resume seeding, --no-ledger precedence) against Decisions 1, 6, and 10.'
   dimension_details:
