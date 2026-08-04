@@ -146,7 +146,7 @@ func TestProposalRevisionStalesVotesAndPreservesOpenState(t *testing.T) {
 	}
 }
 
-func TestValidateDeliberationTransitionRejectsInvalidLifecycle(t *testing.T) {
+func TestValidateDeliberationTransitionTerminalStateIsImmutable(t *testing.T) {
 	previous := protocolStateWithProposal()
 	previous.Phase = PhaseTerminal
 	previous.Outcome = TerminalOutcome{Kind: OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
@@ -154,10 +154,38 @@ func TestValidateDeliberationTransitionRejectsInvalidLifecycle(t *testing.T) {
 		t.Fatalf("terminal previous state: %v", err)
 	}
 
-	next := cloneControlState(t, previous)
-	next.Phase = PhaseOpening
-	next.Outcome = TerminalOutcome{Kind: OutcomePending, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
-	if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "terminal phase") {
-		t.Fatalf("terminal reopening error: got %v", err)
+	exactRepeat := cloneControlState(t, previous)
+	if err := ValidateDeliberationTransition(previous, exactRepeat); err != nil {
+		t.Fatalf("exact terminal snapshot repeat: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*DeliberationControlState)
+	}{
+		{
+			name: "append valid vote",
+			mutate: func(next *DeliberationControlState) {
+				next.Votes = append(next.Votes, ProposalVote{AgentID: "alpha", ProposalVersion: 1, Choice: VoteEndorse})
+			},
+		},
+		{
+			name: "change convergence signal",
+			mutate: func(next *DeliberationControlState) {
+				next.Convergence.StagnantRounds++
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			next := cloneControlState(t, previous)
+			tt.mutate(next)
+			if err := next.Validate(); err != nil {
+				t.Fatalf("mutated state should remain individually valid: %v", err)
+			}
+			if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "terminal control state is immutable") {
+				t.Fatalf("terminal mutation error: got %v", err)
+			}
+		})
 	}
 }

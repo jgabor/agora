@@ -424,8 +424,11 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 	if !equalStrings(previous.AgentIDs, next.AgentIDs) || previous.SourceReferenceCount != next.SourceReferenceCount {
 		return fmt.Errorf("agent identities and source reference bounds are immutable")
 	}
-	if previous.Phase == PhaseTerminal && next.Phase != PhaseTerminal {
-		return fmt.Errorf("invalid lifecycle transition from terminal phase to %q", next.Phase)
+	if previous.Phase == PhaseTerminal {
+		if reflect.DeepEqual(previous, next) {
+			return nil
+		}
+		return fmt.Errorf("terminal control state is immutable")
 	}
 	if next.CurrentProposalVersion < previous.CurrentProposalVersion || next.CurrentProposalVersion > previous.CurrentProposalVersion+1 {
 		return fmt.Errorf("invalid proposal lifecycle transition from version %d to %d", previous.CurrentProposalVersion, next.CurrentProposalVersion)

@@ -666,6 +666,36 @@ func TestLoadFileStrictValidatesTypedProtocol(t *testing.T) {
 	}
 }
 
+func TestTranscriptLoadersRejectMutationAfterTerminalState(t *testing.T) {
+	terminal := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	terminal.CurrentProposalVersion = 1
+	terminal.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "final proposal"}}
+	terminal.Phase = types.PhaseTerminal
+	terminal.Outcome = types.TerminalOutcome{Kind: types.OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	if err := terminal.Validate(); err != nil {
+		t.Fatalf("terminal state: %v", err)
+	}
+
+	mutated := *terminal
+	mutated.Votes = []types.ProposalVote{{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse}}
+	first := mkRecord(0, "alpha", "terminal", false, "")
+	first.Control = terminal
+	second := mkRecord(1, "alpha", "post-terminal vote", false, "")
+	second.Control = &mutated
+	path := filepath.Join(t.TempDir(), "post-terminal-mutation.jsonl")
+	content := marshalLine(t, first) + "\n" + marshalLine(t, second) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), "terminal control state is immutable") {
+		t.Fatalf("strict loader error: got %v", err)
+	}
+	if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "terminal control state is immutable") {
+		t.Fatalf("lenient loader error: got %v", err)
+	}
+}
+
 func TestLoadFileLenientWarnsOnMalformedLedgerRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "transcript.jsonl")
 	malformedLedger := `{"turn": -3, "agent_id": "ledger", "timestamp": 1.0, "content": "", "tokens": {}, "consensus": false, "consensus_statement": "", "elapsed": 0}`

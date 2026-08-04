@@ -1,0 +1,17 @@
+id: djtsokfabh
+artifact: progress
+record:
+  timestamp: 2026-08-04 10:22
+  type: fix
+  phase: build
+  what: Corrected audit-wudpmngihx-1 by making terminal deliberation control state immutable. ValidateDeliberationTransition permits an exact repeated terminal snapshot and rejects every other post-terminal mutation.
+  context:
+    intent: Address only the accepted terminal-immutability audit finding for Task wudpmngihx.
+    constraints: Do not amend the prior commit, do not start later tasks, and do not mark the task complete before independent PASS provenance is persisted.
+    unknowns: None. Profile grounding remains unavailable because the profile is oversized; Decision 10 satisfaction remains open.
+    scope: internal/types/protocol.go, terminal transition tests, transcript loader regression tests, and Agentera retry state.
+  inspiration: The independent audit showed that append-only history validation still allowed new votes after consensus when phase and outcome stayed unchanged. Comparing the complete validated terminal snapshots is the smallest rule that closes every mutable field without defining later phase or ingestion behavior.
+  discovered: "The bypass was not limited to vote history: moderator action, convergence signals, and other non-history fields could also change after termination. Full-state equality covers all current fields and future additions by default. The persisted task evaluation correctly remains at fail attempt 1 and in_progress."
+  verified: "TestValidateDeliberationTransitionTerminalStateIsImmutable passed: an exact repeated consensus snapshot is accepted, while an individually valid appended current vote and an individually valid convergence-signal change both fail with terminal control state is immutable. TestTranscriptLoadersRejectMutationAfterTerminalState passed: both LoadFileStrict and LoadFileLenient reject a JSONL sequence that appends a valid vote after terminal consensus. Focused command env PATH=GOROOT/bin:/usr/bin:/bin go test -count=1 -run TestValidateDeliberationTransitionTerminalStateIsImmutable|TestTranscriptLoadersRejectMutationAfterTerminalState ./internal/types ./internal/transcript passed. Full restricted-PATH go test ./... -race passed all 14 packages. go vet ./... and golangci-lint run ./... passed. CGO_ENABLED=0 go build produced a statically linked checkout artifact and ./agora metadata --format json succeeded. git diff --check passed and gopls reported no diagnostics."
+  next: Keep Task wudpmngihx in_progress. The independent evaluator must record PASS before the orchestrator marks it complete. Do not start Task 2.
+  publication_order: 2
