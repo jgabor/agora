@@ -150,6 +150,31 @@ type AgentContribution struct {
 	Claims         []ClaimEvidence            `yaml:"claims" json:"claims"`
 }
 
+// DirectiveKind identifies the required work for the next directed turn.
+// DirectiveNone is used while an opening speaker only needs to state an
+// independent position or when the current state has no more specific work.
+type DirectiveKind string
+
+const (
+	DirectiveNone           DirectiveKind = "none"
+	DirectiveRespond        DirectiveKind = "respond"
+	DirectiveVerify         DirectiveKind = "verify"
+	DirectiveReviseProposal DirectiveKind = "revise_proposal"
+	DirectiveVote           DirectiveKind = "vote"
+)
+
+// TurnDirective is the outstanding state-driven instruction for one agent.
+// References identify existing debate state; the orchestrator does not invent
+// the response, verification result, proposal text, or vote.
+type TurnDirective struct {
+	Kind            DirectiveKind `yaml:"kind" json:"kind"`
+	TargetAgentID   string        `yaml:"target_agent_id,omitempty" json:"target_agent_id,omitempty"`
+	Crux            string        `yaml:"crux,omitempty" json:"crux,omitempty"`
+	ObjectionID     string        `yaml:"objection_id,omitempty" json:"objection_id,omitempty"`
+	ClaimID         string        `yaml:"claim_id,omitempty" json:"claim_id,omitempty"`
+	ProposalVersion int           `yaml:"proposal_version,omitempty" json:"proposal_version,omitempty"`
+}
+
 // ModeratorActionKind identifies the latest typed moderator decision.
 type ModeratorActionKind string
 
@@ -217,6 +242,7 @@ type DeliberationControlState struct {
 	Votes                  []ProposalVote         `yaml:"votes" json:"votes"`
 	Claims                 []ClaimEvidence        `yaml:"claims" json:"claims"`
 	Contributions          []AgentContribution    `yaml:"contributions" json:"contributions"`
+	Directive              TurnDirective          `yaml:"directive" json:"directive"`
 	ModeratorAction        ModeratorAction        `yaml:"moderator_action" json:"moderator_action"`
 	Convergence            ConvergenceSignals     `yaml:"convergence" json:"convergence"`
 	Outcome                TerminalOutcome        `yaml:"outcome" json:"outcome"`
@@ -235,6 +261,7 @@ func NewDeliberationControlState(agentIDs []string, sourceReferenceCount int) *D
 		Votes:                []ProposalVote{},
 		Claims:               []ClaimEvidence{},
 		Contributions:        []AgentContribution{},
+		Directive:            TurnDirective{Kind: DirectiveNone},
 		ModeratorAction: ModeratorAction{
 			Kind:         ModeratorActionNone,
 			ObjectionIDs: []string{},
@@ -463,6 +490,9 @@ func (s *DeliberationControlState) Validate() error {
 	if err := s.validateContributions(objections); err != nil {
 		return err
 	}
+	if err := s.validateDirective(agents, proposals, objections, claims); err != nil {
+		return err
+	}
 
 	if err := s.validateAction(agents, proposals, objections, claims); err != nil {
 		return err
@@ -591,6 +621,9 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 		}
 		return fmt.Errorf("terminal control state is immutable")
 	}
+	if !validPhaseTransition(previous.Phase, next.Phase) {
+		return fmt.Errorf("invalid phase transition from %q to %q", previous.Phase, next.Phase)
+	}
 	if next.CurrentProposalVersion < previous.CurrentProposalVersion || next.CurrentProposalVersion > previous.CurrentProposalVersion+1 {
 		return fmt.Errorf("invalid proposal lifecycle transition from version %d to %d", previous.CurrentProposalVersion, next.CurrentProposalVersion)
 	}
@@ -607,6 +640,46 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 	}
 	if previous.Outcome.Kind != OutcomePending && !reflect.DeepEqual(previous.Outcome, next.Outcome) {
 		return fmt.Errorf("terminal outcome is immutable")
+	}
+	return nil
+}
+
+func (s *DeliberationControlState) validateDirective(agents map[string]bool, proposals map[int]CanonicalProposal, objections, claims map[string]bool) error {
+	directive := s.Directive
+	if directive.Kind == "" { // Backward-compatible typed snapshots predate directives.
+		directive.Kind = DirectiveNone
+	}
+	if directive.Kind == DirectiveNone {
+		if directive.TargetAgentID != "" || directive.Crux != "" || directive.ObjectionID != "" || directive.ClaimID != "" || directive.ProposalVersion != 0 {
+			return fmt.Errorf("none directive cannot include a target or references")
+		}
+		return nil
+	}
+	if !agents[directive.TargetAgentID] {
+		return fmt.Errorf("directive references unknown target agent %q", directive.TargetAgentID)
+	}
+	switch directive.Kind {
+	case DirectiveRespond:
+		if (directive.Crux == "") == (directive.ObjectionID == "") || directive.ClaimID != "" || directive.ProposalVersion != 0 {
+			return fmt.Errorf("respond directive requires exactly one crux or objection reference")
+		}
+		if directive.ObjectionID != "" && !objections[directive.ObjectionID] {
+			return fmt.Errorf("directive references unknown objection %q", directive.ObjectionID)
+		}
+	case DirectiveVerify:
+		if !claims[directive.ClaimID] || directive.Crux != "" || directive.ObjectionID != "" || directive.ProposalVersion != 0 {
+			return fmt.Errorf("verify directive requires one known claim reference")
+		}
+	case DirectiveReviseProposal:
+		if _, ok := proposals[directive.ProposalVersion]; !ok || directive.ProposalVersion != s.CurrentProposalVersion || directive.Crux != "" || directive.ObjectionID != "" || directive.ClaimID != "" {
+			return fmt.Errorf("revise_proposal directive requires the current proposal version")
+		}
+	case DirectiveVote:
+		if _, ok := proposals[directive.ProposalVersion]; !ok || directive.ProposalVersion != s.CurrentProposalVersion || directive.Crux != "" || directive.ObjectionID != "" || directive.ClaimID != "" {
+			return fmt.Errorf("vote directive requires the current proposal version")
+		}
+	default:
+		return fmt.Errorf("invalid directive kind %q", directive.Kind)
 	}
 	return nil
 }
@@ -673,6 +746,15 @@ func (s *DeliberationControlState) validateOutcome(agents map[string]bool, propo
 
 func validPhase(v DeliberationPhase) bool {
 	return v == PhaseOpening || v == PhaseRebuttal || v == PhaseDrafting || v == PhaseVoting || v == PhaseTerminal
+}
+
+func validPhaseTransition(previous, next DeliberationPhase) bool {
+	if previous == next || next == PhaseTerminal {
+		return true
+	}
+	return previous == PhaseOpening && next == PhaseRebuttal ||
+		previous == PhaseRebuttal && next == PhaseDrafting ||
+		previous == PhaseDrafting && next == PhaseVoting
 }
 
 func validDisposition(v ObjectionDispositionStatus) bool {

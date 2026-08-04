@@ -4,6 +4,7 @@
 
 ### Added
 - Versioned typed deliberation control state for proposal revisions, objections and dispositions, unique-agent votes, claim evidence status, moderation, convergence, and terminal outcomes, with strict validation and explicit legacy transcript classification.
+- `internal/orchestrator/phases.go` makes `agora run` advance `DeliberationControlState` through ordered opening, rebuttal, drafting, and voting phases with independent openings, deterministic speakers, and persisted typed directives.
 
 ## [0.4.2] - 2026-08-03
 

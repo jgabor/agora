@@ -1,0 +1,23 @@
+id: cjncdmicml
+artifact: progress
+record:
+  timestamp: 2026-08-04 11:08
+  type: feat
+  phase: build
+  what: Added ordered state-driven deliberation phases and persisted typed turn directives for Task gahqkhmvkr.
+  context:
+    intent: "Execute only Task gahqkhmvkr: explicit opening, rebuttal, drafting, and voting lifecycle plus deterministic directive delivery and resume continuity."
+    constraints: Preserved Decisions 1, 2, 6, and 10; did not implement evidence verification policy, consensus halt evaluation, active moderator calls, or stagnation calls. Included persisted Task 2 Audit PASS/complete state. Keep Task gahqkhmvkr in_progress pending independent Audit. Profile grounding remains unavailable because the profile is oversized, and Decision 10 satisfaction remains open.
+    unknowns: Glossary advice for directive returned invalid_or_unavailable_personal and supplied no applicable meaning. The implementation therefore used the task acceptance and existing protocol terminology without claiming glossary authority.
+    scope: internal/types protocol validation, internal/orchestrator deterministic phase and speaker control, directive envelopes, resume cloning, transcript continuity tests, and the Unreleased changelog.
+  discovered: Independent openings also required suppressing prior-agent history during the opening phase. Resume previously reused the last transcript control pointer, so preparing a directive could mutate source history; resume now deep-clones that state. The CLI has no version subcommand, so checkout verification used prime instead.
+  verified: Focused restricted-PATH tests passed for ./internal/types ./internal/ledger ./internal/orchestrator ./internal/session ./internal/transcript. Regression tables cover a pass and fail for each ordered phase transition and each response, verification, proposal-revision, and vote directive; run coverage proves all three agents get one history-free opening; resume coverage proves voting phase and the persisted beta vote directive select beta without mutating source state; transcript tests reject illegal transitions and preserve legacy loading. Full env PATH=GOROOT/bin:/usr/bin:/bin go test ./... -race -coverprofile=/tmp/opencode/agora-gahqkhmvkr/coverage.out passed all 14 packages (orchestrator 82.2%, session 87.0%). go vet ./... passed. golangci-lint 2.12.2 reported 0 issues. go build produced /tmp/opencode/agora-gahqkhmvkr/agora; checkout prime succeeded. Restricted-PATH run, resume, and show dry-run smoke persisted opening -> rebuttal -> drafting and resumed at drafting with no external model call. git diff --check and gopls diagnostics passed with hints only.
+  next: Independent Audit must evaluate Task gahqkhmvkr. Keep it in_progress; do not start Tasks 3, 4, 6, 7, or 8.
+  glossary_caveat:
+    event: current
+    reason: personal_input_unavailable
+    ownership_state: authority_unavailable
+    caveat_id: kzapirndwt
+    capability: build
+    transition_id: null
+  publication_order: 5

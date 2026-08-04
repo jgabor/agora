@@ -1,6 +1,7 @@
 package session_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jgabor/agora/internal/cast"
@@ -308,5 +309,43 @@ func TestResumeLegacySourceNoLedgerInjection(t *testing.T) {
 		if r.AgentID == types.LedgerAgentID || r.Turn == types.LedgerSentinelTurn || r.Ledger != nil {
 			t.Fatalf("legacy resume must not inject ledger records; found at index %d: %#v", i, r)
 		}
+	}
+}
+
+func TestResumePreservesPhaseAndOutstandingDirective(t *testing.T) {
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: model}, {ID: "beta", Model: model}},
+	}
+	control := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	control.Phase = types.PhaseVoting
+	control.CurrentProposalVersion = 1
+	control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "candidate"}}
+	control.Directive = types.TurnDirective{Kind: types.DirectiveVote, TargetAgentID: "beta", ProposalVersion: 1}
+	if err := control.Validate(); err != nil {
+		t.Fatalf("source control: %v", err)
+	}
+	source := []types.TurnRecord{{Turn: 0, AgentID: "alpha", Model: &model, Content: "prior", Control: control}}
+	wantDirective := control.Directive
+
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic: "resume phase state", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl",
+			MaxTurns: 1, TimeLimit: 60, DryRun: true,
+		},
+		SourceRecords: source,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if len(result.Records) < 2 || result.Records[1].AgentID != "beta" {
+		t.Fatalf("resumed directed turn: %#v", result.Records)
+	}
+	if result.State.Control.Phase != types.PhaseVoting {
+		t.Fatalf("resumed phase: got %s, want voting", result.State.Control.Phase)
+	}
+	if source[0].Control.Phase != types.PhaseVoting || !reflect.DeepEqual(source[0].Control.Directive, wantDirective) {
+		t.Fatalf("resume mutated source control: %#v", source[0].Control)
 	}
 }

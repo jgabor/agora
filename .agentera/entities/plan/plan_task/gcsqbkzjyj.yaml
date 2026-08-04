@@ -4,7 +4,7 @@ record:
   name: Capture typed agent contributions in the ledger
   depends_on:
     - wudpmngihx
-  status: in_progress
+  status: complete
   acceptance:
     - GIVEN an agent completes a turn WHEN its contribution is accepted THEN its position, responses, concessions, proposal action, objections, vote, and claims are bound to that agent and turn in typed state.
     - GIVEN an agent emits malformed or incomplete structured output WHEN the contribution is processed THEN the failure is explicit and cannot create a proposal endorsement or resolved objection.
@@ -13,12 +13,12 @@ record:
     - Test proportionality target — one pass and one fail per contribution family, including malformed output, incompatible endorsements, and deterministic dry-run behavior.
   plan: josxwbovpf
   evaluation:
-    attempt_count: 1
+    attempt_count: 2
     failure_count: 1
-    last_verdict: fail
+    last_verdict: pass
     last_failure_evidence: Malformed null contribution families and omitted required nested fields can endorse; collected evidence references remain unbound because SourceReferenceCount stays zero.
     provenance:
-      attempt_id: audit-gcsqbkzjyj-1
-      source: Audit session ses_03412893fffeh5mocip3v140sQ
-      recorded_at: 2026-08-04 10:48
+      attempt_id: audit-gcsqbkzjyj-2
+      source: Audit re-review session ses_03412893fffeh5mocip3v140sQ
+      recorded_at: 2026-08-04 10:56
       writer_command: agentera state plan record-evaluation

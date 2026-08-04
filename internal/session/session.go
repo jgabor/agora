@@ -3,6 +3,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"time"
@@ -91,7 +92,9 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 
 	existingTurns := countAgentTurns(req.SourceRecords)
 	state := buildState(req.RunRequest, existingTurns)
-	if control := lastControlFromRecords(req.SourceRecords); control != nil {
+	if control, err := lastControlFromRecords(req.SourceRecords); err != nil {
+		return Result{}, err
+	} else if control != nil {
 		state.Control = control
 	}
 	state.Evidence = types.EvidenceRequest{}
@@ -250,13 +253,21 @@ func lastLedgerFromRecords(records []types.TurnRecord) *types.DebateLedger {
 	return nil
 }
 
-func lastControlFromRecords(records []types.TurnRecord) *types.DeliberationControlState {
+func lastControlFromRecords(records []types.TurnRecord) (*types.DeliberationControlState, error) {
 	for i := len(records) - 1; i >= 0; i-- {
 		if records[i].Control != nil {
-			return records[i].Control
+			data, err := json.Marshal(records[i].Control)
+			if err != nil {
+				return nil, fmt.Errorf("cloning resumed control state: %w", err)
+			}
+			var clone types.DeliberationControlState
+			if err := json.Unmarshal(data, &clone); err != nil {
+				return nil, fmt.Errorf("cloning resumed control state: %w", err)
+			}
+			return &clone, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func countAgentTurns(records []types.TurnRecord) int {

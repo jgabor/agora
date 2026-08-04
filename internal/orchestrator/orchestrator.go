@@ -109,6 +109,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			return types.ComputeStats(o.transcript.Records())
 		}
 	}
+	prepareNextTurn(o.state.Control, o.currentLedger, true)
 
 	for o.state.Running && (o.state.MaxTurns <= 0 || o.state.Turn < o.state.MaxTurns) {
 		o.checkTerminationConditions()
@@ -116,8 +117,7 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			break
 		}
 
-		agentIdx := o.state.Turn % o.numAgents
-		ag := o.state.Config.Agents[agentIdx]
+		ag := o.nextAgent()
 
 		turnRecord, ok := o.executeTurn(ag)
 		if !ok {
@@ -381,6 +381,10 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		o.numAgents,
 		o.state.Turn,
 	)
+	opening := o.state.Control != nil && o.state.Control.Phase == types.PhaseOpening
+	if opening {
+		history = nil
+	}
 
 	envelope := map[string]any{
 		"topic":            o.state.Topic,
@@ -394,6 +398,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	}
 	if o.state.Control != nil {
 		envelope["control_state"] = o.state.Control
+		envelope["directive"] = o.state.Control.Directive
 		envelope["contribution_contract"] = ledger.ContributionContract
 	}
 	if o.sharedEvidence != nil && !o.evidenceSent[ag.ID] {
@@ -404,7 +409,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		envelope["ledger"] = o.currentLedger
 	}
 
-	if o.state.FullContext {
+	if o.state.FullContext && !opening {
 		records := o.transcript.Records()
 		start := len(records) - o.state.Window
 		if start < 0 {
@@ -436,6 +441,11 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 			o.fail("contribution_error:", err)
 			return types.TurnRecord{}, false
 		}
+		prepareNextTurn(nextControl, o.currentLedger, !directiveFulfilled(o.state.Control.Directive, nextControl))
+		if err := types.ValidateDeliberationTransition(o.state.Control, nextControl); err != nil {
+			o.fail("control_error:", err)
+			return types.TurnRecord{}, false
+		}
 		cleanedContent = nextControl.Contributions[len(nextControl.Contributions)-1].Position
 		hasConsensus = false
 		consensusStmt = ""
@@ -463,6 +473,24 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		ConsensusIgnored:   consensusIgnored,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
+}
+
+func (o *Orchestrator) nextAgent() types.AgentConfig {
+	target := ""
+	if o.state.Control != nil {
+		target = o.state.Control.Directive.TargetAgentID
+		if target == "" {
+			target = nextScheduledAgent(o.state.Control)
+		}
+	}
+	if target != "" {
+		for _, candidate := range o.state.Config.Agents {
+			if candidate.ID == target {
+				return candidate
+			}
+		}
+	}
+	return o.state.Config.Agents[o.state.Turn%o.numAgents]
 }
 
 func (o *Orchestrator) fail(prefix string, err error) {

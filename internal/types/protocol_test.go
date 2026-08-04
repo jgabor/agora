@@ -43,7 +43,7 @@ func TestNewDeliberationControlState(t *testing.T) {
 	for _, field := range []string{
 		`"protocol_version"`, `"phase"`, `"current_proposal_version"`,
 		`"objections"`, `"dispositions"`, `"votes"`, `"claims"`,
-		`"moderator_action"`, `"convergence"`, `"outcome"`,
+		`"directive"`, `"moderator_action"`, `"convergence"`, `"outcome"`,
 	} {
 		if !strings.Contains(string(data), field) {
 			t.Errorf("initial state JSON missing %s: %s", field, data)
@@ -53,6 +53,80 @@ func TestNewDeliberationControlState(t *testing.T) {
 	invalid := NewDeliberationControlState([]string{"alpha", "alpha"}, 0)
 	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate agent identity") {
 		t.Fatalf("duplicate identity error: got %v", err)
+	}
+}
+
+func TestValidateDeliberationTransitionRequiresOrderedPhases(t *testing.T) {
+	tests := []struct {
+		name    string
+		from    DeliberationPhase
+		to      DeliberationPhase
+		invalid DeliberationPhase
+	}{
+		{name: "opening to rebuttal", from: PhaseOpening, to: PhaseRebuttal, invalid: PhaseDrafting},
+		{name: "rebuttal to drafting", from: PhaseRebuttal, to: PhaseDrafting, invalid: PhaseVoting},
+		{name: "drafting to voting", from: PhaseDrafting, to: PhaseVoting, invalid: PhaseOpening},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := NewDeliberationControlState([]string{"alpha"}, 0)
+			previous.Phase = tt.from
+			next := cloneControlState(t, previous)
+			next.Phase = tt.to
+			if err := ValidateDeliberationTransition(previous, next); err != nil {
+				t.Fatalf("valid phase transition: %v", err)
+			}
+			next.Phase = tt.invalid
+			if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "invalid phase transition") {
+				t.Fatalf("illegal phase transition error: %v", err)
+			}
+		})
+	}
+}
+
+func TestDeliberationControlStateValidatesEachDirectiveKind(t *testing.T) {
+	base := protocolStateWithProposal()
+	base.Claims = []ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Decisive: true, Status: EvidenceUnverified, SourceRefs: []int{}}}
+	base.Objections = []Objection{{ID: "objection-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
+	tests := []struct {
+		name    string
+		valid   TurnDirective
+		invalid TurnDirective
+	}{
+		{
+			name:    "response",
+			valid:   TurnDirective{Kind: DirectiveRespond, TargetAgentID: "beta", ObjectionID: "objection-1"},
+			invalid: TurnDirective{Kind: DirectiveRespond, TargetAgentID: "beta", ObjectionID: "missing"},
+		},
+		{
+			name:    "verification",
+			valid:   TurnDirective{Kind: DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"},
+			invalid: TurnDirective{Kind: DirectiveVerify, TargetAgentID: "beta", ClaimID: "missing"},
+		},
+		{
+			name:    "proposal revision",
+			valid:   TurnDirective{Kind: DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 1},
+			invalid: TurnDirective{Kind: DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 2},
+		},
+		{
+			name:    "vote",
+			valid:   TurnDirective{Kind: DirectiveVote, TargetAgentID: "beta", ProposalVersion: 1},
+			invalid: TurnDirective{Kind: DirectiveVote, TargetAgentID: "missing", ProposalVersion: 1},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valid := cloneControlState(t, base)
+			valid.Directive = tt.valid
+			if err := valid.Validate(); err != nil {
+				t.Fatalf("valid directive: %v", err)
+			}
+			invalid := cloneControlState(t, base)
+			invalid.Directive = tt.invalid
+			if err := invalid.Validate(); err == nil {
+				t.Fatal("invalid directive unexpectedly validated")
+			}
+		})
 	}
 }
 

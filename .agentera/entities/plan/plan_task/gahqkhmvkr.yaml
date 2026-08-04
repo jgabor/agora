@@ -5,7 +5,7 @@ record:
   depends_on:
     - wudpmngihx
     - gcsqbkzjyj
-  status: pending
+  status: in_progress
   acceptance:
     - GIVEN a new deliberation begins WHEN the opening phase runs THEN every active agent receives one opportunity to state an independent opening position before state-driven speaker selection begins.
     - GIVEN the debate advances WHEN phase criteria are met THEN control state moves through opening, rebuttal, drafting, and voting without skipping required work.
