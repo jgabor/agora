@@ -12,3 +12,13 @@ record:
     - GIVEN a contribution revises the proposal WHEN the revision is accepted THEN prior votes become stale and unresolved objections and evidence gaps survive unless explicitly disposed.
     - Test proportionality target — one pass and one fail per contribution family, including malformed output, incompatible endorsements, and deterministic dry-run behavior.
   plan: josxwbovpf
+  evaluation:
+    attempt_count: 1
+    failure_count: 1
+    last_verdict: fail
+    last_failure_evidence: Malformed null contribution families and omitted required nested fields can endorse; collected evidence references remain unbound because SourceReferenceCount stays zero.
+    provenance:
+      attempt_id: audit-gcsqbkzjyj-1
+      source: Audit session ses_03412893fffeh5mocip3v140sQ
+      recorded_at: 2026-08-04 10:48
+      writer_command: agentera state plan record-evaluation

@@ -182,6 +182,9 @@ func (o *Orchestrator) collectEvidence() bool {
 		o.fail("evidence_error:", fmt.Errorf("no source references produced"))
 		return false
 	}
+	if o.state.Control != nil {
+		o.state.Control.SourceReferenceCount = len(bundle.SourceReferences)
+	}
 	o.sharedEvidence = bundle
 	auditEvidence := *bundle
 	auditEvidence.ContextDocuments = nil

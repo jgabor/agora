@@ -1,0 +1,14 @@
+id: wbrjmceotr
+artifact: progress
+record:
+  timestamp: 2026-08-04 10:52
+  type: fix
+  phase: build
+  what: Corrected Audit findings F1 and F2 for typed contribution ingestion without expanding Task 2 scope.
+  context:
+    intent: Retry only Task gcsqbkzjyj and close accepted Audit findings F1 and F2.
+    constraints: Keep the task in_progress for independent re-review; preserve references-only evidence, deterministic dry runs, Decision 10 separation, and all Task 3+ boundaries. Include persisted audit-gcsqbkzjyj-1 FAIL state; do not amend or push.
+    scope: Required-field presence/null validation, claim decisive presence, evidence source-count binding, focused regressions, and checkout-binary verification.
+  verified: "F1: TestProcessContributionRejectsNullFamiliesAndOmittedDecisiveWithoutMutation submits each required non-null family as JSON null while also requesting an endorsement and, where representable, a resolved disposition; it also submits claim {id:claim-missing-decisive,proposal_version:1,kind:fact,source_refs:[]} with decisive omitted. Every case returns an explicit error, nil next state, deep-equal authoritative state, one unchanged prior vote, and zero dispositions. F2: TestEvidenceSourceReferencesAreBoundBeforeTypedContribution supplies exactly one SourceReference plus full ContextDocument content, then accepts a contribution creating proposal 1, endorsing it, and claiming source_refs:[0]. It verifies SourceReferenceCount=1, the accepted claim retains [0], the transcript retains one source reference, and ContextDocuments is nil. Exact focused command: env PATH=\"/usr/lib/go/bin:/usr/bin:/bin\" go test -count=1 -run 'TestProcessContribution|TestExecuteTurnRejectsMalformedTypedContributionWithoutMutation|TestEvidenceSourceReferencesAreBoundBeforeTypedContribution' ./internal/ledger ./internal/orchestrator. This reruns all Task 2 family, malformed, incompatible endorsement, revision/stale-vote, no-mutation, and identical-input deterministic tests. Broad checks passed: restricted-PATH go test ./... -race -coverprofile=/tmp/opencode/agora-task2/retry-coverage.out (14 packages; ledger 83.3%, orchestrator 86.2%), go vet ./..., golangci-lint run ./... (0 issues), go build, and gopls diagnostics (hints only). Checkout binary /tmp/opencode/agora-task2/agora-retry ran --context README.md --dry-run --max-turns 1; raw JSONL showed source_reference_count 1, one contribution, one persisted reference, and zero persisted context documents."
+  next: Independent Audit must rerun Task gcsqbkzjyj. Orchestrate may record PASS and complete the task only after that re-review.
+  publication_order: 4

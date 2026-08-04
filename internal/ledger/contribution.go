@@ -61,7 +61,7 @@ type contributionClaim struct {
 	ID              string          `json:"id"`
 	ProposalVersion int             `json:"proposal_version"`
 	Kind            types.ClaimKind `json:"kind"`
-	Decisive        bool            `json:"decisive"`
+	Decisive        *bool           `json:"decisive"`
 	SourceRefs      []int           `json:"source_refs"`
 }
 
@@ -90,6 +90,11 @@ func parseContribution(output string) (contributionPayload, error) {
 	for _, field := range []string{"position", "responses", "concessions", "proposal_action", "objections", "vote", "claims"} {
 		if _, ok := fields[field]; !ok {
 			return contributionPayload{}, fmt.Errorf("incomplete output: missing %q", field)
+		}
+	}
+	for _, field := range []string{"position", "responses", "concessions", "proposal_action", "objections", "claims"} {
+		if bytes.Equal(bytes.TrimSpace(fields[field]), []byte("null")) {
+			return contributionPayload{}, fmt.Errorf("incomplete output: %q must not be null", field)
 		}
 	}
 
@@ -219,10 +224,13 @@ func applyClaims(state *types.DeliberationControlState, contribution *types.Agen
 		if !validClaimKind(claim.Kind) {
 			return fmt.Errorf("claim %q has invalid kind %q", claim.ID, claim.Kind)
 		}
+		if claim.Decisive == nil {
+			return fmt.Errorf("claim %q decisive is required", claim.ID)
+		}
 		if claim.SourceRefs == nil {
 			return fmt.Errorf("claim %q source_refs is required", claim.ID)
 		}
-		record := types.ClaimEvidence{ID: claim.ID, AgentID: agentID, ProposalVersion: claim.ProposalVersion, Kind: claim.Kind, Decisive: claim.Decisive, Status: types.EvidenceUnverified, SourceRefs: append(make([]int, 0, len(claim.SourceRefs)), claim.SourceRefs...)}
+		record := types.ClaimEvidence{ID: claim.ID, AgentID: agentID, ProposalVersion: claim.ProposalVersion, Kind: claim.Kind, Decisive: *claim.Decisive, Status: types.EvidenceUnverified, SourceRefs: append(make([]int, 0, len(claim.SourceRefs)), claim.SourceRefs...)}
 		state.Claims = append(state.Claims, record)
 		contribution.Claims = append(contribution.Claims, record)
 		known[claim.ID] = true

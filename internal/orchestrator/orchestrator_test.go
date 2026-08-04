@@ -252,6 +252,51 @@ func TestRunWritesAuditableEvidenceReferencesToTranscript(t *testing.T) {
 	}
 }
 
+func TestEvidenceSourceReferencesAreBoundBeforeTypedContribution(t *testing.T) {
+	agents := newTestAgents(1)
+	state := newTestState(&types.DeliberationConfig{Agents: agents, Topology: types.TopologyRing})
+	state.Control = types.NewDeliberationControlState([]string{agents[0].ID}, 0)
+	state.MaxTurns = 1
+	state.Evidence = types.EvidenceRequest{ResearchEnabled: true}
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")
+	runner := &mockRunner{content: `{
+		"position":"source zero supports the proposal",
+		"responses":[],"concessions":[],
+		"proposal_action":{"kind":"create","content":"cited proposal"},
+		"objections":[],
+		"vote":{"proposal_version":1,"choice":"endorse"},
+		"claims":[{"id":"claim-1","proposal_version":1,"kind":"fact","decisive":true,"source_refs":[0]}]
+	}`}
+	bundle := &types.EvidenceBundle{
+		Summary: "one supplied source",
+		SourceReferences: []types.SourceReference{{
+			Title: "source", URL: "https://example.com/source",
+		}},
+		ContextDocuments: []types.ContextDocument{{Path: "source.txt", Content: "full source content"}},
+	}
+
+	o := NewOrchestrator(state, tm, runner)
+	o.SetEvidenceCollector(&mockEvidenceCollector{bundle: bundle})
+	o.Run()
+
+	if state.Failure != nil {
+		t.Fatalf("typed contribution with source reference 0 failed: %v", state.Failure)
+	}
+	if state.Control.SourceReferenceCount != 1 {
+		t.Fatalf("source reference count: got %d, want 1", state.Control.SourceReferenceCount)
+	}
+	if len(state.Control.Claims) != 1 || !reflect.DeepEqual(state.Control.Claims[0].SourceRefs, []int{0}) {
+		t.Fatalf("bound claim source refs: %+v", state.Control.Claims)
+	}
+	records := tm.Records()
+	if len(records) < 3 || records[0].Evidence == nil || len(records[0].Evidence.SourceReferences) != 1 {
+		t.Fatalf("references-only evidence record: %+v", records)
+	}
+	if records[0].Evidence.ContextDocuments != nil {
+		t.Fatalf("transcript persisted full source content: %+v", records[0].Evidence.ContextDocuments)
+	}
+}
+
 func TestRunDeliversEvidenceToEachAgentFirstTurnOnly(t *testing.T) {
 	bundle := &types.EvidenceBundle{
 		Summary: "shared evidence summary",

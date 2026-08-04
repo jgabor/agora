@@ -158,6 +158,63 @@ func TestProcessContributionMalformedCannotEndorseOrResolve(t *testing.T) {
 	}
 }
 
+func TestProcessContributionRejectsNullFamiliesAndOmittedDecisiveWithoutMutation(t *testing.T) {
+	state := stateWithOpenProposal(t)
+	validResponse := []any{map[string]any{
+		"objection_id": "obj-1", "response": "claimed resolution",
+		"disposition": "resolved", "rationale": "claimed rationale",
+	}}
+	base := map[string]any{
+		"responses": validResponse,
+		"vote":      map[string]any{"proposal_version": 1, "choice": "endorse"},
+	}
+	tests := []struct {
+		name   string
+		fields map[string]any
+		want   string
+	}{
+		{name: "null position", fields: map[string]any{"position": nil}, want: `"position" must not be null`},
+		{name: "null responses", fields: map[string]any{"responses": nil}, want: `"responses" must not be null`},
+		{name: "null concessions", fields: map[string]any{"concessions": nil}, want: `"concessions" must not be null`},
+		{name: "null proposal action", fields: map[string]any{"proposal_action": nil}, want: `"proposal_action" must not be null`},
+		{name: "null objections", fields: map[string]any{"objections": nil}, want: `"objections" must not be null`},
+		{name: "null claims", fields: map[string]any{"claims": nil}, want: `"claims" must not be null`},
+		{
+			name: "claim omits decisive",
+			fields: map[string]any{"claims": []any{map[string]any{
+				"id": "claim-missing-decisive", "proposal_version": 1,
+				"kind": "fact", "source_refs": []int{},
+			}}},
+			want: "decisive is required",
+		},
+	}
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := make(map[string]any, len(base)+len(tc.fields))
+			for key, value := range base {
+				fields[key] = value
+			}
+			for key, value := range tc.fields {
+				fields[key] = value
+			}
+			before, err := cloneControlState(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next, err := ProcessContribution(state, "beta", i+1, contributionJSON(t, fields))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error: got %v, want containing %q", err, tc.want)
+			}
+			if next != nil || !reflect.DeepEqual(state, before) {
+				t.Fatal("rejected payload mutated authoritative state")
+			}
+			if len(state.Votes) != 1 || len(state.Dispositions) != 0 {
+				t.Fatalf("rejected payload endorsed or disposed: votes=%+v dispositions=%+v", state.Votes, state.Dispositions)
+			}
+		})
+	}
+}
+
 func TestProcessContributionIsDeterministicForIdenticalInput(t *testing.T) {
 	output := contributionJSON(t, map[string]any{
 		"position":        "create deterministic proposal",
