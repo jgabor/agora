@@ -344,6 +344,21 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 			topic = s
 		}
 	}
+	if _, structured := envelope["contribution_contract"]; structured {
+		payload, err := json.Marshal(map[string]any{
+			"position":        fmt.Sprintf("[DRY RUN] Agent '%s' responds to: %s", agent.ID, topic),
+			"responses":       []any{},
+			"concessions":     []any{},
+			"proposal_action": map[string]any{"kind": "none"},
+			"objections":      []any{},
+			"vote":            nil,
+			"claims":          []any{},
+		})
+		if err != nil {
+			return "", nil, err
+		}
+		return string(payload), dryRunMetadata(), nil
+	}
 
 	total := 100
 	input := 50

@@ -97,6 +97,16 @@ func TestRunCreatesVersionedDeliberationControlState(t *testing.T) {
 	if result.State.Control.ProtocolVersion != types.DeliberationProtocolVersion {
 		t.Fatalf("protocol version: got %q", result.State.Control.ProtocolVersion)
 	}
+	if len(result.State.Control.Contributions) != 1 {
+		t.Fatalf("contributions: got %d, want one accepted dry-run contribution", len(result.State.Control.Contributions))
+	}
+	contribution := result.State.Control.Contributions[0]
+	if contribution.AgentID != "alpha" || contribution.Turn != 0 || contribution.Position == "" {
+		t.Fatalf("bound dry-run contribution: %+v", contribution)
+	}
+	if info, err := transcript.ProtocolFromRecords(result.Records); err != nil || info.Legacy || info.Version != types.DeliberationProtocolVersion {
+		t.Fatalf("typed transcript protocol: info=%+v err=%v", info, err)
+	}
 }
 
 func TestResumePreservesSourceMetadata(t *testing.T) {

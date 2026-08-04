@@ -4,7 +4,7 @@ record:
   name: Capture typed agent contributions in the ledger
   depends_on:
     - wudpmngihx
-  status: pending
+  status: in_progress
   acceptance:
     - GIVEN an agent completes a turn WHEN its contribution is accepted THEN its position, responses, concessions, proposal action, objections, vote, and claims are bound to that agent and turn in typed state.
     - GIVEN an agent emits malformed or incomplete structured output WHEN the contribution is processed THEN the failure is explicit and cannot create a proposal endorsement or resolved objection.

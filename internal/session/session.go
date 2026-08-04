@@ -91,6 +91,9 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 
 	existingTurns := countAgentTurns(req.SourceRecords)
 	state := buildState(req.RunRequest, existingTurns)
+	if control := lastControlFromRecords(req.SourceRecords); control != nil {
+		state.Control = control
+	}
 	state.Evidence = types.EvidenceRequest{}
 	if req.Auto != nil {
 		ApplyAutoCaps(state, *req.Auto, existingTurns)
@@ -242,6 +245,15 @@ func lastLedgerFromRecords(records []types.TurnRecord) *types.DebateLedger {
 	for i := len(records) - 1; i >= 0; i-- {
 		if records[i].Ledger != nil {
 			return types.CloneDebateLedger(records[i].Ledger)
+		}
+	}
+	return nil
+}
+
+func lastControlFromRecords(records []types.TurnRecord) *types.DeliberationControlState {
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Control != nil {
+			return records[i].Control
 		}
 	}
 	return nil

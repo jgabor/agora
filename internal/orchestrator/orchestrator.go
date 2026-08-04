@@ -128,6 +128,9 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 			o.fail("error:", err)
 			break
 		}
+		if turnRecord.Control != nil {
+			o.state.Control = turnRecord.Control
+		}
 		o.consensusStreak = transcript.ConsecutiveAgentConsensusCount(o.transcript.Records())
 
 		if o.onTurn != nil {
@@ -326,6 +329,7 @@ func (o *Orchestrator) emitSeed() {
 		AgentID:   "moderator",
 		Timestamp: float64(time.Now().UnixNano()) / 1e9,
 		Content:   fmt.Sprintf("Begin deliberating on the following topic: %s", o.state.Topic),
+		Control:   o.state.Control,
 	}
 	if err := o.transcript.Append(seed); err != nil {
 		o.fail("error:", err)
@@ -385,6 +389,10 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		"remaining_budget": o.buildRemainingBudget(turnStart),
 		"halting_rule":     o.buildHaltingRule(),
 	}
+	if o.state.Control != nil {
+		envelope["control_state"] = o.state.Control
+		envelope["contribution_contract"] = ledger.ContributionContract
+	}
 	if o.sharedEvidence != nil && !o.evidenceSent[ag.ID] {
 		envelope["evidence"] = o.sharedEvidence
 		o.evidenceSent[ag.ID] = true
@@ -417,6 +425,19 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	}
 
 	cleanedContent, hasConsensus, consensusStmt, consensusIgnored := agent.ExtractConsensus(content)
+	var nextControl *types.DeliberationControlState
+	if o.state.Control != nil {
+		var err error
+		nextControl, err = ledger.ProcessContribution(o.state.Control, ag.ID, o.state.Turn, content)
+		if err != nil {
+			o.fail("contribution_error:", err)
+			return types.TurnRecord{}, false
+		}
+		cleanedContent = nextControl.Contributions[len(nextControl.Contributions)-1].Position
+		hasConsensus = false
+		consensusStmt = ""
+		consensusIgnored = false
+	}
 
 	var tokens types.TokenUsage
 	var cost *float64
@@ -431,6 +452,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		Model:              &ag.Model,
 		Timestamp:          float64(time.Now().UnixNano()) / 1e9,
 		Content:            cleanedContent,
+		Control:            nextControl,
 		Tokens:             tokens,
 		Cost:               cost,
 		Consensus:          hasConsensus,

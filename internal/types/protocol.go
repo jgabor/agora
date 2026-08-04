@@ -107,6 +107,49 @@ type ClaimEvidence struct {
 	SourceRefs      []int               `yaml:"source_refs" json:"source_refs"`
 }
 
+// ProposalActionKind identifies how a contribution changes the canonical
+// proposal. "none" is explicit so incomplete model output cannot be mistaken
+// for a proposal endorsement.
+type ProposalActionKind string
+
+const (
+	ProposalActionNone   ProposalActionKind = "none"
+	ProposalActionCreate ProposalActionKind = "create"
+	ProposalActionRevise ProposalActionKind = "revise"
+)
+
+// ContributionProposalAction is the proposal mutation requested by one agent
+// turn. Supersedes is required for revisions and zero otherwise.
+type ContributionProposalAction struct {
+	Kind       ProposalActionKind `yaml:"kind" json:"kind"`
+	Content    string             `yaml:"content,omitempty" json:"content,omitempty"`
+	Supersedes int                `yaml:"supersedes,omitempty" json:"supersedes,omitempty"`
+}
+
+// ContributionResponse records an agent's response to an existing objection.
+// A response changes objection state only when it includes a disposition.
+type ContributionResponse struct {
+	ObjectionID string                     `yaml:"objection_id" json:"objection_id"`
+	Response    string                     `yaml:"response" json:"response"`
+	Disposition ObjectionDispositionStatus `yaml:"disposition,omitempty" json:"disposition,omitempty"`
+	Rationale   string                     `yaml:"rationale,omitempty" json:"rationale,omitempty"`
+}
+
+// AgentContribution is the accepted structured output of one agent turn. The
+// processor, not the model, binds AgentID and Turn. Nested protocol records are
+// likewise stamped with that identity before they enter canonical history.
+type AgentContribution struct {
+	AgentID        string                     `yaml:"agent_id" json:"agent_id"`
+	Turn           int                        `yaml:"turn" json:"turn"`
+	Position       string                     `yaml:"position" json:"position"`
+	Responses      []ContributionResponse     `yaml:"responses" json:"responses"`
+	Concessions    []string                   `yaml:"concessions" json:"concessions"`
+	ProposalAction ContributionProposalAction `yaml:"proposal_action" json:"proposal_action"`
+	Objections     []Objection                `yaml:"objections" json:"objections"`
+	Vote           *ProposalVote              `yaml:"vote,omitempty" json:"vote,omitempty"`
+	Claims         []ClaimEvidence            `yaml:"claims" json:"claims"`
+}
+
 // ModeratorActionKind identifies the latest typed moderator decision.
 type ModeratorActionKind string
 
@@ -173,6 +216,7 @@ type DeliberationControlState struct {
 	Dispositions           []ObjectionDisposition `yaml:"dispositions" json:"dispositions"`
 	Votes                  []ProposalVote         `yaml:"votes" json:"votes"`
 	Claims                 []ClaimEvidence        `yaml:"claims" json:"claims"`
+	Contributions          []AgentContribution    `yaml:"contributions" json:"contributions"`
 	ModeratorAction        ModeratorAction        `yaml:"moderator_action" json:"moderator_action"`
 	Convergence            ConvergenceSignals     `yaml:"convergence" json:"convergence"`
 	Outcome                TerminalOutcome        `yaml:"outcome" json:"outcome"`
@@ -190,6 +234,7 @@ func NewDeliberationControlState(agentIDs []string, sourceReferenceCount int) *D
 		Dispositions:         []ObjectionDisposition{},
 		Votes:                []ProposalVote{},
 		Claims:               []ClaimEvidence{},
+		Contributions:        []AgentContribution{},
 		ModeratorAction: ModeratorAction{
 			Kind:         ModeratorActionNone,
 			ObjectionIDs: []string{},
@@ -276,6 +321,22 @@ func (s *DeliberationControlState) Validate() error {
 			return fmt.Errorf("duplicate agent identity %q", id)
 		}
 		agents[id] = true
+	}
+	turns := make(map[int]bool, len(s.Contributions))
+	for i, contribution := range s.Contributions {
+		if !agents[contribution.AgentID] {
+			return fmt.Errorf("contribution %d references unknown agent %q", i, contribution.AgentID)
+		}
+		if contribution.Turn < 0 || turns[contribution.Turn] {
+			return fmt.Errorf("duplicate or invalid contribution turn %d", contribution.Turn)
+		}
+		turns[contribution.Turn] = true
+		if contribution.Position == "" {
+			return fmt.Errorf("contribution at turn %d position must be non-empty", contribution.Turn)
+		}
+		if !validProposalAction(contribution.ProposalAction.Kind) {
+			return fmt.Errorf("contribution at turn %d has invalid proposal action %q", contribution.Turn, contribution.ProposalAction.Kind)
+		}
 	}
 	proposals := make(map[int]CanonicalProposal, len(s.Proposals))
 	for _, proposal := range s.Proposals {
@@ -399,6 +460,9 @@ func (s *DeliberationControlState) Validate() error {
 			currentVoters[vote.AgentID] = true
 		}
 	}
+	if err := s.validateContributions(objections); err != nil {
+		return err
+	}
 
 	if err := s.validateAction(agents, proposals, objections, claims); err != nil {
 		return err
@@ -410,6 +474,103 @@ func (s *DeliberationControlState) Validate() error {
 		return fmt.Errorf("convergence signal counts must be >= 0")
 	}
 	return nil
+}
+
+func (s *DeliberationControlState) validateContributions(objectionIDs map[string]bool) error {
+	actionVersions := make(map[int]bool)
+	for _, contribution := range s.Contributions {
+		for _, concession := range contribution.Concessions {
+			if concession == "" {
+				return fmt.Errorf("contribution at turn %d has an empty concession", contribution.Turn)
+			}
+		}
+		for _, response := range contribution.Responses {
+			if !objectionIDs[response.ObjectionID] || response.Response == "" {
+				return fmt.Errorf("contribution at turn %d has an invalid objection response", contribution.Turn)
+			}
+			if response.Disposition == "" && response.Rationale != "" || response.Disposition != "" && (!validDisposition(response.Disposition) || response.Rationale == "") {
+				return fmt.Errorf("contribution at turn %d has an invalid objection disposition", contribution.Turn)
+			}
+			if response.Disposition != "" && !containsDisposition(s.Dispositions, ObjectionDisposition{ObjectionID: response.ObjectionID, AgentID: contribution.AgentID, Status: response.Disposition, Rationale: response.Rationale}) {
+				return fmt.Errorf("contribution at turn %d disposition is not bound to canonical state", contribution.Turn)
+			}
+		}
+		action := contribution.ProposalAction
+		switch action.Kind {
+		case ProposalActionNone:
+			if action.Content != "" || action.Supersedes != 0 {
+				return fmt.Errorf("contribution at turn %d has invalid none proposal action", contribution.Turn)
+			}
+		case ProposalActionCreate, ProposalActionRevise:
+			version := 1
+			if action.Kind == ProposalActionRevise {
+				version = action.Supersedes + 1
+			}
+			if actionVersions[version] || !containsProposal(s.Proposals, CanonicalProposal{Version: version, AuthorID: contribution.AgentID, Content: action.Content, Supersedes: action.Supersedes}) {
+				return fmt.Errorf("contribution at turn %d proposal action is not bound to canonical state", contribution.Turn)
+			}
+			actionVersions[version] = true
+		}
+		for _, objection := range contribution.Objections {
+			if objection.AgentID != contribution.AgentID || !containsObjection(s.Objections, objection) {
+				return fmt.Errorf("contribution at turn %d objection is not bound to its agent", contribution.Turn)
+			}
+		}
+		if contribution.Vote != nil && (contribution.Vote.AgentID != contribution.AgentID || !containsVote(s.Votes, *contribution.Vote)) {
+			return fmt.Errorf("contribution at turn %d vote is not bound to its agent", contribution.Turn)
+		}
+		for _, claim := range contribution.Claims {
+			if claim.AgentID != contribution.AgentID || !containsClaim(s.Claims, claim) {
+				return fmt.Errorf("contribution at turn %d claim is not bound to its agent", contribution.Turn)
+			}
+		}
+	}
+	return nil
+}
+
+func containsProposal(values []CanonicalProposal, target CanonicalProposal) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsObjection(values []Objection, target Objection) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsDisposition(values []ObjectionDisposition, target ObjectionDisposition) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsVote(values []ProposalVote, target ProposalVote) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsClaim(values []ClaimEvidence, target ClaimEvidence) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidateDeliberationTransition checks immutable history and monotonic
@@ -433,14 +594,15 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 	if next.CurrentProposalVersion < previous.CurrentProposalVersion || next.CurrentProposalVersion > previous.CurrentProposalVersion+1 {
 		return fmt.Errorf("invalid proposal lifecycle transition from version %d to %d", previous.CurrentProposalVersion, next.CurrentProposalVersion)
 	}
-	if len(next.Proposals) < len(previous.Proposals) || len(next.Objections) < len(previous.Objections) || len(next.Dispositions) < len(previous.Dispositions) || len(next.Votes) < len(previous.Votes) || len(next.Claims) < len(previous.Claims) {
+	if len(next.Proposals) < len(previous.Proposals) || len(next.Objections) < len(previous.Objections) || len(next.Dispositions) < len(previous.Dispositions) || len(next.Votes) < len(previous.Votes) || len(next.Claims) < len(previous.Claims) || len(next.Contributions) < len(previous.Contributions) {
 		return fmt.Errorf("protocol history cannot be removed")
 	}
 	if !reflect.DeepEqual(previous.Proposals, next.Proposals[:len(previous.Proposals)]) ||
 		!reflect.DeepEqual(previous.Objections, next.Objections[:len(previous.Objections)]) ||
 		!reflect.DeepEqual(previous.Dispositions, next.Dispositions[:len(previous.Dispositions)]) ||
 		!reflect.DeepEqual(previous.Votes, next.Votes[:len(previous.Votes)]) ||
-		!reflect.DeepEqual(previous.Claims, next.Claims[:len(previous.Claims)]) {
+		!reflect.DeepEqual(previous.Claims, next.Claims[:len(previous.Claims)]) ||
+		!reflect.DeepEqual(previous.Contributions, next.Contributions[:len(previous.Contributions)]) {
 		return fmt.Errorf("protocol history is immutable")
 	}
 	if previous.Outcome.Kind != OutcomePending && !reflect.DeepEqual(previous.Outcome, next.Outcome) {
@@ -523,6 +685,10 @@ func validClaimKind(v ClaimKind) bool {
 
 func validEvidenceStatus(v ClaimEvidenceStatus) bool {
 	return v == EvidenceUnverified || v == EvidenceVerified || v == EvidenceConflicting || v == EvidenceUnsupported || v == EvidenceVerificationFailed
+}
+
+func validProposalAction(v ProposalActionKind) bool {
+	return v == ProposalActionNone || v == ProposalActionCreate || v == ProposalActionRevise
 }
 
 func validModeratorAction(v ModeratorActionKind) bool {

@@ -1,0 +1,14 @@
+id: gsenlmprdb
+artifact: progress
+record:
+  timestamp: 2026-08-04 10:38
+  type: feat
+  phase: build
+  what: Captured strict typed agent contributions and atomically evolved the versioned deliberation control ledger on every accepted turn.
+  context:
+    intent: "Execute only Task gcsqbkzjyj: ingest structured contributions and evolve authoritative ledger state."
+    constraints: Preserved Decisions 1, 2, 6, and 10; no evidence policy, typed halt, scheduling, moderation, synthesis integration, dependency, push, or task completion. Task remains in_progress pending independent Audit.
+    scope: Typed contribution schema, strict parser, atomic state transition, per-turn orchestration binding, typed resume continuity, deterministic dry-run output, and proportional regression tests.
+  verified: "AC1: TestProcessContributionBindsEveryFamilyAndRevisesAtomically binds position, response, concession, proposal action, objection, vote, and claim to agent beta/turn 1; the newly built CLI recorded six bound dry-run contributions across turns 0-5. AC2: TestProcessContributionMalformedCannotEndorseOrResolve and TestExecuteTurnRejectsMalformedTypedContributionWithoutMutation prove incomplete output returns an explicit error, appends no turn, and creates no vote or disposition. AC3: invalid-family cases leave the prior state deeply equal; TestProcessContributionIsDeterministicForIdenticalInput passes, and two checkout-binary dry runs produced byte-equal normalized final controls (SHA-256 3884e58c58ba8b2dd6d1fc97c7340006fce620d09b21b70aed6c816caa359da8). AC4: the revision test makes version-1 votes stale while unresolved obj-2 and claim-1 remain visible; only explicitly resolved obj-1 closes. AC5: pass coverage exercises every family together; fail table covers each family, including incompatible endorsement, plus malformed, unknown-field, trailing-value, and deterministic dry-run cases. Verification passed: restricted-PATH go test ./... -race with coverage (14 packages; ledger 83.0%), go vet ./..., golangci-lint run ./... (0 issues), go build, gopls diagnostics (hints only), and checkout binary 0.4.2 run/show smoke."
+  next: Independent Audit must evaluate Task gcsqbkzjyj before Orchestrate records PASS and completes it. Task 3 remains untouched.
+  publication_order: 3

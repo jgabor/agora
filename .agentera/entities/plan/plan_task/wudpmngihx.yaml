@@ -4,7 +4,7 @@ record:
   name: Define the versioned deliberation protocol
   depends_on:
     []
-  status: in_progress
+  status: complete
   acceptance:
     - GIVEN a new deliberation starts WHEN its control state is created THEN the state identifies a protocol version and carries the current phase, canonical proposal version, objections and dispositions, votes, claim evidence status, moderator action, convergence signals, and terminal outcome.
     - GIVEN control state contains duplicate identities, unknown references, duplicate current votes from one agent, or an invalid lifecycle transition WHEN it is validated THEN validation fails before the state can control a turn or halt.
@@ -13,12 +13,12 @@ record:
     - Test proportionality target — one pass and one fail per testable protocol rule, with explicit cases for invalid references, duplicate votes, stale votes, and legacy input.
   plan: josxwbovpf
   evaluation:
-    attempt_count: 1
+    attempt_count: 2
     failure_count: 1
-    last_verdict: fail
+    last_verdict: pass
     last_failure_evidence: Terminal control state permits appending new vote history after consensus; add terminal immutability validation and regression coverage.
     provenance:
-      attempt_id: audit-wudpmngihx-1
-      source: Audit session ses_0342c7385ffehgiQtSr9YOYSbd
-      recorded_at: 2026-08-04 10:20
+      attempt_id: audit-wudpmngihx-2
+      source: Audit re-review session ses_0342c7385ffehgiQtSr9YOYSbd
+      recorded_at: 2026-08-04 10:25
       writer_command: agentera state plan record-evaluation

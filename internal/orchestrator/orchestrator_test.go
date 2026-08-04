@@ -101,6 +101,28 @@ func TestEmitSeed(t *testing.T) {
 	}
 }
 
+func TestExecuteTurnRejectsMalformedTypedContributionWithoutMutation(t *testing.T) {
+	agents := newTestAgents(1)
+	state := newTestState(&types.DeliberationConfig{Agents: agents})
+	state.Control = types.NewDeliberationControlState([]string{agents[0].ID}, 0)
+	tm := transcript.NewTranscriptManager(filepath.Join(t.TempDir(), "typed.jsonl"))
+	o := NewOrchestrator(state, tm, &mockRunner{content: `{"position":"incomplete"}`})
+
+	record, ok := o.executeTurn(agents[0])
+	if ok {
+		t.Fatalf("executeTurn accepted malformed contribution: %+v", record)
+	}
+	if state.Failure == nil || !strings.Contains(state.Failure.Error(), `missing "responses"`) {
+		t.Fatalf("failure: got %v, want explicit incomplete contribution error", state.Failure)
+	}
+	if len(state.Control.Contributions) != 0 || len(state.Control.Votes) != 0 || len(state.Control.Dispositions) != 0 {
+		t.Fatalf("malformed turn mutated control state: %+v", state.Control)
+	}
+	if len(tm.Records()) != 0 {
+		t.Fatalf("malformed turn was appended: %+v", tm.Records())
+	}
+}
+
 func TestRunAttemptsResearchBeforeDeliberation(t *testing.T) {
 	order := []string{}
 	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(1)})
