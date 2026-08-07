@@ -73,11 +73,8 @@ func directiveFulfilled(directive types.TurnDirective, state *types.Deliberation
 			}
 		}
 	case types.DirectiveVerify:
-		if len(state.Contributions) > 0 && state.Contributions[len(state.Contributions)-1].AgentID == directive.TargetAgentID {
-			return true // The directed verification attempt does not assert an outcome.
-		}
 		for _, claim := range state.Claims {
-			if claim.ID == directive.ClaimID && claim.Status == types.EvidenceVerified {
+			if claim.ID == directive.ClaimID && claim.Status != types.EvidenceUnverified {
 				return true
 			}
 		}
@@ -114,7 +111,7 @@ func nextScheduledAgent(state *types.DeliberationControlState) string {
 
 func firstEvidenceGap(state *types.DeliberationControlState) string {
 	for _, claim := range state.Claims {
-		if claim.Decisive && claim.Status != types.EvidenceVerified {
+		if claim.Decisive && claim.Status == types.EvidenceUnverified {
 			return claim.ID
 		}
 	}

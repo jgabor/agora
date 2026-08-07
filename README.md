@@ -200,7 +200,7 @@ Lists managed transcripts from the configured transcript store, newest first, wi
 agora show TRANSCRIPT|SLUG [--format text|json|markdown]
 ```
 
-Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references and consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage.
+Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references, claim kind/evidence-status labels, and consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage.
 
 ### `agora resume` — Continue from an existing transcript
 

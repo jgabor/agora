@@ -5,7 +5,7 @@ record:
   depends_on:
     - wudpmngihx
     - gcsqbkzjyj
-  status: pending
+  status: complete
   acceptance:
     - GIVEN a decisive factual claim supports the current proposal WHEN it enters the ledger THEN it cites a supplied source reference or remains explicitly unverified.
     - GIVEN an objection requests verification WHEN the supplied evidence is checked THEN the claim records a verified, conflicting, unsupported, or failed-verification result without inventing a source.
@@ -13,3 +13,13 @@ record:
     - GIVEN the final artifact presents claims WHEN each claim is rendered THEN verified facts, inferences, assumptions, and recommendations are distinguishable.
     - Test proportionality target — one pass and one fail per verification outcome, including unsupported code claims, conflicting evidence, failed verification, and missing source references.
   plan: josxwbovpf
+  evaluation:
+    attempt_count: 2
+    failure_count: 1
+    last_verdict: pass
+    last_failure_evidence: Verification source indices are bounded only by self-declared SourceReferenceCount, not persisted EvidenceBundle data; resume loses the source bundle and verify turns may receive none. The strengthened validator also keeps protocol v1 while rejecting typed-v1 snapshots previously valid under that identifier.
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_02273d161fferZeJQ17IPy0GA4
+      recorded_at: 2026-08-07 21:14
+      writer_command: agentera state plan record-evaluation

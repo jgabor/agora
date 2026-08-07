@@ -351,6 +351,28 @@ func TestPrepareNextTurnDirectsResponseToLedgerCrux(t *testing.T) {
 	}
 }
 
+func TestVerificationDirectiveNeedsAnOutcome(t *testing.T) {
+	for _, status := range []types.ClaimEvidenceStatus{
+		types.EvidenceUnverified,
+		types.EvidenceVerified,
+		types.EvidenceConflicting,
+		types.EvidenceUnsupported,
+		types.EvidenceVerificationFailed,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 1)
+			state.Phase = types.PhaseDrafting
+			state.CurrentProposalVersion = 1
+			state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+			state.Claims = []types.ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: status, SourceRefs: []int{0}}}
+			directive := types.TurnDirective{Kind: types.DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"}
+			if got := directiveFulfilled(directive, state); got != (status != types.EvidenceUnverified) {
+				t.Fatalf("directiveFulfilled(%q) = %v", status, got)
+			}
+		})
+	}
+}
+
 func TestExecuteTurnDeliversEachDirectiveToTarget(t *testing.T) {
 	base := types.NewDeliberationControlState([]string{"alpha", "beta"}, 1)
 	base.CurrentProposalVersion = 1
@@ -363,7 +385,6 @@ func TestExecuteTurnDeliversEachDirectiveToTarget(t *testing.T) {
 		{Kind: types.DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 1},
 		{Kind: types.DirectiveVote, TargetAgentID: "beta", ProposalVersion: 1},
 	}
-	response := `{"position":"directed attempt","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`
 	for _, directive := range directives {
 		t.Run(string(directive.Kind), func(t *testing.T) {
 			control := *base
@@ -381,6 +402,10 @@ func TestExecuteTurnDeliversEachDirectiveToTarget(t *testing.T) {
 			control.Directive = directive
 			state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}}})
 			state.Control = &control
+			response := `{"position":"directed attempt","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`
+			if directive.Kind == types.DirectiveVerify {
+				response = `{"position":"directed verification","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[{"id":"claim-1","status":"verified","source_refs":[0]}]}`
+			}
 			runner := &mockRunner{content: response}
 			o := NewOrchestrator(state, transcript.NewTranscriptManager(t.TempDir()+"/directed.jsonl"), runner)
 

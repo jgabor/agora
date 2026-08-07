@@ -390,6 +390,53 @@ func TestProposalRevisionStalesVotesAndPreservesOpenState(t *testing.T) {
 	}
 }
 
+func TestClaimEvidenceTransitionsRequireBoundedSourcesAndTypedOutcomes(t *testing.T) {
+	previous := protocolStateWithProposal()
+	previous.Claims = []ClaimEvidence{{
+		ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact,
+		Decisive: true, Status: EvidenceUnverified, SourceRefs: []int{},
+	}}
+	if err := previous.Validate(); err != nil {
+		t.Fatalf("unverified claim should validate without a source: %v", err)
+	}
+
+	verified := cloneControlState(t, previous)
+	verified.Claims[0].Status = EvidenceVerified
+	verified.Claims[0].SourceRefs = []int{0}
+	if err := ValidateDeliberationTransition(previous, verified); err != nil {
+		t.Fatalf("verified claim transition: %v", err)
+	}
+
+	for _, status := range []ClaimEvidenceStatus{EvidenceConflicting, EvidenceUnsupported, EvidenceVerificationFailed} {
+		next := cloneControlState(t, previous)
+		next.Claims[0].Status = status
+		if status == EvidenceConflicting {
+			next.Claims[0].SourceRefs = []int{1}
+		}
+		if err := ValidateDeliberationTransition(previous, next); err != nil {
+			t.Fatalf("%s claim transition: %v", status, err)
+		}
+	}
+
+	invalidVerified := cloneControlState(t, previous)
+	invalidVerified.Claims[0].Status = EvidenceVerified
+	if err := invalidVerified.Validate(); err == nil || !strings.Contains(err.Error(), "requires at least one source") {
+		t.Fatalf("verified claim without source accepted: %v", err)
+	}
+
+	invalidRegression := cloneControlState(t, verified)
+	invalidRegression.Claims[0].Status = EvidenceUnsupported
+	if err := ValidateDeliberationTransition(verified, invalidRegression); err == nil || !strings.Contains(err.Error(), "status transition") {
+		t.Fatalf("verification regression accepted: %v", err)
+	}
+
+	invalidRemoval := cloneControlState(t, verified)
+	invalidRemoval.Claims[0].SourceRefs = []int{}
+	if err := ValidateDeliberationTransition(previous, invalidRemoval); err == nil || !strings.Contains(err.Error(), "requires at least one source") {
+		t.Fatalf("source removal accepted: %v", err)
+	}
+}
+
 func TestValidateDeliberationTransitionTerminalStateIsImmutable(t *testing.T) {
 	previous := protocolStateWithProposal()
 	previous.Phase = PhaseTerminal

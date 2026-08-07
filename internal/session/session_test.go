@@ -1,6 +1,10 @@
 package session_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -154,6 +158,85 @@ func TestResumePreservesSourceMetadata(t *testing.T) {
 	}
 	if records[0].Transcript.ID != 4242 {
 		t.Fatalf("metadata ID: got %d, want preserved ID 4242", records[0].Transcript.ID)
+	}
+}
+
+func TestResumeHydratesPersistedEvidenceReferences(t *testing.T) {
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: model}},
+	}
+	control := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	control.Phase = types.PhaseVoting
+	control.CurrentProposalVersion = 1
+	control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+	if err := control.Validate(); err != nil {
+		t.Fatalf("source control: %v", err)
+	}
+	source := []types.TurnRecord{
+		{Turn: -2, AgentID: "moderator", Content: "persisted evidence", Evidence: &types.EvidenceBundle{
+			Summary: "one source", SourceReferences: []types.SourceReference{{Title: "source", URL: "https://example.test/source"}},
+		}},
+		{Turn: 0, AgentID: "alpha", Model: &model, Content: "prior", Control: control},
+	}
+
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic: "resume evidence", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl",
+			MaxTurns: 1, TimeLimit: 60, DryRun: true,
+		},
+		SourceRecords: source,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if result.State.SharedEvidence == nil || len(result.State.SharedEvidence.SourceReferences) != 1 || result.State.SharedEvidence.ContextDocuments != nil {
+		t.Fatalf("resumed evidence hydration: %#v", result.State.SharedEvidence)
+	}
+}
+
+func TestResumeMigratesPersistedTypedV1BeforeExecution(t *testing.T) {
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: model}},
+	}
+	legacy := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	legacy.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	legacy.Phase = types.PhaseVoting
+	legacy.CurrentProposalVersion = 1
+	legacy.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "legacy proposal"}}
+	legacy.Claims = []types.ClaimEvidence{{
+		ID: "legacy-claim", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact,
+		Decisive: true, Status: types.EvidenceVerified, SourceRefs: []int{0},
+	}}
+	rawPath := filepath.Join(t.TempDir(), "legacy-v1.jsonl")
+	raw := types.TurnRecord{Turn: 0, AgentID: "alpha", Model: &model, Content: "legacy", Control: legacy}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal legacy record: %v", err)
+	}
+	if err := os.WriteFile(rawPath, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("write legacy transcript: %v", err)
+	}
+	source, err := transcript.LoadFileLenient(rawPath, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("load legacy transcript for resume: %v", err)
+	}
+
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic: "legacy v1 resume", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl",
+			MaxTurns: 1, TimeLimit: 60, DryRun: true,
+		},
+		SourceRecords: source,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("legacy resume: %v", err)
+	}
+	if result.State.Control.ProtocolVersion != types.DeliberationProtocolVersion || result.State.Control.SourceReferenceCount != 0 {
+		t.Fatalf("legacy resume control: %#v", result.State.Control)
 	}
 }
 

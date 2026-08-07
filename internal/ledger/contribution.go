@@ -31,8 +31,9 @@ var ContributionContract = map[string]any{
 		},
 		"objections": []any{map[string]any{"id": "string", "proposal_version": "current version", "claim_id": "optional", "summary": "string"}},
 		"vote":       map[string]any{"proposal_version": "current version", "choice": "endorse|reject|abstain; null when not voting"},
-		"claims":     []any{map[string]any{"id": "string", "proposal_version": "current version", "kind": "claim kind", "decisive": false, "source_refs": []int{}}},
+		"claims":     []any{map[string]any{"id": "string", "proposal_version": "current version", "kind": "claim kind", "decisive": false, "status": "omit for a new claim; verification outcome for an existing claim", "source_refs": []int{}}},
 	},
+	"verification_outcomes": []string{"verified", "conflicting", "unsupported", "verification_failed"},
 }
 
 type contributionPayload struct {
@@ -58,11 +59,12 @@ type contributionVote struct {
 }
 
 type contributionClaim struct {
-	ID              string          `json:"id"`
-	ProposalVersion int             `json:"proposal_version"`
-	Kind            types.ClaimKind `json:"kind"`
-	Decisive        *bool           `json:"decisive"`
-	SourceRefs      []int           `json:"source_refs"`
+	ID              string                     `json:"id"`
+	ProposalVersion int                        `json:"proposal_version"`
+	Kind            types.ClaimKind            `json:"kind"`
+	Decisive        *bool                      `json:"decisive"`
+	Status          *types.ClaimEvidenceStatus `json:"status"`
+	SourceRefs      []int                      `json:"source_refs"`
 }
 
 // ProcessContribution strictly parses one agent's structured output and
@@ -223,14 +225,62 @@ func applyProposalAction(state *types.DeliberationControlState, agentID string, 
 }
 
 func applyClaims(state *types.DeliberationControlState, contribution *types.AgentContribution, agentID string, claims []contributionClaim) error {
-	known := make(map[string]bool, len(state.Claims)+len(claims))
-	for _, claim := range state.Claims {
-		known[claim.ID] = true
+	known := make(map[string]int, len(state.Claims)+len(claims))
+	for i, claim := range state.Claims {
+		known[claim.ID] = i
 	}
+	seen := make(map[string]bool, len(claims))
+	verificationDirective := state.Directive.Kind == types.DirectiveVerify
+	verificationMatched := false
 	for _, claim := range claims {
-		if claim.ID == "" || known[claim.ID] {
+		if claim.ID == "" || seen[claim.ID] {
 			return fmt.Errorf("claim id must be non-empty and unique")
 		}
+		seen[claim.ID] = true
+
+		if index, exists := known[claim.ID]; exists {
+			if !verificationDirective || state.Directive.ClaimID != claim.ID {
+				return fmt.Errorf("claim %q is already in the ledger; verification requires its active directive", claim.ID)
+			}
+			if claim.Status == nil || !validVerificationOutcome(*claim.Status) {
+				return fmt.Errorf("claim %q verification requires a typed outcome", claim.ID)
+			}
+			prior := state.Claims[index]
+			if claim.ProposalVersion != 0 && claim.ProposalVersion != prior.ProposalVersion {
+				return fmt.Errorf("claim %q verification changes its proposal version", claim.ID)
+			}
+			if claim.Kind != "" && claim.Kind != prior.Kind {
+				return fmt.Errorf("claim %q verification changes its kind", claim.ID)
+			}
+			if claim.Decisive != nil && *claim.Decisive != prior.Decisive {
+				return fmt.Errorf("claim %q verification changes its decisive flag", claim.ID)
+			}
+			refs := make([]int, 0, len(prior.SourceRefs))
+			refs = append(refs, prior.SourceRefs...)
+			if claim.SourceRefs != nil {
+				var err error
+				refs, err = mergeSourceRefs(state.SourceReferenceCount, refs, claim.SourceRefs)
+				if err != nil {
+					return fmt.Errorf("claim %q verification: %w", claim.ID, err)
+				}
+			}
+			if (*claim.Status == types.EvidenceVerified || *claim.Status == types.EvidenceConflicting) && len(refs) == 0 {
+				return fmt.Errorf("claim %q outcome %q requires a supplied source reference", claim.ID, *claim.Status)
+			}
+			if prior.Status != types.EvidenceUnverified {
+				return fmt.Errorf("claim %q already has verification outcome %q", claim.ID, prior.Status)
+			}
+			updated := prior
+			updated.Status = *claim.Status
+			updated.SourceRefs = refs
+			state.Claims[index] = updated
+			verification := updated
+			verification.AgentID = agentID
+			contribution.Claims = append(contribution.Claims, verification)
+			verificationMatched = true
+			continue
+		}
+
 		if state.CurrentProposalVersion == 0 || claim.ProposalVersion != state.CurrentProposalVersion {
 			return fmt.Errorf("claim %q must reference current proposal version %d", claim.ID, state.CurrentProposalVersion)
 		}
@@ -243,12 +293,58 @@ func applyClaims(state *types.DeliberationControlState, contribution *types.Agen
 		if claim.SourceRefs == nil {
 			return fmt.Errorf("claim %q source_refs is required", claim.ID)
 		}
-		record := types.ClaimEvidence{ID: claim.ID, AgentID: agentID, ProposalVersion: claim.ProposalVersion, Kind: claim.Kind, Decisive: *claim.Decisive, Status: types.EvidenceUnverified, SourceRefs: append(make([]int, 0, len(claim.SourceRefs)), claim.SourceRefs...)}
+		if err := validateSourceRefs(state.SourceReferenceCount, claim.SourceRefs); err != nil {
+			return fmt.Errorf("claim %q: %w", claim.ID, err)
+		}
+		status := types.EvidenceUnverified
+		if claim.Status != nil {
+			if *claim.Status != types.EvidenceUnverified {
+				return fmt.Errorf("new claim %q must enter as explicitly unverified", claim.ID)
+			}
+			status = *claim.Status
+		}
+		record := types.ClaimEvidence{ID: claim.ID, AgentID: agentID, ProposalVersion: claim.ProposalVersion, Kind: claim.Kind, Decisive: *claim.Decisive, Status: status, SourceRefs: append(make([]int, 0, len(claim.SourceRefs)), claim.SourceRefs...)}
 		state.Claims = append(state.Claims, record)
 		contribution.Claims = append(contribution.Claims, record)
-		known[claim.ID] = true
+		known[claim.ID] = len(state.Claims) - 1
+	}
+	if verificationDirective && !verificationMatched {
+		return fmt.Errorf("verification directive for claim %q requires a typed outcome", state.Directive.ClaimID)
 	}
 	return nil
+}
+
+func validateSourceRefs(sourceReferenceCount int, refs []int) error {
+	seen := make(map[int]bool, len(refs))
+	for _, ref := range refs {
+		if ref < 0 || ref >= sourceReferenceCount {
+			return fmt.Errorf("references unknown source %d", ref)
+		}
+		if seen[ref] {
+			return fmt.Errorf("has duplicate source reference %d", ref)
+		}
+		seen[ref] = true
+	}
+	return nil
+}
+
+func mergeSourceRefs(sourceReferenceCount int, existing, additional []int) ([]int, error) {
+	if err := validateSourceRefs(sourceReferenceCount, additional); err != nil {
+		return nil, err
+	}
+	refs := make([]int, 0, len(existing)+len(additional))
+	refs = append(refs, existing...)
+	seen := make(map[int]bool, len(refs)+len(additional))
+	for _, ref := range refs {
+		seen[ref] = true
+	}
+	for _, ref := range additional {
+		if !seen[ref] {
+			refs = append(refs, ref)
+			seen[ref] = true
+		}
+	}
+	return refs, nil
 }
 
 func applyObjections(state *types.DeliberationControlState, contribution *types.AgentContribution, agentID string, objections []contributionObjection) error {
@@ -395,6 +491,10 @@ func hasDisposition(dispositions []types.ObjectionDisposition, id string) bool {
 
 func validClaimKind(kind types.ClaimKind) bool {
 	return kind == types.ClaimFact || kind == types.ClaimInference || kind == types.ClaimAssumption || kind == types.ClaimRecommendation
+}
+
+func validVerificationOutcome(status types.ClaimEvidenceStatus) bool {
+	return status == types.EvidenceVerified || status == types.EvidenceConflicting || status == types.EvidenceUnsupported || status == types.EvidenceVerificationFailed
 }
 
 func validDisposition(status types.ObjectionDispositionStatus) bool {

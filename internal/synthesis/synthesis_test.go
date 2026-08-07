@@ -112,3 +112,22 @@ func TestSynthesize(t *testing.T) {
 		}
 	})
 }
+
+func TestSynthesizeAttachesCanonicalClaimEvidence(t *testing.T) {
+	control := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	control.Claims = []types.ClaimEvidence{
+		{ID: "fact-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceVerified, SourceRefs: []int{0}},
+		{ID: "assumption-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimAssumption, Status: types.EvidenceUnverified, SourceRefs: []int{}},
+	}
+	records := []types.TurnRecord{{Turn: 0, AgentID: "alpha", Content: "proposal", Control: control}}
+	mock := &mockRunner{content: `{"confidence":"high","recommended_decision":"ship","claims":[{"id":"invented","status":"verified","source_refs":[99]}]}`}
+
+	result := Synthesize(mock, records, "topic", "model")
+	claims, ok := result["claims"].([]types.ClaimEvidence)
+	if !ok || len(claims) != 2 {
+		t.Fatalf("canonical claims: got %#v", result["claims"])
+	}
+	if claims[0].ID != "fact-1" || claims[0].Status != types.EvidenceVerified || claims[1].ID != "assumption-1" {
+		t.Fatalf("synthesis retained non-canonical claims: %#v", claims)
+	}
+}

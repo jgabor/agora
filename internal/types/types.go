@@ -346,6 +346,10 @@ type DeliberationState struct {
 	Budget      *float64
 	FullContext bool
 	Evidence    EvidenceRequest
+	// SharedEvidence is runtime-only authoritative evidence. Fresh runs may
+	// retain bounded context documents here; resumed transcripts hydrate only
+	// the persisted summary and source references.
+	SharedEvidence *EvidenceBundle
 
 	Turn                 int
 	StartTime            float64

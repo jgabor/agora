@@ -5,9 +5,16 @@ import (
 	"reflect"
 )
 
-// DeliberationProtocolVersion identifies the typed deliberation control
-// protocol written by this release.
-const DeliberationProtocolVersion = "agora.deliberation.v1"
+// DeliberationProtocolVersion identifies the strengthened typed deliberation
+// control protocol written by this release. Version 2 binds source indexes to
+// persisted evidence during transcript loading.
+const DeliberationProtocolVersion = "agora.deliberation.v2"
+
+// LegacyDeliberationProtocolVersion identifies typed snapshots written before
+// persisted evidence became authoritative. Transcript loading migrates this
+// version explicitly before applying current validation; new state is never
+// written with the legacy version.
+const LegacyDeliberationProtocolVersion = "agora.deliberation.v1"
 
 // DeliberationPhase identifies the current stage of a deliberation. Phase
 // advancement remains an orchestrator concern; this package only validates
@@ -95,8 +102,10 @@ const (
 	EvidenceVerificationFailed ClaimEvidenceStatus = "verification_failed"
 )
 
-// ClaimEvidence records a decisive claim and references to the bounded shared
-// evidence bundle. It never stores retrieved source content.
+// ClaimEvidence records a claim and references to the bounded shared evidence
+// bundle. It never stores retrieved source content. A claim is initially
+// unverified; a later verification-directed contribution may advance it to
+// one of the typed verification outcomes.
 type ClaimEvidence struct {
 	ID              string              `yaml:"id" json:"id"`
 	AgentID         string              `yaml:"agent_id" json:"agent_id"`
@@ -165,7 +174,8 @@ const (
 
 // TurnDirective is the outstanding state-driven instruction for one agent.
 // References identify existing debate state; the orchestrator does not invent
-// the response, verification result, proposal text, or vote.
+// the response, verification result, proposal text, or vote. A verify directive
+// is fulfilled only by a typed outcome on its referenced claim.
 type TurnDirective struct {
 	Kind            DirectiveKind `yaml:"kind" json:"kind"`
 	TargetAgentID   string        `yaml:"target_agent_id,omitempty" json:"target_agent_id,omitempty"`
@@ -331,7 +341,9 @@ func (s *DeliberationControlState) UnresolvedObjections() []Objection {
 	return unresolved
 }
 
-// EvidenceGaps returns decisive claims that are not verified.
+// EvidenceGaps returns decisive claims whose evidence is not verified. This
+// deliberately retains conflicting, unsupported, and failed-verification
+// outcomes so later votes and synthesis can see unresolved gaps.
 func (s *DeliberationControlState) EvidenceGaps() []ClaimEvidence {
 	var gaps []ClaimEvidence
 	for _, claim := range s.Claims {
@@ -438,6 +450,9 @@ func (s *DeliberationControlState) Validate() error {
 		}
 		if !validClaimKind(claim.Kind) || !validEvidenceStatus(claim.Status) {
 			return fmt.Errorf("claim %q has invalid kind or evidence status", claim.ID)
+		}
+		if (claim.Status == EvidenceVerified || claim.Status == EvidenceConflicting) && len(claim.SourceRefs) == 0 {
+			return fmt.Errorf("claim %q status %q requires at least one source reference", claim.ID, claim.Status)
 		}
 		seenRefs := make(map[int]bool)
 		for _, ref := range claim.SourceRefs {
@@ -575,8 +590,15 @@ func (s *DeliberationControlState) validateContributions(objectionIDs map[string
 			return fmt.Errorf("contribution at turn %d vote is not bound to its agent", contribution.Turn)
 		}
 		for _, claim := range contribution.Claims {
-			if claim.AgentID != contribution.AgentID || !containsClaim(s.Claims, claim) {
+			if claim.AgentID != contribution.AgentID {
 				return fmt.Errorf("contribution at turn %d claim is not bound to its agent", contribution.Turn)
+			}
+			if claim.Status == EvidenceUnverified {
+				if !containsClaimIdentity(s.Claims, claim) {
+					return fmt.Errorf("contribution at turn %d claim is not bound to canonical state", contribution.Turn)
+				}
+			} else if !containsClaimStable(s.Claims, claim) {
+				return fmt.Errorf("contribution at turn %d verification is not bound to canonical claim", contribution.Turn)
 			}
 		}
 	}
@@ -619,15 +641,6 @@ func containsVote(values []ProposalVote, target ProposalVote) bool {
 	return false
 }
 
-func containsClaim(values []ClaimEvidence, target ClaimEvidence) bool {
-	for _, value := range values {
-		if reflect.DeepEqual(value, target) {
-			return true
-		}
-	}
-	return false
-}
-
 // ValidateDeliberationTransition checks immutable history and monotonic
 // lifecycle rules without choosing the next phase or creating debate content.
 func ValidateDeliberationTransition(previous, next *DeliberationControlState) error {
@@ -662,9 +675,11 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 		!reflect.DeepEqual(previous.Objections, next.Objections[:len(previous.Objections)]) ||
 		!reflect.DeepEqual(previous.Dispositions, next.Dispositions[:len(previous.Dispositions)]) ||
 		!reflect.DeepEqual(previous.Votes, next.Votes[:len(previous.Votes)]) ||
-		!reflect.DeepEqual(previous.Claims, next.Claims[:len(previous.Claims)]) ||
 		!reflect.DeepEqual(previous.Contributions, next.Contributions[:len(previous.Contributions)]) {
 		return fmt.Errorf("protocol history is immutable")
+	}
+	if err := validateClaimHistory(previous.Claims, next.Claims); err != nil {
+		return err
 	}
 	if previous.Outcome.Kind != OutcomePending && !reflect.DeepEqual(previous.Outcome, next.Outcome) {
 		return fmt.Errorf("terminal outcome is immutable")
@@ -841,6 +856,64 @@ func validClaimKind(v ClaimKind) bool {
 
 func validEvidenceStatus(v ClaimEvidenceStatus) bool {
 	return v == EvidenceUnverified || v == EvidenceVerified || v == EvidenceConflicting || v == EvidenceUnsupported || v == EvidenceVerificationFailed
+}
+
+func validVerificationOutcome(v ClaimEvidenceStatus) bool {
+	return v == EvidenceVerified || v == EvidenceConflicting || v == EvidenceUnsupported || v == EvidenceVerificationFailed
+}
+
+func claimIdentityEqual(a, b ClaimEvidence) bool {
+	return a.ID == b.ID && a.AgentID == b.AgentID && a.ProposalVersion == b.ProposalVersion && a.Kind == b.Kind && a.Decisive == b.Decisive
+}
+
+func containsClaimIdentity(values []ClaimEvidence, target ClaimEvidence) bool {
+	for _, value := range values {
+		if claimIdentityEqual(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsClaimStable(values []ClaimEvidence, target ClaimEvidence) bool {
+	for _, value := range values {
+		if value.ID == target.ID && value.ProposalVersion == target.ProposalVersion && value.Kind == target.Kind && value.Decisive == target.Decisive {
+			return true
+		}
+	}
+	return false
+}
+
+func validateClaimHistory(previous, next []ClaimEvidence) error {
+	if len(next) < len(previous) {
+		return fmt.Errorf("claim history cannot be removed")
+	}
+	for i, prior := range previous {
+		current := next[i]
+		if !claimIdentityEqual(prior, current) {
+			return fmt.Errorf("claim history is immutable")
+		}
+		if prior.Status != current.Status {
+			if prior.Status != EvidenceUnverified || !validVerificationOutcome(current.Status) {
+				return fmt.Errorf("claim %q has invalid evidence status transition from %q to %q", prior.ID, prior.Status, current.Status)
+			}
+		}
+		for _, ref := range prior.SourceRefs {
+			if !containsInt(current.SourceRefs, ref) {
+				return fmt.Errorf("claim %q removed source reference %d", prior.ID, ref)
+			}
+		}
+	}
+	return nil
+}
+
+func containsInt(values []int, target int) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func validProposalAction(v ProposalActionKind) bool {

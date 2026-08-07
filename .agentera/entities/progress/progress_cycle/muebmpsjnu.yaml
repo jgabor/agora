@@ -1,0 +1,17 @@
+id: muebmpsjnu
+artifact: progress
+record:
+  timestamp: 2026-08-07 21:09
+  type: feat
+  phase: build
+  what: "Retried task vfrtijepkq after audit-1: bound typed source indexes to persisted evidence, hydrated evidence on resume, delivered references on every verification turn, and added explicit typed-v1 compatibility migration."
+  context:
+    intent: Close only audit-1 persisted-evidence and protocol-compatibility findings while preserving the original claim-evidence acceptance criteria.
+    constraints: No live or paid model calls; preserve audit-1 evidence, blocked gahqkhmvkr/TODO dynufsdiqr scope, and Agentera state-family/glossary caveats.
+    unknowns: Independent evaluator provenance and final lifecycle commit remain pending.
+    scope: internal/transcript, internal/session, internal/orchestrator, internal/types, targeted tests, and compatibility documentation.
+  inspiration: Audit-1 identified that SourceReferenceCount was self-authoritative and resume discarded evidence. The smallest safe correction is persisted reference authority plus a v2 boundary, with an explicit v1 downgrade migration that never invents a source.
+  discovered: The project glossary query is empty. Agentera decisions startup remains degraded with optional details omitted for 10 records; no unseen decisions were reconstructed. Vision/profile startup state remains omitted, and the personal-input-unavailable caveat is preserved. The blocked gahqkhmvkr opening-contract issue and TODO dynufsdiqr remain untouched.
+  verified: "Observed in internal/transcript/transcript_test.go: current agora.deliberation.v2 rejects a typed control declaring source_reference_count 1 when persisted Evidence.SourceReferences is empty; a bound one-reference transcript loads. internal/session/session_test.go observes resume hydration of a references-only evidence bundle and successful typed-v1 resume after migration to v2. internal/orchestrator/orchestrator_test.go observes a resumed DirectiveVerify for claim-1 receiving source #0 even when evidenceSent[beta] is already true, with ContextDocuments absent. Typed contribution gates reject missing verification status and source index 2; verified, conflicting, unsupported, and verification_failed each retain pass/fail coverage. Legacy typed v1 is explicitly normalized to v2: phantom references are discarded and verified/conflicting claims without proven references become unverified. Restricted race/coverage, vet, build, golangci-lint, diff check, and checkout-authoritative go run prime/run/show/resume smoke checks pass."
+  next: Keep vfrtijepkq in_progress until independent Audit and evaluator PASS; do not complete the task or plan.
+  publication_order: 9

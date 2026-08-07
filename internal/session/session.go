@@ -89,6 +89,11 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 	if len(req.SourceRecords) == 0 {
 		return Result{}, fmt.Errorf("no existing transcript found — use 'agora run' to start")
 	}
+	normalizedRecords, err := normalizeResumeRecords(req.SourceRecords)
+	if err != nil {
+		return Result{}, err
+	}
+	req.SourceRecords = normalizedRecords
 
 	existingTurns := countAgentTurns(req.SourceRecords)
 	state := buildState(req.RunRequest, existingTurns)
@@ -209,6 +214,11 @@ func execute(
 	if evidenceEnabled(evidenceReq) {
 		orch.SetEvidenceCollector(evidence.NewPolicyCollector(runner))
 	}
+	persistedEvidence, err := transcript.EvidenceFromRecords(tm.Records())
+	if err != nil {
+		return Result{}, fmt.Errorf("loading persisted evidence: %w", err)
+	}
+	orch.SetSharedEvidence(persistedEvidence)
 	orch.OnEvidence(hooks.OnEvidence)
 	orch.OnTurn(hooks.OnTurn)
 	orch.OnActivity(hooks.OnActivity)
@@ -268,6 +278,21 @@ func lastControlFromRecords(records []types.TurnRecord) (*types.DeliberationCont
 		}
 	}
 	return nil, nil
+}
+
+func normalizeResumeRecords(records []types.TurnRecord) ([]types.TurnRecord, error) {
+	data, err := json.Marshal(records)
+	if err != nil {
+		return nil, fmt.Errorf("cloning resume records: %w", err)
+	}
+	var clone []types.TurnRecord
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return nil, fmt.Errorf("cloning resume records: %w", err)
+	}
+	if _, err := transcript.ProtocolFromRecords(clone); err != nil {
+		return nil, fmt.Errorf("loading source transcript: %w", err)
+	}
+	return clone, nil
 }
 
 func countAgentTurns(records []types.TurnRecord) int {

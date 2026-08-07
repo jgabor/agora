@@ -252,6 +252,46 @@ func TestRunWritesAuditableEvidenceReferencesToTranscript(t *testing.T) {
 	}
 }
 
+func TestVerifyTurnAlwaysReceivesPersistedEvidenceReferences(t *testing.T) {
+	state := newTestState(&types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}},
+	})
+	state.Turn = 0
+	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta"}, 1)
+	state.Control.Phase = types.PhaseDrafting
+	state.Control.CurrentProposalVersion = 1
+	state.Control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+	state.Control.Claims = []types.ClaimEvidence{{
+		ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact,
+		Decisive: true, Status: types.EvidenceUnverified, SourceRefs: []int{0},
+	}}
+	state.Control.Directive = types.TurnDirective{Kind: types.DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"}
+	if err := state.Control.Validate(); err != nil {
+		t.Fatalf("verify control: %v", err)
+	}
+	runner := &mockRunner{content: `{"position":"verified","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[{"id":"claim-1","status":"verified","source_refs":[0]}]}`}
+	state.SharedEvidence = &types.EvidenceBundle{
+		Summary: "supplied source", SourceReferences: []types.SourceReference{{Title: "source"}},
+		ContextDocuments: []types.ContextDocument{{Path: "private.txt", Content: "bounded source body"}},
+	}
+	o := NewOrchestrator(state, transcript.NewTranscriptManager(t.TempDir()+"/verify.jsonl"), runner)
+	// Simulate the ordinary evidenceSent optimization having already run for
+	// beta. A verification directive must bypass that optimization.
+	o.evidenceSent["beta"] = true
+
+	if _, ok := o.executeTurn(o.nextAgent()); !ok {
+		t.Fatalf("verification turn failed: %v", state.Failure)
+	}
+	evidence, ok := runner.envelope["evidence"].(*types.EvidenceBundle)
+	if !ok || evidence == nil || len(evidence.SourceReferences) != 1 || evidence.SourceReferences[0].Title != "source" {
+		t.Fatalf("verification evidence envelope: %#v", runner.envelope["evidence"])
+	}
+	if evidence.ContextDocuments != nil {
+		t.Fatalf("verification envelope leaked context documents: %#v", evidence.ContextDocuments)
+	}
+}
+
 func TestEvidenceSourceReferencesAreBoundBeforeTypedContribution(t *testing.T) {
 	agents := newTestAgents(1)
 	state := newTestState(&types.DeliberationConfig{Agents: agents, Topology: types.TopologyRing})

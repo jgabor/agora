@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/jgabor/agora/internal/types"
@@ -25,8 +26,9 @@ type TranscriptManager struct {
 // ProtocolInfo classifies a loaded transcript without treating legacy
 // free-text consensus fields as typed protocol state.
 type ProtocolInfo struct {
-	Version string
-	Legacy  bool
+	Version      string
+	Legacy       bool
+	MigratedFrom string
 }
 
 // NewTranscriptManager creates a new TranscriptManager for the given file path.
@@ -76,8 +78,35 @@ func (tm *TranscriptManager) LoadExisting() ([]types.TurnRecord, error) {
 
 // ProtocolFromRecords classifies transcripts without a typed control state as
 // legacy. Legacy consensus fields remain readable but do not establish typed
-// consensus. Typed control snapshots are validated in order.
+// consensus. Typed control snapshots are validated in order. Typed v1
+// snapshots are explicitly migrated to v2 before validation; the migration
+// trusts only persisted evidence references and downgrades claims whose old
+// source references cannot be proven.
 func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
+	version, typed, err := typedProtocolVersion(records)
+	if err != nil {
+		return ProtocolInfo{}, err
+	}
+	if !typed {
+		return ProtocolInfo{Legacy: true}, nil
+	}
+
+	persistedEvidence, err := EvidenceFromRecords(records)
+	if err != nil {
+		return ProtocolInfo{}, err
+	}
+	migratedFrom := ""
+	if version == types.LegacyDeliberationProtocolVersion {
+		migrateLegacyControls(records, persistedEvidence)
+		migratedFrom = version
+		version = types.DeliberationProtocolVersion
+	} else if version != types.DeliberationProtocolVersion {
+		return ProtocolInfo{}, fmt.Errorf("unsupported deliberation protocol version %q", version)
+	}
+	if err := validatePersistedSourceAuthority(records, persistedEvidence); err != nil {
+		return ProtocolInfo{}, err
+	}
+
 	var previous *types.DeliberationControlState
 	for i := range records {
 		control := records[i].Control
@@ -86,17 +115,109 @@ func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
 		}
 		if previous == nil {
 			if err := control.Validate(); err != nil {
-				return ProtocolInfo{}, fmt.Errorf("control state at record %d: %w", i, err)
+				return ProtocolInfo{}, fmt.Errorf("invalid control state at record %d: %w", i, err)
 			}
 		} else if err := types.ValidateDeliberationTransition(previous, control); err != nil {
-			return ProtocolInfo{}, fmt.Errorf("control state at record %d: %w", i, err)
+			return ProtocolInfo{}, fmt.Errorf("invalid control state at record %d: %w", i, err)
 		}
 		previous = control
 	}
-	if previous == nil {
-		return ProtocolInfo{Legacy: true}, nil
+	return ProtocolInfo{Version: version, MigratedFrom: migratedFrom}, nil
+}
+
+// EvidenceFromRecords returns the persisted, references-only evidence bundle
+// used by a typed transcript. Context documents are intentionally excluded so
+// resume and verification turns cannot rehydrate source content from disk.
+// Multiple evidence records must agree on their source references.
+func EvidenceFromRecords(records []types.TurnRecord) (*types.EvidenceBundle, error) {
+	var result *types.EvidenceBundle
+	for i, record := range records {
+		if record.Evidence == nil {
+			continue
+		}
+		references := append([]types.SourceReference{}, record.Evidence.SourceReferences...)
+		if result != nil && !reflect.DeepEqual(result.SourceReferences, references) {
+			return nil, fmt.Errorf("persisted evidence source references disagree at record %d", i)
+		}
+		if result == nil {
+			result = &types.EvidenceBundle{
+				Summary:          record.Evidence.Summary,
+				SourceReferences: references,
+			}
+		}
 	}
-	return ProtocolInfo{Version: previous.ProtocolVersion}, nil
+	return result, nil
+}
+
+func typedProtocolVersion(records []types.TurnRecord) (string, bool, error) {
+	version := ""
+	for _, record := range records {
+		if record.Control == nil {
+			continue
+		}
+		if version == "" {
+			version = record.Control.ProtocolVersion
+			continue
+		}
+		if record.Control.ProtocolVersion != version {
+			return "", false, fmt.Errorf("mixed typed deliberation protocol versions %q and %q", version, record.Control.ProtocolVersion)
+		}
+	}
+	return version, version != "", nil
+}
+
+func migrateLegacyControls(records []types.TurnRecord, evidence *types.EvidenceBundle) {
+	sourceCount := 0
+	if evidence != nil {
+		sourceCount = len(evidence.SourceReferences)
+	}
+	for _, record := range records {
+		if record.Control == nil {
+			continue
+		}
+		control := record.Control
+		control.ProtocolVersion = types.DeliberationProtocolVersion
+		control.SourceReferenceCount = sourceCount
+		for i := range control.Claims {
+			claim := &control.Claims[i]
+			if !sourceRefsWithinBound(claim.SourceRefs, sourceCount) {
+				claim.SourceRefs = []int{}
+				if claim.Status == types.EvidenceVerified || claim.Status == types.EvidenceConflicting {
+					claim.Status = types.EvidenceUnverified
+				}
+			}
+			if (claim.Status == types.EvidenceVerified || claim.Status == types.EvidenceConflicting) && len(claim.SourceRefs) == 0 {
+				claim.Status = types.EvidenceUnverified
+			}
+		}
+	}
+}
+
+func validatePersistedSourceAuthority(records []types.TurnRecord, evidence *types.EvidenceBundle) error {
+	sourceCount := 0
+	if evidence != nil {
+		sourceCount = len(evidence.SourceReferences)
+	}
+	for i, record := range records {
+		if record.Control == nil {
+			continue
+		}
+		if record.Control.SourceReferenceCount != sourceCount {
+			return fmt.Errorf("typed control state at record %d declares %d source references but persisted evidence supplies %d", i, record.Control.SourceReferenceCount, sourceCount)
+		}
+	}
+	return nil
+}
+
+func sourceRefsWithinBound(refs []int, sourceCount int) bool {
+	seen := make(map[int]bool, len(refs))
+	for _, ref := range refs {
+		if ref < 0 || ref >= sourceCount || seen[ref] {
+			return false
+		}
+		seen[ref] = true
+	}
+	return true
 }
 
 // LoadFileStrict loads a JSONL transcript and rejects malformed non-blank records.
@@ -111,7 +232,6 @@ func LoadFileStrict(path string) ([]types.TurnRecord, error) {
 	defer func() { _ = f.Close() }()
 
 	var loaded []types.TurnRecord
-	var previousControl *types.DeliberationControlState
 	scanner := bufio.NewScanner(f)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -127,16 +247,13 @@ func LoadFileStrict(path string) ([]types.TurnRecord, error) {
 		if err := validateLedgerSentinel(r); err != nil {
 			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
 		}
-		if err := validateControlState(previousControl, r.Control); err != nil {
-			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
-		}
-		if r.Control != nil {
-			previousControl = r.Control
-		}
 		loaded = append(loaded, r)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("reading transcript file: %w", err)
+	}
+	if _, err := ProtocolFromRecords(loaded); err != nil {
+		return nil, fmt.Errorf("malformed transcript protocol %s: %w", path, err)
 	}
 	return loaded, nil
 }
@@ -153,7 +270,6 @@ func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
 	defer func() { _ = f.Close() }()
 
 	var loaded []types.TurnRecord
-	var previousControl *types.DeliberationControlState
 	scanner := bufio.NewScanner(f)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -174,16 +290,13 @@ func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
 			warnf(w, "warning: %s:%d: %v (skipping ledger record)\n", path, lineNumber, err)
 			continue
 		}
-		if err := validateControlState(previousControl, r.Control); err != nil {
-			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
-		}
-		if r.Control != nil {
-			previousControl = r.Control
-		}
 		loaded = append(loaded, r)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("reading transcript file: %w", err)
+	}
+	if _, err := ProtocolFromRecords(loaded); err != nil {
+		return nil, fmt.Errorf("malformed transcript protocol %s: %w", path, err)
 	}
 	return loaded, nil
 }
@@ -236,22 +349,6 @@ func validateLedgerSentinel(r types.TurnRecord) error {
 	}
 	if err := r.Ledger.Validate(); err != nil {
 		return fmt.Errorf("ledger record: %w", err)
-	}
-	return nil
-}
-
-func validateControlState(previous, current *types.DeliberationControlState) error {
-	if current == nil {
-		return nil
-	}
-	if previous == nil {
-		if err := current.Validate(); err != nil {
-			return fmt.Errorf("invalid control state: %w", err)
-		}
-		return nil
-	}
-	if err := types.ValidateDeliberationTransition(previous, current); err != nil {
-		return fmt.Errorf("invalid control state transition: %w", err)
 	}
 	return nil
 }

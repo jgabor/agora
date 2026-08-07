@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jgabor/agora/internal/config"
+	"github.com/jgabor/agora/internal/output"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -567,6 +568,13 @@ func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptReco
 			for _, arg := range list {
 				fmt.Fprintf(sb, "- %s\n", fmt.Sprint(arg))
 			}
+		}
+	}
+	if claims := output.ClaimEvidenceLines(result["claims"]); len(claims) > 0 {
+		fmt.Fprintln(sb)
+		fmt.Fprintln(sb, "### Claim Evidence")
+		for _, claim := range claims {
+			fmt.Fprintf(sb, "- %s\n", claim)
 		}
 	}
 }

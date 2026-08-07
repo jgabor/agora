@@ -59,28 +59,46 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 	}
 
 	content, _, err := se.runner.Run(agent.WithReadOnlyAgentPrompt(synthAgent), envelope)
+	var result map[string]any
 	if err != nil {
-		return map[string]any{
+		result = map[string]any{
 			"key_arguments":        []any{},
 			"points_of_agreement":  []any{},
 			"unresolved_tensions":  []any{},
 			"recommended_decision": "Synthesis could not run: the model was unable to produce a response.",
 			"confidence":           "low",
 		}
-	}
-
-	var parsed map[string]any
-	if err := llmutil.ExtractJSON(content, &parsed); err != nil {
-		return map[string]any{
-			"key_arguments":        []any{},
-			"points_of_agreement":  []any{},
-			"unresolved_tensions":  []any{},
-			"recommended_decision": "Synthesis could not produce a structured summary. The model response is available in the transcript.",
-			"confidence":           "low",
+	} else {
+		if err := llmutil.ExtractJSON(content, &result); err != nil {
+			result = map[string]any{
+				"key_arguments":        []any{},
+				"points_of_agreement":  []any{},
+				"unresolved_tensions":  []any{},
+				"recommended_decision": "Synthesis could not produce a structured summary. The model response is available in the transcript.",
+				"confidence":           "low",
+			}
 		}
 	}
 
-	return parsed
+	return attachCanonicalClaims(result, records)
+}
+
+func attachCanonicalClaims(result map[string]any, records []types.TurnRecord) map[string]any {
+	if result == nil {
+		result = make(map[string]any)
+	}
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Control == nil {
+			continue
+		}
+		claims := append([]types.ClaimEvidence(nil), records[i].Control.Claims...)
+		result["claims"] = claims
+		return result
+	}
+	// The synthesis prompt does not own claim evidence. Do not let an
+	// untyped model field create claim/source output for legacy transcripts.
+	delete(result, "claims")
+	return result
 }
 
 func (se *synthesisEngine) formatTranscript(records []types.TurnRecord) string {

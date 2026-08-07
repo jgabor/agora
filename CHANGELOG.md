@@ -4,6 +4,8 @@
 
 ### Added
 - Versioned typed deliberation control state for proposal revisions, objections and dispositions, unique-agent votes, claim evidence status, moderation, convergence, and terminal outcomes, with strict validation and explicit legacy transcript classification.
+- Decisive claims now enter as source-bound or explicitly unverified, verification directives record typed outcomes without accepting invented source references, and synthesis output labels claim kinds separately from evidence status.
+- Strengthened typed control state is written as `agora.deliberation.v2`; persisted typed v1 transcripts are explicitly normalized against their persisted evidence references, with unverifiable claim citations downgraded to unverified rather than invented.
 - `internal/orchestrator/phases.go` makes `agora run` advance `DeliberationControlState` through ordered opening, rebuttal, drafting, and voting phases with independent openings, deterministic speakers, and persisted typed directives.
 
 ### Fixed

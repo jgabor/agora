@@ -183,6 +183,9 @@ func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index
 			sections = append(sections, r.ListSection("Unresolved Tensions", items, width, "3"))
 		}
 	}
+	if claims := ClaimEvidenceLines(result["claims"]); len(claims) > 0 {
+		sections = append(sections, r.ListSection("Claim Evidence", claims, width, "4"))
+	}
 
 	body := strings.Join(sections, "\n")
 	title := "Synthesis"

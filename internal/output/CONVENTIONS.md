@@ -49,6 +49,7 @@ Color must never be the only carrier of meaning. Every semantic state uses a tex
 | Agent identity | badge | `AGENT` | `AGENT [A2 skeptic]` |
 | Activity phase | spinner | `PHASE` | `[INFO] PHASE Generation: skeptic` |
 | Bounded progress | bar | value, bound, percent | `TURN 2/5 (40%) [####------]` |
+| Claim kind and evidence status | labels | kind plus evidence state | `[FACT] [VERIFIED] claim-1` |
 
 Plain/no-color output keeps the bracketed labels. Rich terminals may add color and Unicode symbols, but the label remains present for success, error, consensus, and warning. Compact metric rows may use `MODEL`, `ELAPSED`, and `COST` labels instead of symbols.
 

@@ -104,6 +104,109 @@ func TestProcessContributionBindsEveryFamilyAndRevisesAtomically(t *testing.T) {
 	}
 }
 
+func verificationState(t *testing.T) *types.DeliberationControlState {
+	t.Helper()
+	state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 2)
+	state.Phase = types.PhaseDrafting
+	state.CurrentProposalVersion = 1
+	state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+	state.Claims = []types.ClaimEvidence{{
+		ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact,
+		Decisive: true, Status: types.EvidenceUnverified, SourceRefs: []int{},
+	}}
+	state.Objections = []types.Objection{{ID: "objection-1", AgentID: "alpha", ProposalVersion: 1, ClaimID: "claim-1", Summary: "verify claim"}}
+	state.Directive = types.TurnDirective{Kind: types.DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"}
+	if err := state.Validate(); err != nil {
+		t.Fatalf("verification fixture: %v", err)
+	}
+	return state
+}
+
+func TestProcessContributionRecordsEveryVerificationOutcome(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   types.ClaimEvidenceStatus
+		refs     []int
+		wantRefs []int
+	}{
+		{name: "verified with source", status: types.EvidenceVerified, refs: []int{0}, wantRefs: []int{0}},
+		{name: "conflicting with source", status: types.EvidenceConflicting, refs: []int{1}, wantRefs: []int{1}},
+		{name: "unsupported code claim", status: types.EvidenceUnsupported, refs: []int{}, wantRefs: []int{}},
+		{name: "verification failed", status: types.EvidenceVerificationFailed, refs: []int{}, wantRefs: []int{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+" pass", func(t *testing.T) {
+			state := verificationState(t)
+			next, err := ProcessContribution(state, "beta", 0, contributionJSON(t, map[string]any{
+				"position": "verification result",
+				"claims": []any{map[string]any{
+					"id": "claim-1", "status": string(tt.status), "source_refs": tt.refs,
+				}},
+			}))
+			if err != nil {
+				t.Fatalf("verification: %v", err)
+			}
+			if got := next.Claims[0]; got.Status != tt.status || !reflect.DeepEqual(got.SourceRefs, tt.wantRefs) {
+				t.Fatalf("claim outcome: got %#v, want status=%q refs=%v", got, tt.status, tt.wantRefs)
+			}
+			if got := next.Contributions[0].Claims[0].AgentID; got != "beta" {
+				t.Fatalf("verification contribution agent: got %q, want beta", got)
+			}
+			if len(next.EvidenceGaps()) != 1 && tt.status != types.EvidenceVerified {
+				t.Fatalf("unresolved outcome should remain an evidence gap: %#v", next.EvidenceGaps())
+			}
+			if got := next.UnresolvedObjections(); len(got) != 1 || got[0].ClaimID != "claim-1" {
+				t.Fatalf("verification request was not retained: %#v", got)
+			}
+		})
+
+		t.Run(tt.name+" fail: invented source", func(t *testing.T) {
+			state := verificationState(t)
+			_, err := ProcessContribution(state, "beta", 0, contributionJSON(t, map[string]any{
+				"claims": []any{map[string]any{
+					"id": "claim-1", "status": string(tt.status), "source_refs": []int{2},
+				}},
+			}))
+			if err == nil || !strings.Contains(err.Error(), "unknown source") {
+				t.Fatalf("invented source accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestProcessContributionRequiresExplicitUnverifiedClaimsAndTypedVerification(t *testing.T) {
+	state := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	newClaim := func(fields map[string]any) (*types.DeliberationControlState, error) {
+		next, err := ProcessContribution(state, "alpha", 0, contributionJSON(t, map[string]any{
+			"proposal_action": map[string]any{"kind": "create", "content": "proposal"},
+			"claims":          []any{fields},
+		}))
+		return next, err
+	}
+	if _, err := newClaim(map[string]any{"id": "missing-refs", "proposal_version": 1, "kind": "fact", "decisive": true}); err == nil || !strings.Contains(err.Error(), "source_refs is required") {
+		t.Fatalf("missing source_refs accepted: %v", err)
+	}
+	next, err := newClaim(map[string]any{"id": "empty-refs", "proposal_version": 1, "kind": "fact", "decisive": true, "source_refs": []int{}})
+	if err != nil {
+		t.Fatalf("empty source_refs should remain explicitly unverified: %v", err)
+	}
+	if got := next.Claims[0].Status; got != types.EvidenceUnverified {
+		t.Fatalf("missing source should be explicitly unverified, got %q", got)
+	}
+
+	state = types.NewDeliberationControlState([]string{"alpha", "beta"}, 1)
+	state.Phase = types.PhaseDrafting
+	state.CurrentProposalVersion = 1
+	state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+	state.Claims = []types.ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceUnverified, SourceRefs: []int{}}}
+	state.Directive = types.TurnDirective{Kind: types.DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"}
+	if _, err := ProcessContribution(state, "beta", 0, contributionJSON(t, map[string]any{
+		"claims": []any{map[string]any{"id": "claim-1", "source_refs": []int{}}},
+	})); err == nil || !strings.Contains(err.Error(), "typed outcome") {
+		t.Fatalf("verification without outcome accepted: %v", err)
+	}
+}
+
 func TestProcessContributionRejectsEachInvalidFamilyWithoutMutation(t *testing.T) {
 	state := stateWithOpenProposal(t)
 	tests := []struct {

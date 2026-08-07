@@ -1,0 +1,17 @@
+id: nmnvchsxmj
+artifact: progress
+record:
+  timestamp: 2026-08-07 20:40
+  type: feat
+  phase: build
+  what: Implemented source-bound claim entry, typed verification outcomes, evidence-gap persistence, canonical synthesis claim attachment, and visibly labeled claim rendering for task vfrtijepkq.
+  context:
+    intent: Prove enforced claim evidence and verification state without changing blocked opening-contract work or later terminal-state grounding.
+    constraints: No live or paid model calls; preserve Agentera startup caveats, vision/profile omission, and the existing task-state change.
+    unknowns: Independent evaluator provenance and final lifecycle commit are still pending.
+    scope: internal/types, internal/ledger, internal/orchestrator, internal/synthesis, internal/output, cmd/agora formatting, tests, and Unreleased/output conventions documentation.
+  inspiration: The existing v1 control state already provided ClaimEvidence statuses, SourceReferenceCount, DirectiveVerify, and EvidenceGaps; the smallest root-cause change was to enforce their lifecycle at contribution application and render the canonical state at synthesis.
+  discovered: "The project glossary query is empty. Agentera decisions startup is degraded: the bounded list omitted optional details for 10 records, so no unseen decisions were reconstructed. Vision/profile startup state remains omitted; the personal-input-unavailable caveat is preserved."
+  verified: "Observed in internal/ledger/contribution_test.go: claim-1 with source_refs [0] enters unverified against one supplied source; empty source_refs remains explicitly unverified; omitted and out-of-range references fail. A DirectiveVerify for claim-1 accepts verified, conflicting, unsupported, and verification_failed, rejects missing status and source index 2, and keeps non-verified outcomes in EvidenceGaps. Proposal revision retains claim-1/claim-2 gaps. internal/synthesis attaches canonical claims instead of model-invented claims, and NO_COLOR output renders [FACT], [INFERENCE], [ASSUMPTION], and [RECOMMENDATION] separately from [VERIFIED], [CONFLICTING], [UNSUPPORTED], [VERIFICATION FAILED], and [UNVERIFIED]. The checkout-authoritative `go run ./cmd/agora run` and `resume` dry-runs completed 6 and 12 turns without live model calls."
+  next: Keep vfrtijepkq in progress until independent Audit and evaluator PASS; do not complete the task or plan.
+  publication_order: 8

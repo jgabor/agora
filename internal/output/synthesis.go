@@ -76,4 +76,9 @@ func (o *OutputManager) SynthesisResult(result map[string]any) {
 			fmt.Println(o.renderer.ListSection("Unresolved Tensions", items, width, "3"))
 		}
 	}
+
+	if claims := ClaimEvidenceLines(result["claims"]); len(claims) > 0 {
+		fmt.Println()
+		fmt.Println(o.renderer.ListSection("Claim Evidence", claims, width, "4"))
+	}
 }

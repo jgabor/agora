@@ -527,6 +527,24 @@ func TestRenderTranscriptUsesRunStyleRichOutput(t *testing.T) {
 	}
 }
 
+func TestRenderTranscriptSynthesisShowsCanonicalClaimLabels(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	records := []types.TurnRecord{{
+		Turn:    0,
+		AgentID: "synthesizer",
+		Content: `{"recommended_decision":"ship","confidence":"medium","claims":[{"id":"fact-1","proposal_version":1,"kind":"fact","decisive":true,"status":"verified","source_refs":[0]},{"id":"assumption-1","proposal_version":1,"kind":"assumption","decisive":false,"status":"unverified","source_refs":[]}]}`,
+	}}
+
+	var out bytes.Buffer
+	RenderTranscript(&out, records)
+	got := out.String()
+	assertContains(t, got, "Claim Evidence")
+	assertContains(t, got, "[FACT] [VERIFIED] fact-1")
+	assertContains(t, got, "[ASSUMPTION] [UNVERIFIED] assumption-1")
+	assertNoANSI(t, got)
+}
+
 func TestRenderTranscriptRendersLedgerSnapshotDistinctly(t *testing.T) {
 	t.Run("pass_ledger_record_renders_summary", func(t *testing.T) {
 		t.Setenv("NO_COLOR", "1")
@@ -756,6 +774,34 @@ func TestSynthesisResultPreservesAllModelFields(t *testing.T) {
 	assertContains(t, got, "[CONSENSUS] Everyone accepts the core constraint.")
 	assertContains(t, got, "Unresolved Tensions")
 	assertContains(t, got, "[WARNING] Cost versus speed remains unresolved.")
+}
+
+func TestSynthesisResultDistinguishesClaimKindsAndEvidenceStatus(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	result := map[string]any{
+		"claims": []types.ClaimEvidence{
+			{ID: "fact-1", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceVerified, SourceRefs: []int{0}},
+			{ID: "inference-1", ProposalVersion: 1, Kind: types.ClaimInference, Decisive: true, Status: types.EvidenceConflicting, SourceRefs: []int{1}},
+			{ID: "assumption-1", ProposalVersion: 1, Kind: types.ClaimAssumption, Status: types.EvidenceUnverified, SourceRefs: []int{}},
+			{ID: "recommendation-1", ProposalVersion: 1, Kind: types.ClaimRecommendation, Status: types.EvidenceUnsupported, SourceRefs: []int{}},
+			{ID: "failed-1", ProposalVersion: 1, Kind: types.ClaimFact, Status: types.EvidenceVerificationFailed, SourceRefs: []int{}},
+		},
+	}
+
+	got := captureOutput(t, func() {
+		NewOutputManager(false).SynthesisResult(result)
+	})
+
+	for _, want := range []string{
+		"Claim Evidence",
+		"[FACT] [VERIFIED] fact-1",
+		"[INFERENCE] [CONFLICTING] inference-1",
+		"[ASSUMPTION] [UNVERIFIED] assumption-1",
+		"[RECOMMENDATION] [UNSUPPORTED] recommendation-1",
+		"[FACT] [VERIFICATION FAILED] failed-1",
+	} {
+		assertContains(t, got, want)
+	}
 }
 
 func TestActivityPlainModeEmitsReadableStatusWithoutSpinnerArtifacts(t *testing.T) {

@@ -47,11 +47,12 @@ type Orchestrator struct {
 // NewOrchestrator creates a new Orchestrator.
 func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptManager, runner agent.Runner) *Orchestrator {
 	return &Orchestrator{
-		state:        state,
-		transcript:   tm,
-		runner:       runner,
-		numAgents:    len(state.Config.Agents),
-		evidenceSent: make(map[string]bool),
+		state:          state,
+		transcript:     tm,
+		runner:         runner,
+		numAgents:      len(state.Config.Agents),
+		evidenceSent:   make(map[string]bool),
+		sharedEvidence: state.SharedEvidence,
 	}
 }
 
@@ -73,6 +74,17 @@ func (o *Orchestrator) SetLedgerUpdater(u *ledger.Updater) {
 // SetCurrentLedger sets the most recent ledger injected into each agent turn.
 func (o *Orchestrator) SetCurrentLedger(ledger *types.DebateLedger) {
 	o.currentLedger = ledger
+}
+
+// SetSharedEvidence hydrates the authoritative references persisted with a
+// resumed transcript. The bundle is references-only when loaded from disk;
+// fresh runs still receive the bounded runtime bundle collected before the
+// first turn.
+func (o *Orchestrator) SetSharedEvidence(bundle *types.EvidenceBundle) {
+	o.sharedEvidence = bundle
+	if o.state != nil {
+		o.state.SharedEvidence = bundle
+	}
 }
 
 // OnTurn registers a callback invoked after each agent turn.
@@ -186,6 +198,7 @@ func (o *Orchestrator) collectEvidence() bool {
 		o.state.Control.SourceReferenceCount = len(bundle.SourceReferences)
 	}
 	o.sharedEvidence = bundle
+	o.state.SharedEvidence = bundle
 	auditEvidence := *bundle
 	auditEvidence.ContextDocuments = nil
 	if err := o.transcript.Append(types.TurnRecord{
@@ -405,8 +418,13 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		envelope["directive"] = o.state.Control.Directive
 		envelope["contribution_contract"] = ledger.ContributionContract
 	}
-	if o.sharedEvidence != nil && !o.evidenceSent[ag.ID] {
-		envelope["evidence"] = o.sharedEvidence
+	verifyTurn := o.state.Control != nil && o.state.Control.Directive.Kind == types.DirectiveVerify
+	if o.sharedEvidence != nil && (!o.evidenceSent[ag.ID] || verifyTurn) {
+		if verifyTurn {
+			envelope["evidence"] = referencesOnlyEvidence(o.sharedEvidence)
+		} else {
+			envelope["evidence"] = o.sharedEvidence
+		}
 		o.evidenceSent[ag.ID] = true
 	}
 	if !opening && o.currentLedger != nil && ledgerEnabled(o.state.LedgerUpdateEnabled) {
@@ -586,4 +604,14 @@ func ledgerEnabled(v *bool) bool {
 		return true
 	}
 	return *v
+}
+
+func referencesOnlyEvidence(bundle *types.EvidenceBundle) *types.EvidenceBundle {
+	if bundle == nil {
+		return nil
+	}
+	return &types.EvidenceBundle{
+		Summary:          bundle.Summary,
+		SourceReferences: append([]types.SourceReference{}, bundle.SourceReferences...),
+	}
 }

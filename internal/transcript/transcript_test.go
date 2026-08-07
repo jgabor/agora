@@ -666,6 +666,80 @@ func TestLoadFileStrictValidatesTypedProtocol(t *testing.T) {
 	}
 }
 
+func TestTypedSourceBoundsRequirePersistedEvidence(t *testing.T) {
+	phantomPath := filepath.Join(t.TempDir(), "phantom.jsonl")
+	phantom := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	phantomRecord := mkRecord(0, "alpha", "phantom source", false, "")
+	phantomRecord.Control = phantom
+	if err := os.WriteFile(phantomPath, []byte(marshalLine(t, phantomRecord)+"\n"), 0o644); err != nil {
+		t.Fatalf("write phantom transcript: %v", err)
+	}
+	if _, err := LoadFileStrict(phantomPath); err == nil || !strings.Contains(err.Error(), "persisted evidence supplies 0") {
+		t.Fatalf("phantom source accepted by strict loader: %v", err)
+	}
+	if _, err := LoadFileLenient(phantomPath, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "persisted evidence supplies 0") {
+		t.Fatalf("phantom source accepted by resume loader: %v", err)
+	}
+
+	boundPath := filepath.Join(t.TempDir(), "bound.jsonl")
+	evidenceRecord := mkRecord(-2, "moderator", "one supplied source", false, "")
+	evidenceRecord.Evidence = &types.EvidenceBundle{SourceReferences: []types.SourceReference{{Title: "source"}}}
+	bound := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	boundRecord := mkRecord(0, "alpha", "bound source", false, "")
+	boundRecord.Control = bound
+	content := marshalLine(t, evidenceRecord) + "\n" + marshalLine(t, boundRecord) + "\n"
+	if err := os.WriteFile(boundPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write bound transcript: %v", err)
+	}
+	loaded, err := LoadFileStrict(boundPath)
+	if err != nil {
+		t.Fatalf("bound source rejected: %v", err)
+	}
+	persisted, err := EvidenceFromRecords(loaded)
+	if err != nil || persisted == nil || len(persisted.SourceReferences) != 1 {
+		t.Fatalf("persisted evidence: got=%#v err=%v", persisted, err)
+	}
+}
+
+func TestLegacyTypedV1IsExplicitlyMigratedWithoutPhantomSources(t *testing.T) {
+	legacyState := func() *types.DeliberationControlState {
+		state := types.NewDeliberationControlState([]string{"alpha"}, 1)
+		state.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+		state.CurrentProposalVersion = 1
+		state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "legacy proposal"}}
+		state.Claims = []types.ClaimEvidence{{
+			ID: "legacy-claim", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact,
+			Decisive: true, Status: types.EvidenceVerified, SourceRefs: []int{0},
+		}}
+		return state
+	}
+
+	raw := []types.TurnRecord{{Turn: 0, AgentID: "alpha", Content: "legacy", Control: legacyState()}}
+	info, err := ProtocolFromRecords(raw)
+	if err != nil {
+		t.Fatalf("legacy protocol migration: %v", err)
+	}
+	if info.Legacy || info.Version != types.DeliberationProtocolVersion || info.MigratedFrom != types.LegacyDeliberationProtocolVersion {
+		t.Fatalf("legacy migration info: %#v", info)
+	}
+	if got := raw[0].Control; got.SourceReferenceCount != 0 || got.Claims[0].Status != types.EvidenceUnverified || len(got.Claims[0].SourceRefs) != 0 {
+		t.Fatalf("unsafe legacy source preservation: %#v", got)
+	}
+
+	path := filepath.Join(t.TempDir(), "legacy-typed.jsonl")
+	legacyRecord := types.TurnRecord{Turn: 0, AgentID: "alpha", Content: "legacy", Control: legacyState()}
+	if err := os.WriteFile(path, []byte(marshalLine(t, legacyRecord)+"\n"), 0o644); err != nil {
+		t.Fatalf("write legacy transcript: %v", err)
+	}
+	loaded, err := LoadFileStrict(path)
+	if err != nil {
+		t.Fatalf("legacy typed transcript should remain readable: %v", err)
+	}
+	if loaded[0].Control.ProtocolVersion != types.DeliberationProtocolVersion || loaded[0].Control.SourceReferenceCount != 0 {
+		t.Fatalf("loaded legacy normalization: %#v", loaded[0].Control)
+	}
+}
+
 func TestTranscriptLoadersRejectMutationAfterTerminalState(t *testing.T) {
 	terminal := types.NewDeliberationControlState([]string{"alpha"}, 0)
 	terminal.CurrentProposalVersion = 1
