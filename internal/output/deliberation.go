@@ -266,7 +266,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 		metadata += " | " + labelValue("TIME", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit))
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		displayStreak := min(o.consensusStreak, o.state.Config.ConsensusThreshold)
+		displayStreak := min(o.displayConsensusStreak(record), o.state.Config.ConsensusThreshold)
 		metadata += " | " + labelValue("AGREEMENT", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold))
 	}
 	if len(o.turnDurations) > 0 && maxTurns > 0 {
@@ -329,7 +329,7 @@ func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue
 	}
 	parts = append(parts, labelValue("CUMULATIVE_COST", costValue))
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		displayStreak := min(o.consensusStreak, o.state.Config.ConsensusThreshold)
+		displayStreak := min(o.displayConsensusStreak(record), o.state.Config.ConsensusThreshold)
 		parts = append(parts, labelValue("AGREEMENT", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold)))
 	}
 	return "  " + strings.Join(parts, " | ") + "\n"
@@ -375,7 +375,7 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 		lines = append(lines, richMetricLine("Time limit", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit), "3"))
 	}
 	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
-		displayStreak := min(o.consensusStreak, o.state.Config.ConsensusThreshold)
+		displayStreak := min(o.displayConsensusStreak(record), o.state.Config.ConsensusThreshold)
 		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold), "2"))
 	}
 	if record.Consensus {
@@ -422,6 +422,13 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 		displayStreak := min(consensusStreak, state.Config.ConsensusThreshold)
 		rows = append(rows, []string{"Agreement", boundedIntMetricValue(o.renderer, displayStreak, state.Config.ConsensusThreshold)})
 	}
+	if state.Control != nil && state.Control.Phase == types.PhaseTerminal {
+		outcome := state.Control.Outcome
+		rows = append(rows, []string{"Outcome", string(outcome.Kind)})
+		if outcome.ProposalVersion > 0 {
+			rows = append(rows, []string{"Outcome proposal", fmt.Sprintf("v%d", outcome.ProposalVersion)})
+		}
+	}
 	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(state.HaltedBy), haltColor(state.HaltedBy))})
 	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 
@@ -456,6 +463,13 @@ func avgDuration(durations []float64) float64 {
 	return sum / float64(len(durations))
 }
 
+func (o *OutputManager) displayConsensusStreak(record types.TurnRecord) int {
+	if record.Control != nil {
+		return record.Control.Convergence.CurrentEndorsements
+	}
+	return o.consensusStreak
+}
+
 func finalCostValue(r Renderer, value float64, bound *float64) string {
 	if bound == nil {
 		return fmt.Sprintf("$%.6f", value)
@@ -467,6 +481,8 @@ func finalConsensusStreak(records []types.TurnRecord, state *types.DeliberationS
 	if state != nil && state.FinalConsensusStreak > 0 {
 		return state.FinalConsensusStreak
 	}
+	// This is a legacy display metric only. Typed halting uses the control
+	// state's current vote evaluation and never reads this streak.
 	return transcript.ConsecutiveAgentConsensusCount(records)
 }
 
@@ -518,13 +534,13 @@ func sortedKeys(m map[string]any) []string {
 func formatHaltedBy(reason string) string {
 	switch {
 	case strings.HasPrefix(reason, "consensus"):
-		return "Converged: all agents agreed"
+		return "Consensus reached"
 	case strings.HasPrefix(reason, "max_turns"):
-		return "Completed: all planned turns finished"
+		return "No consensus: all planned turns finished"
 	case strings.HasPrefix(reason, "time_limit"):
-		return "Interrupted: time limit reached"
+		return "No consensus: time limit reached"
 	case strings.HasPrefix(reason, "budget_exceeded"):
-		return "Interrupted: budget exhausted"
+		return "No consensus: budget exhausted"
 	case reason == "user_interrupt":
 		return "Interrupted by user"
 	case strings.HasPrefix(reason, "evidence_error:"):
@@ -542,9 +558,9 @@ func formatHaltedBy(reason string) string {
 // 2=green (success), 3=yellow (interruption), 1=red (failure).
 func haltColor(reason string) string {
 	switch {
-	case strings.HasPrefix(reason, "consensus"), strings.HasPrefix(reason, "max_turns"):
+	case strings.HasPrefix(reason, "consensus"):
 		return "2"
-	case strings.HasPrefix(reason, "time_limit"), strings.HasPrefix(reason, "budget_exceeded"), reason == "user_interrupt":
+	case strings.HasPrefix(reason, "max_turns"), strings.HasPrefix(reason, "time_limit"), strings.HasPrefix(reason, "budget_exceeded"), reason == "user_interrupt":
 		return "3"
 	case strings.HasPrefix(reason, "error:"), strings.HasPrefix(reason, "evidence_error:"), strings.HasPrefix(reason, "research_error:"):
 		return "1"

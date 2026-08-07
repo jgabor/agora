@@ -78,6 +78,22 @@ func newTestAgents(n int) []types.AgentConfig {
 	return agents
 }
 
+func readyControlState() *types.DeliberationControlState {
+	state := types.NewDeliberationControlState([]string{"agent-0", "agent-1"}, 0)
+	state.Phase = types.PhaseVoting
+	state.CurrentProposalVersion = 1
+	state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "agent-0", Content: "proposal"}}
+	state.Convergence.RequiredEndorsements = 2
+	for turn, agentID := range state.AgentIDs {
+		state.Contributions = append(state.Contributions, types.AgentContribution{
+			AgentID: agentID, Turn: turn, Position: "position",
+			ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		})
+		state.Votes = append(state.Votes, types.ProposalVote{AgentID: agentID, ProposalVersion: 1, Choice: types.VoteEndorse})
+	}
+	return state
+}
+
 func TestEmitSeed(t *testing.T) {
 	tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
 	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
@@ -521,11 +537,11 @@ func TestCheckTerminationConditions(t *testing.T) {
 		name             string
 		timeLimit        int
 		elapsedOffset    float64
-		consensusStreak  int
 		consensusThresh  int
 		turn             int
 		budget           *float64
 		transcriptCost   float64
+		readyControl     bool
 		expectHalted     bool
 		expectHaltReason string
 	}{
@@ -533,7 +549,6 @@ func TestCheckTerminationConditions(t *testing.T) {
 			name:            "no termination conditions met",
 			timeLimit:       30,
 			elapsedOffset:   5,
-			consensusStreak: 1,
 			consensusThresh: 3,
 			expectHalted:    false,
 		},
@@ -541,26 +556,24 @@ func TestCheckTerminationConditions(t *testing.T) {
 			name:             "time limit exceeded",
 			timeLimit:        30,
 			elapsedOffset:    35,
-			consensusStreak:  1,
 			consensusThresh:  3,
 			expectHalted:     true,
 			expectHaltReason: "time_limit (30s)",
 		},
 		{
-			name:             "consensus threshold reached",
+			name:             "typed consensus gates reached",
 			timeLimit:        30,
 			elapsedOffset:    5,
-			consensusStreak:  3,
-			consensusThresh:  3,
+			consensusThresh:  2,
 			turn:             2,
+			readyControl:     true,
 			expectHalted:     true,
-			expectHaltReason: "consensus (3 consecutive agreements)",
+			expectHaltReason: "consensus (proposal v1)",
 		},
 		{
 			name:             "budget exceeded",
 			timeLimit:        30,
 			elapsedOffset:    5,
-			consensusStreak:  1,
 			consensusThresh:  3,
 			budget:           floatPtr(0.01),
 			transcriptCost:   0.02,
@@ -579,6 +592,9 @@ func TestCheckTerminationConditions(t *testing.T) {
 			state := newTestState(cfg)
 			state.TimeLimit = tt.timeLimit
 			state.Budget = tt.budget
+			if tt.readyControl {
+				state.Control = readyControlState()
+			}
 			if tt.turn > 0 {
 				state.Turn = tt.turn
 			}
@@ -587,7 +603,6 @@ func TestCheckTerminationConditions(t *testing.T) {
 			state.StartTime = float64(time.Now().UnixNano())/1e9 - tt.elapsedOffset
 
 			o := NewOrchestrator(state, tm, &mockRunner{})
-			o.consensusStreak = tt.consensusStreak
 
 			// Seed transcript with records that accrue cost.
 			if tt.transcriptCost > 0 {
@@ -608,8 +623,91 @@ func TestCheckTerminationConditions(t *testing.T) {
 			if tt.expectHalted && o.state.HaltedBy != tt.expectHaltReason {
 				t.Errorf("expected HaltedBy=%q, got %q", tt.expectHaltReason, o.state.HaltedBy)
 			}
+			if tt.readyControl {
+				if o.state.Control.Outcome.Kind != types.OutcomeConsensus || o.state.Control.Outcome.ProposalVersion != 1 {
+					t.Fatalf("typed outcome: %#v", o.state.Control.Outcome)
+				}
+			}
 		})
 	}
+}
+
+func TestTypedConsensusBindsCurrentProposalAndPersistsOutcome(t *testing.T) {
+	t.Run("different proposal versions do not halt", func(t *testing.T) {
+		state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2), ConsensusThreshold: 2})
+		control := readyControlState()
+		control.Proposals = append(control.Proposals, types.CanonicalProposal{Version: 2, AuthorID: "agent-1", Content: "revised", Supersedes: 1})
+		control.CurrentProposalVersion = 2
+		control.Votes[1].ProposalVersion = 2
+		state.Control = control
+		tm := transcript.NewTranscriptManager(t.TempDir() + "/split.jsonl")
+		o := NewOrchestrator(state, tm, &mockRunner{})
+		o.checkTerminationConditions()
+		if !state.Running || state.Control.Phase == types.PhaseTerminal {
+			t.Fatalf("split/stale endorsements halted: running=%v control=%#v", state.Running, state.Control)
+		}
+	})
+
+	t.Run("current votes and gates halt with named proposal", func(t *testing.T) {
+		state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2), ConsensusThreshold: 2})
+		state.Control = readyControlState()
+		path := t.TempDir() + "/consensus.jsonl"
+		tm := transcript.NewTranscriptManager(path)
+		o := NewOrchestrator(state, tm, &mockRunner{})
+		o.checkTerminationConditions()
+		if state.Running || state.Control.Outcome.Kind != types.OutcomeConsensus {
+			t.Fatalf("typed consensus outcome: running=%v outcome=%#v", state.Running, state.Control.Outcome)
+		}
+		if state.Control.Outcome.ProposalVersion != 1 || len(tm.Records()) != 1 {
+			t.Fatalf("terminal record: records=%d outcome=%#v", len(tm.Records()), state.Control.Outcome)
+		}
+		loaded, err := transcript.LoadFileStrict(path)
+		if err != nil || len(loaded) != 1 || loaded[0].Control.Outcome.Kind != types.OutcomeConsensus {
+			t.Fatalf("loaded terminal outcome: records=%#v err=%v", loaded, err)
+		}
+	})
+}
+
+func TestCapRecordsTypedNoConsensusEvidence(t *testing.T) {
+	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
+	state.Control = readyControlState()
+	state.Control.Votes[1].Choice = types.VoteReject
+	state.Control.Objections = []types.Objection{{ID: "obj-1", AgentID: "agent-0", ProposalVersion: 1, Summary: "unresolved"}}
+	state.Control.Claims = []types.ClaimEvidence{{ID: "claim-1", AgentID: "agent-0", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceUnverified}}
+	state.StartTime = float64(time.Now().UnixNano())/1e9 - 31
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/cap.jsonl")
+	o := NewOrchestrator(state, tm, &mockRunner{})
+	o.checkTerminationConditions()
+
+	if state.Running || state.Control.Outcome.Kind != types.OutcomeNoConsensus {
+		t.Fatalf("cap outcome: running=%v outcome=%#v", state.Running, state.Control.Outcome)
+	}
+	outcome := state.Control.Outcome
+	if outcome.Reason != "time_limit (30s)" || !reflect.DeepEqual(outcome.DissentingAgentIDs, []string{"agent-1"}) ||
+		!reflect.DeepEqual(outcome.UnresolvedObjectionIDs, []string{"obj-1"}) || !reflect.DeepEqual(outcome.EvidenceGapClaimIDs, []string{"claim-1"}) {
+		t.Fatalf("typed no-consensus evidence: %#v", outcome)
+	}
+	if len(tm.Records()) != 1 || tm.Records()[0].Control.Outcome.Kind != types.OutcomeNoConsensus {
+		t.Fatalf("terminal state was not recorded: %#v", tm.Records())
+	}
+
+	t.Run("budget cap keeps its typed reason", func(t *testing.T) {
+		state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
+		state.Control = readyControlState()
+		state.TimeLimit = 0
+		state.Budget = floatPtr(0.01)
+		cost := 0.02
+		path := t.TempDir() + "/budget.jsonl"
+		tm := transcript.NewTranscriptManager(path)
+		if err := tm.Append(types.TurnRecord{Turn: 0, AgentID: "agent-0", Content: "prior", Cost: &cost}); err != nil {
+			t.Fatalf("seed budget record: %v", err)
+		}
+		o := NewOrchestrator(state, tm, &mockRunner{})
+		o.checkTerminationConditions()
+		if state.Control.Outcome.Kind != types.OutcomeNoConsensus || state.Control.Outcome.Reason != "budget_exceeded ($0.01)" {
+			t.Fatalf("budget outcome: %#v", state.Control.Outcome)
+		}
+	})
 }
 
 func TestExecuteTurn(t *testing.T) {
@@ -763,14 +861,12 @@ func (s *seqMockRunner) Run(agent types.AgentConfig, envelope map[string]any) (s
 	return r.content, r.metadata, nil
 }
 
-func TestRunMaxTurnsZeroConsensusHalt(t *testing.T) {
+func TestRunConsensusMarkersDoNotHaltUntypedRun(t *testing.T) {
 	dir := t.TempDir()
 	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
 
-	// 2 agents, consensus threshold 3.
-	// First 4 turns: no consensus. Then 5 turns with consensus markers.
-	// The loop should NOT stop at a turn count (MaxTurns=0) but should halt
-	// once consensus streak hits threshold.
+	// A legacy/untyped runner can still carry marker text for display, but the
+	// marker must not stop the run.
 	agents := newTestAgents(2)
 	cfg := &types.DeliberationConfig{
 		Agents:             agents,
@@ -780,8 +876,8 @@ func TestRunMaxTurnsZeroConsensusHalt(t *testing.T) {
 		Config:    cfg,
 		Topic:     "test topic",
 		Window:    2,
-		MaxTurns:  0, // unlimited
-		TimeLimit: 0, // unlimited
+		MaxTurns:  9,
+		TimeLimit: 0,
 		Running:   true,
 	}
 
@@ -798,19 +894,11 @@ func TestRunMaxTurnsZeroConsensusHalt(t *testing.T) {
 	o := NewOrchestrator(state, tm, runner)
 	stats := o.Run()
 
-	if state.HaltedBy == "" {
-		t.Fatal("expected a halt reason, got none")
+	if state.HaltedBy != "max_turns (9)" {
+		t.Errorf("expected cap halt, got %q", state.HaltedBy)
 	}
-	if !strings.Contains(state.HaltedBy, "consensus") {
-		t.Errorf("expected halt reason containing 'consensus', got %q", state.HaltedBy)
-	}
-	// Should have run more than 4 turns (the non-consensus phase).
-	if stats.TotalTurns <= 4 {
-		t.Errorf("expected more than 4 turns with MaxTurns=0, got %d", stats.TotalTurns)
-	}
-	// Should NOT have stopped due to max_turns.
-	if strings.Contains(state.HaltedBy, "max_turns") {
-		t.Errorf("should not halt with max_turns when MaxTurns=0, got %q", state.HaltedBy)
+	if stats.TotalTurns != 9 {
+		t.Errorf("expected nine turns, got %d", stats.TotalTurns)
 	}
 }
 
@@ -851,7 +939,7 @@ func TestRunMaxTurnsTenBackwardCompat(t *testing.T) {
 	}
 }
 
-func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
+func TestRunConsensusProseDoesNotAdvanceTypedConsensus(t *testing.T) {
 	dir := t.TempDir()
 	tm := transcript.NewTranscriptManager(dir + "/transcript.jsonl")
 
@@ -861,14 +949,13 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 		Config:    cfg,
 		Topic:     "test topic",
 		Window:    2,
-		MaxTurns:  0, // unlimited
-		TimeLimit: 0, // unlimited
+		MaxTurns:  15,
+		TimeLimit: 0,
 		Running:   true,
 	}
 
-	// Run 15 turns without consensus, then consensus to stop the loop.
-	// If MaxTurns=0 were NOT working, the loop would stop at turn 0
-	// because 0 < 0 is false. This test proves we go past turn 0.
+	// Repeated agreement prose is not a typed vote. The untyped fixture stays
+	// bounded so this regression cannot accidentally create an infinite run.
 	cfg.ConsensusThreshold = 1
 	responses := make([]mockResponse, 15)
 	for i := range 14 {
@@ -881,15 +968,36 @@ func TestRunMaxTurnsZeroDoesNotHaltAtTurnCount(t *testing.T) {
 	o := NewOrchestrator(state, tm, runner)
 	_ = o.Run()
 
-	if state.Turn < 14 {
-		t.Errorf("expected at least 14 turns with MaxTurns=0, got %d", state.Turn)
+	if state.Turn != 15 {
+		t.Errorf("expected 15 turns, got %d", state.Turn)
 	}
-	if !strings.Contains(state.HaltedBy, "consensus") {
-		t.Errorf("expected halt reason containing 'consensus', got %q", state.HaltedBy)
+	if state.HaltedBy != "max_turns (15)" {
+		t.Errorf("expected max-turn no-consensus halt, got %q", state.HaltedBy)
 	}
-	// Must NOT have halted due to max_turns.
-	if strings.Contains(state.HaltedBy, "max_turns") {
-		t.Errorf("should not halt with max_turns when MaxTurns=0, got %q", state.HaltedBy)
+}
+
+func TestMaxTurnCapRecordsTypedNoConsensus(t *testing.T) {
+	state := &types.DeliberationState{
+		Config:    &types.DeliberationConfig{Agents: newTestAgents(1)},
+		Topic:     "typed cap",
+		Window:    1,
+		MaxTurns:  1,
+		TimeLimit: 0,
+		Control:   types.NewDeliberationControlState([]string{"agent-0"}, 0),
+	}
+	path := t.TempDir() + "/max-turn.jsonl"
+	tm := transcript.NewTranscriptManager(path)
+	runner := &mockRunner{content: `{"position":"agreement prose only","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`}
+	stats := NewOrchestrator(state, tm, runner).Run()
+	if stats.TotalTurns != 1 || state.HaltedBy != "max_turns (1)" {
+		t.Fatalf("max-turn cap: turns=%d halted=%q", stats.TotalTurns, state.HaltedBy)
+	}
+	if state.Control.Phase != types.PhaseTerminal || state.Control.Outcome.Kind != types.OutcomeNoConsensus {
+		t.Fatalf("max-turn outcome: %#v", state.Control.Outcome)
+	}
+	loaded, err := transcript.LoadFileStrict(path)
+	if err != nil || loaded[len(loaded)-1].Control.Outcome.Kind != types.OutcomeNoConsensus {
+		t.Fatalf("loaded max-turn outcome: records=%#v err=%v", loaded, err)
 	}
 }
 

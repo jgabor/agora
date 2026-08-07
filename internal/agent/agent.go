@@ -468,9 +468,11 @@ var consensusEndorsementPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\baccept\b`),
 }
 
-// ExtractConsensus extracts a [CONSENSUS: <statement>] marker from an agent response.
-// Returns the cleaned text, whether consensus was found, the statement, and whether
-// a marker was present but rejected as contradictory.
+// ExtractConsensus extracts a legacy [CONSENSUS: <statement>] display marker
+// from an agent response. Typed control-state runs do not call this helper for
+// halting; it remains only for compatibility with untyped transcript display.
+// Returns the cleaned text, whether consensus was found, the statement, and
+// whether a marker was present but rejected as contradictory.
 func ExtractConsensus(content string) (cleaned string, hasConsensus bool, statement string, ignored bool) {
 	loc := consensusPattern.FindStringSubmatchIndex(content)
 	if loc == nil {

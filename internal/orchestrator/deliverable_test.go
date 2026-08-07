@@ -34,3 +34,24 @@ func TestDeliverableAbsent(t *testing.T) {
 		t.Fatal("expected deliverable absent")
 	}
 }
+
+func TestDeliverablePresentForStateUsesCanonicalProposalContent(t *testing.T) {
+	gate := &types.DeliverableGate{MinItems: 3}
+	records := []types.TurnRecord{{AgentID: "architect", Content: "I agree with the proposal."}}
+	canonical := types.NewDeliberationControlState([]string{"architect"}, 0)
+	canonical.CurrentProposalVersion = 1
+	canonical.Proposals = []types.CanonicalProposal{{
+		Version: 1, AuthorID: "architect",
+		Content: "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent.",
+	}}
+	if !DeliverablePresentForState(records, canonical, gate) {
+		t.Fatal("canonical proposal artifact should satisfy the deliverable gate")
+	}
+
+	missing := types.NewDeliberationControlState([]string{"architect"}, 0)
+	missing.CurrentProposalVersion = 1
+	missing.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "architect", Content: "proposal without the required artifact"}}
+	if DeliverablePresentForState(records, missing, gate) {
+		t.Fatal("ordinary agreement prose should not satisfy an absent canonical artifact")
+	}
+}

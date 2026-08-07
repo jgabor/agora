@@ -1,0 +1,17 @@
+id: yhnzidvxfg
+artifact: progress
+record:
+  timestamp: 2026-08-07 21:53
+  type: fix
+  phase: build
+  what: Replaced consensus-marker stopping with typed control-state evaluation and terminal outcomes. Current proposal versions, unique current endorsements, minimum rounds, deliverables, objection dispositions, and evidence gaps now gate consensus; turn, time, and budget caps record typed no-consensus state.
+  context:
+    intent: Make typed control state the sole consensus stopping authority while preserving v2 evidence authority and explicit cap reasons.
+    constraints: Scope limited to kgthugrlgf. No moderation, blocked opening-contract fix, terminal synthesis expansion, commit, push, or task completion update.
+    unknowns: Whether the evaluator requires additional terminal-state presentation details beyond the tested load, resume, show, and text-render paths.
+    scope: internal/types, internal/orchestrator, session/transcript/output boundaries, CLI show formatting, README, and proportional regression tests.
+  inspiration: "Plan task kgthugrlgf: replace heuristic consensus with typed halting."
+  discovered: The v2 control protocol already persisted proposal, vote, objection, evidence, convergence, and outcome fields; the run loop still used the legacy marker streak as its stopping authority.
+  verified: Observed typed consensus on proposal v3 in TestRunAdvancesThroughPhasesWithStateDrivenWork, and observed typed no-consensus with max_turns, time_limit, and budget_exceeded reasons carrying dissents, unresolved objections, and evidence gaps in the orchestrator tests. Checkout-authoritative `go run ./cmd/agora run --config examples/quick-sanity-check.yaml --topic 'typed halt final smoke' --dry-run --max-turns 1 --time 60 --output /tmp/opencode/agora-typed-smoke-final.jsonl --yes --quiet` produced `outcome.kind=no_consensus` and `reason=max_turns (1)`; checkout `show --format json` and `resume` preserved that typed outcome. Restricted race tests, vet, build, golangci-lint, and diff-check also passed.
+  next: Await audit/evaluator provenance; do not close the task or commit in this cycle.
+  publication_order: 10

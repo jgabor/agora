@@ -28,6 +28,43 @@ func cloneControlState(t *testing.T, state *DeliberationControlState) *Deliberat
 	return &clone
 }
 
+func consensusCandidate() *DeliberationControlState {
+	state := NewDeliberationControlState([]string{"alpha", "beta"}, 2)
+	state.Phase = PhaseVoting
+	state.CurrentProposalVersion = 1
+	state.Proposals = []CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal one"}}
+	state.Convergence.RequiredEndorsements = 2
+	for turn := 0; turn < 2; turn++ {
+		for _, agentID := range state.AgentIDs {
+			state.Contributions = append(state.Contributions, AgentContribution{
+				AgentID: agentID, Turn: len(state.Contributions), Position: "position",
+				ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+			})
+		}
+	}
+	state.Votes = []ProposalVote{
+		{AgentID: "alpha", ProposalVersion: 1, Choice: VoteEndorse},
+		{AgentID: "beta", ProposalVersion: 1, Choice: VoteEndorse},
+	}
+	return state
+}
+
+func authenticatedConsensusTerminal() *DeliberationControlState {
+	state := consensusCandidate()
+	state.Phase = PhaseTerminal
+	state.Convergence.MinimumRounds = 1
+	state.Convergence.RequiredDeliverableItems = 0
+	state.Convergence.CurrentEndorsements = 2
+	state.Outcome = TerminalOutcome{
+		Kind:                   OutcomeConsensus,
+		ProposalVersion:        1,
+		DissentingAgentIDs:     []string{},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	return state
+}
+
 func TestNewDeliberationControlState(t *testing.T) {
 	state := NewDeliberationControlState([]string{"alpha", "beta"}, 3)
 	if err := state.Validate(); err != nil {
@@ -53,6 +90,105 @@ func TestNewDeliberationControlState(t *testing.T) {
 	invalid := NewDeliberationControlState([]string{"alpha", "alpha"}, 0)
 	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate agent identity") {
 		t.Fatalf("duplicate identity error: got %v", err)
+	}
+}
+
+func TestEvaluateConsensusRequiresTypedHaltGates(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutate      func(*DeliberationControlState)
+		deliverable bool
+		ready       bool
+	}{
+		{name: "all gates pass", deliverable: true, ready: true},
+		{
+			name: "current proposal required",
+			mutate: func(state *DeliberationControlState) {
+				state.CurrentProposalVersion = 0
+				state.Proposals = nil
+			},
+		},
+		{
+			name: "unique current endorsements reach threshold",
+			mutate: func(state *DeliberationControlState) {
+				state.Votes = state.Votes[:1]
+			},
+		},
+		{
+			name: "stale split endorsement does not count",
+			mutate: func(state *DeliberationControlState) {
+				state.Proposals = append(state.Proposals, CanonicalProposal{Version: 2, AuthorID: "beta", Content: "proposal two", Supersedes: 1})
+				state.CurrentProposalVersion = 2
+				state.Votes[1].ProposalVersion = 2
+			},
+		},
+		{
+			name: "minimum rounds required",
+			mutate: func(state *DeliberationControlState) {
+				state.Contributions = state.Contributions[:2]
+			},
+		},
+		{
+			name: "deliverable required",
+			mutate: func(state *DeliberationControlState) {
+				// The gate is supplied independently of typed control state.
+			},
+		},
+		{name: "deliverable present", deliverable: true, ready: true},
+		{
+			name: "objection disposition required",
+			mutate: func(state *DeliberationControlState) {
+				state.Objections = append(state.Objections, Objection{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"})
+			},
+		},
+		{
+			name: "evidence gap blocks halt",
+			mutate: func(state *DeliberationControlState) {
+				state.Claims = append(state.Claims, ClaimEvidence{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Decisive: true, Status: EvidenceUnverified})
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := consensusCandidate()
+			if tt.mutate != nil {
+				tt.mutate(state)
+			}
+			got := state.EvaluateConsensus(2, tt.deliverable)
+			if got.Ready != tt.ready {
+				t.Fatalf("ready=%v, want %v; evaluation=%+v", got.Ready, tt.ready, got)
+			}
+		})
+	}
+
+	resolved := consensusCandidate()
+	resolved.Objections = []Objection{{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
+	resolved.Dispositions = []ObjectionDisposition{{ObjectionID: "obj-1", AgentID: "beta", Status: DispositionResolved, Rationale: "addressed"}}
+	if got := resolved.EvaluateConsensus(2, true); !got.Ready {
+		t.Fatalf("resolved objection should pass: %+v", got)
+	}
+
+	verified := consensusCandidate()
+	verified.Claims = []ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Decisive: true, Status: EvidenceVerified, SourceRefs: []int{0}}}
+	if got := verified.EvaluateConsensus(2, true); !got.Ready {
+		t.Fatalf("verified evidence should pass: %+v", got)
+	}
+
+	duplicate := consensusCandidate()
+	duplicate.Votes = append(duplicate.Votes, ProposalVote{AgentID: "alpha", ProposalVersion: 1, Choice: VoteEndorse})
+	if got := duplicate.EvaluateConsensus(2, true); got.Ready {
+		t.Fatalf("duplicate current vote advanced consensus: %+v", got)
+	}
+}
+
+func TestEvaluateConsensusIgnoresAgreementProseWithoutVotes(t *testing.T) {
+	state := consensusCandidate()
+	state.Votes = nil
+	state.Contributions[0].Position = "I agree with the proposal"
+	state.Contributions[1].Position = "I agree with the proposal"
+	got := state.EvaluateConsensus(2, true)
+	if got.Ready {
+		t.Fatalf("agreement prose advanced consensus: %+v", got)
 	}
 }
 
@@ -437,12 +573,19 @@ func TestClaimEvidenceTransitionsRequireBoundedSourcesAndTypedOutcomes(t *testin
 	}
 }
 
-func TestValidateDeliberationTransitionTerminalStateIsImmutable(t *testing.T) {
-	previous := protocolStateWithProposal()
-	previous.Phase = PhaseTerminal
-	previous.Outcome = TerminalOutcome{Kind: OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+func TestValidateTerminalConsensusRequiresAuthenticTypedState(t *testing.T) {
+	unauthenticated := protocolStateWithProposal()
+	unauthenticated.Phase = PhaseTerminal
+	unauthenticated.Convergence.RequiredEndorsements = 2
+	unauthenticated.Convergence.MinimumRounds = 1
+	unauthenticated.Outcome = TerminalOutcome{Kind: OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	if err := unauthenticated.Validate(); err == nil {
+		t.Fatalf("zero-vote terminal consensus accepted: %v", err)
+	}
+
+	previous := authenticatedConsensusTerminal()
 	if err := previous.Validate(); err != nil {
-		t.Fatalf("terminal previous state: %v", err)
+		t.Fatalf("authenticated terminal state: %v", err)
 	}
 
 	exactRepeat := cloneControlState(t, previous)
@@ -455,9 +598,9 @@ func TestValidateDeliberationTransitionTerminalStateIsImmutable(t *testing.T) {
 		mutate func(*DeliberationControlState)
 	}{
 		{
-			name: "append valid vote",
+			name: "change terminal reason",
 			mutate: func(next *DeliberationControlState) {
-				next.Votes = append(next.Votes, ProposalVote{AgentID: "alpha", ProposalVersion: 1, Choice: VoteEndorse})
+				next.Outcome.Reason = "different reason"
 			},
 		},
 		{
@@ -478,5 +621,104 @@ func TestValidateDeliberationTransitionTerminalStateIsImmutable(t *testing.T) {
 				t.Fatalf("terminal mutation error: got %v", err)
 			}
 		})
+	}
+}
+
+func TestValidateTerminalConsensusRejectsStaleSplitAndUnmetGates(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*DeliberationControlState)
+	}{
+		{
+			name: "absent votes",
+			mutate: func(state *DeliberationControlState) {
+				state.Votes = nil
+				state.Convergence.CurrentEndorsements = 0
+				state.Outcome.DissentingAgentIDs = []string{"alpha", "beta"}
+			},
+		},
+		{
+			name: "stale convergence witness",
+			mutate: func(state *DeliberationControlState) {
+				state.Convergence.CurrentEndorsements = 0
+			},
+		},
+		{
+			name: "stale votes",
+			mutate: func(state *DeliberationControlState) {
+				state.Proposals = append(state.Proposals, CanonicalProposal{Version: 2, AuthorID: "beta", Content: "proposal two", Supersedes: 1})
+				state.CurrentProposalVersion = 2
+				state.Votes[0].ProposalVersion = 1
+				state.Votes[1].ProposalVersion = 1
+				state.Convergence.CurrentEndorsements = 0
+				state.Outcome.ProposalVersion = 2
+				state.Outcome.DissentingAgentIDs = []string{"alpha", "beta"}
+			},
+		},
+		{
+			name: "split current versions",
+			mutate: func(state *DeliberationControlState) {
+				state.Proposals = append(state.Proposals, CanonicalProposal{Version: 2, AuthorID: "beta", Content: "proposal two", Supersedes: 1})
+				state.CurrentProposalVersion = 2
+				state.Votes[1].ProposalVersion = 2
+				state.Convergence.CurrentEndorsements = 1
+				state.Outcome.ProposalVersion = 2
+				state.Outcome.DissentingAgentIDs = []string{"alpha"}
+			},
+		},
+		{
+			name: "minimum rounds unmet",
+			mutate: func(state *DeliberationControlState) {
+				state.Convergence.MinimumRounds = 3
+			},
+		},
+		{
+			name: "canonical deliverable unmet",
+			mutate: func(state *DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 3
+			},
+		},
+		{
+			name: "objection unresolved",
+			mutate: func(state *DeliberationControlState) {
+				state.Objections = append(state.Objections, Objection{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"})
+				state.Convergence.UnresolvedObjections = 1
+				state.Outcome.UnresolvedObjectionIDs = []string{"obj-1"}
+			},
+		},
+		{
+			name: "evidence gap unresolved",
+			mutate: func(state *DeliberationControlState) {
+				state.Claims = append(state.Claims, ClaimEvidence{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Decisive: true, Status: EvidenceUnverified})
+				state.Convergence.EvidenceGaps = 1
+				state.Outcome.EvidenceGapClaimIDs = []string{"claim-1"}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := authenticatedConsensusTerminal()
+			tt.mutate(state)
+			if err := state.Validate(); err == nil {
+				t.Fatalf("unauthenticated terminal state accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateDeliberationTransitionRejectsUnauthenticatedConsensus(t *testing.T) {
+	previous := authenticatedConsensusTerminal()
+	previous.Phase = PhaseVoting
+	previous.Outcome = TerminalOutcome{Kind: OutcomePending, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	if err := previous.Validate(); err != nil {
+		t.Fatalf("previous active state: %v", err)
+	}
+	next := cloneControlState(t, previous)
+	next.Phase = PhaseTerminal
+	next.Votes = nil
+	next.Convergence.CurrentEndorsements = 0
+	next.Outcome = TerminalOutcome{Kind: OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{"alpha", "beta"}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	if err := ValidateDeliberationTransition(previous, next); err == nil {
+		t.Fatal("transition accepted consensus terminal state without current votes")
 	}
 }

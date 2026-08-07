@@ -54,3 +54,4 @@ _None._
 
 ## → Degraded
 - [ ] [id:dynufsdiqr] [fix] Align opening proposal contract with independent opening envelopes
+- [ ] [id:eprrpqhkrb] [fix] Bind terminal consensus gates to the established run contract

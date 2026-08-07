@@ -8,9 +8,8 @@ import (
 )
 
 var (
-	deliverableLawLine = regexp.MustCompile(`(?im)^\s*\d+\.\s+An agent must\b`)
-	wordThree          = regexp.MustCompile(`(?i)\bthree\b`)
-	wordDigitThree     = regexp.MustCompile(`\b3\b`)
+	wordThree      = regexp.MustCompile(`(?i)\bthree\b`)
+	wordDigitThree = regexp.MustCompile(`\b3\b`)
 )
 
 // ParseDeliverableGate returns a gate when the topic requires a numbered final artifact.
@@ -38,20 +37,26 @@ func ParseDeliverableGate(topic string) *types.DeliverableGate {
 
 // DeliverablePresent reports whether any agent turn contains the required artifact.
 func DeliverablePresent(records []types.TurnRecord, gate *types.DeliverableGate) bool {
+	return DeliverablePresentForState(records, nil, gate)
+}
+
+// DeliverablePresentForState evaluates ordinary typed contribution content and
+// the current canonical proposal. The proposal is authoritative input rather
+// than requiring agents to duplicate an artifact in their position prose.
+func DeliverablePresentForState(records []types.TurnRecord, control *types.DeliberationControlState, gate *types.DeliverableGate) bool {
 	if gate == nil || gate.MinItems <= 0 {
+		return true
+	}
+	if control != nil && control.DeliverablePresent(gate.MinItems) {
 		return true
 	}
 	for _, r := range records {
 		if types.IsInternalAgent(r.AgentID) {
 			continue
 		}
-		if deliverableItemCount(r.Content) >= gate.MinItems {
+		if types.DeliverableItemCount(r.Content) >= gate.MinItems {
 			return true
 		}
 	}
 	return false
-}
-
-func deliverableItemCount(content string) int {
-	return len(deliverableLawLine.FindAllString(content, -1))
 }

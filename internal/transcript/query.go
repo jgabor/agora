@@ -110,7 +110,8 @@ func inferAgentOrder(records []types.TurnRecord, numAgents int) []string {
 	return seen
 }
 
-// ConsecutiveConsensusCount counts consecutive trailing records with consensus=true.
+// ConsecutiveConsensusCount counts consecutive trailing legacy display markers.
+// It is not a typed halting signal.
 func ConsecutiveConsensusCount(records []types.TurnRecord) int {
 	count := 0
 	for i := len(records) - 1; i >= 0; i-- {
@@ -128,8 +129,9 @@ func AgentTurnCount(records []types.TurnRecord) int {
 	return types.AgentTurnCount(records)
 }
 
-// ConsecutiveAgentConsensusCount counts trailing consensus=true records from
-// deliberation agents only, skipping internal agents such as synthesizer.
+// ConsecutiveAgentConsensusCount counts trailing legacy display markers from
+// deliberation agents only, skipping internal agents such as synthesizer. It is
+// not a typed halting signal.
 func ConsecutiveAgentConsensusCount(records []types.TurnRecord) int {
 	count := 0
 	for i := len(records) - 1; i >= 0; i-- {

@@ -61,6 +61,8 @@ type OutputManager struct {
 	agentIdentities map[string]*types.AgentIdentity
 	state           *types.DeliberationState
 	totalCost       float64
+	// consensusStreak is a legacy display fallback. Typed turn records use
+	// their persisted current-endorsement signal instead and never halt from it.
 	consensusStreak int
 	turnDurations   []float64
 }

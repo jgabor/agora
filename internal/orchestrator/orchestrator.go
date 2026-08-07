@@ -36,16 +36,27 @@ type Orchestrator struct {
 	onEvidence EvidenceFunc
 	onActivity ActivityFunc
 
-	numAgents       int
-	consensusStreak int
-	sharedEvidence  *types.EvidenceBundle
-	evidenceSent    map[string]bool
-	currentLedger   *types.DebateLedger
-	ledgerUpdater   *ledger.Updater
+	numAgents      int
+	sharedEvidence *types.EvidenceBundle
+	evidenceSent   map[string]bool
+	currentLedger  *types.DebateLedger
+	ledgerUpdater  *ledger.Updater
 }
 
 // NewOrchestrator creates a new Orchestrator.
 func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptManager, runner agent.Runner) *Orchestrator {
+	if state != nil && state.Control != nil && state.Config != nil && state.Control.Phase != types.PhaseTerminal {
+		// Keep the configured threshold in the typed control plane. This also
+		// hydrates older typed snapshots on resume without changing their
+		// protocol version or evidence authority.
+		state.Control.Convergence.RequiredEndorsements = state.Config.ConsensusThreshold
+		state.Control.Convergence.MinimumRounds = state.Config.EffectiveMinRounds()
+		if state.DeliverableGate != nil {
+			state.Control.Convergence.RequiredDeliverableItems = state.DeliverableGate.MinItems
+		} else {
+			state.Control.Convergence.RequiredDeliverableItems = 0
+		}
+	}
 	return &Orchestrator{
 		state:          state,
 		transcript:     tm,
@@ -106,6 +117,15 @@ func (o *Orchestrator) OnActivity(fn ActivityFunc) {
 func (o *Orchestrator) Run() types.DeliberationStats {
 	o.state.Running = true
 	o.state.StartTime = float64(time.Now().UnixNano()) / 1e9
+	if o.state.Control != nil && o.state.Control.Phase == types.PhaseTerminal {
+		if err := o.state.Control.Validate(); err != nil {
+			o.fail("control_error:", err)
+			return types.ComputeStats(o.transcript.Records())
+		}
+		o.state.Running = false
+		o.state.HaltedBy = terminalHaltReason(o.state.Control.Outcome)
+		return types.ComputeStats(o.transcript.Records())
+	}
 
 	o.setupSignalHandler()
 
@@ -143,8 +163,6 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		if turnRecord.Control != nil {
 			o.state.Control = turnRecord.Control
 		}
-		o.consensusStreak = transcript.ConsecutiveAgentConsensusCount(o.transcript.Records())
-
 		if o.onTurn != nil {
 			o.onTurn(turnRecord, o.state.Turn, o.state.MaxTurns)
 		}
@@ -152,10 +170,11 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		o.updateLedgerIfRoundComplete()
 
 		o.state.Turn++
+		o.checkConsensusCondition()
 	}
 
 	if o.state.Running && o.state.MaxTurns > 0 && o.state.Turn >= o.state.MaxTurns {
-		o.state.HaltedBy = fmt.Sprintf("max_turns (%d)", o.state.MaxTurns)
+		o.haltNoConsensus(fmt.Sprintf("max_turns (%d)", o.state.MaxTurns))
 	}
 
 	if err := o.transcript.WriteAll(); err != nil {
@@ -356,31 +375,129 @@ func (o *Orchestrator) checkTerminationConditions() {
 	elapsed := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
 
 	if o.state.TimeLimit > 0 && elapsed >= float64(o.state.TimeLimit) {
-		o.state.Running = false
-		o.state.HaltedBy = fmt.Sprintf("time_limit (%ds)", o.state.TimeLimit)
+		o.haltNoConsensus(fmt.Sprintf("time_limit (%ds)", o.state.TimeLimit))
 		return
 	}
 
-	if o.state.Config.ConsensusThreshold > 0 &&
-		o.consensusStreak >= o.state.Config.ConsensusThreshold {
-		minTurns := o.state.Config.EffectiveMinRounds() * o.numAgents
-		if o.state.Turn < minTurns {
-			return
-		}
-		if !DeliverablePresent(o.transcript.Records(), o.state.DeliverableGate) {
-			return
-		}
-		o.state.FinalConsensusStreak = o.consensusStreak
-		o.state.Running = false
-		o.state.HaltedBy = fmt.Sprintf("consensus (%d consecutive agreements)", o.consensusStreak)
+	if o.checkConsensusCondition() {
 		return
 	}
 
 	if o.state.Budget != nil && transcript.TotalCost(o.transcript.Records()) >= *o.state.Budget {
-		o.state.Running = false
-		o.state.HaltedBy = fmt.Sprintf("budget_exceeded ($%.2f)", *o.state.Budget)
+		o.haltNoConsensus(fmt.Sprintf("budget_exceeded ($%.2f)", *o.state.Budget))
 		return
 	}
+}
+
+func (o *Orchestrator) checkConsensusCondition() bool {
+	if o.state.Control == nil || o.state.Control.Convergence.RequiredEndorsements <= 0 {
+		return false
+	}
+	evaluation := o.state.Control.EvaluateConsensus(
+		o.state.Config.EffectiveMinRounds(),
+		DeliverablePresentForState(o.transcript.Records(), o.state.Control, o.state.DeliverableGate),
+	)
+	if !evaluation.Ready {
+		return false
+	}
+	o.haltConsensus(evaluation)
+	return true
+}
+
+func (o *Orchestrator) haltConsensus(evaluation types.ConsensusEvaluation) {
+	reason := fmt.Sprintf("consensus (proposal v%d)", evaluation.ProposalVersion)
+	o.state.FinalConsensusStreak = len(evaluation.EndorsementAgentIDs)
+	o.recordTerminal(types.OutcomeConsensus, evaluation.ProposalVersion, reason, evaluation)
+}
+
+func (o *Orchestrator) haltNoConsensus(reason string) {
+	evaluation := types.ConsensusEvaluation{}
+	if o.state.Control != nil {
+		evaluation = o.state.Control.EvaluateConsensus(
+			o.state.Config.EffectiveMinRounds(),
+			DeliverablePresentForState(o.transcript.Records(), o.state.Control, o.state.DeliverableGate),
+		)
+	}
+	o.recordTerminal(types.OutcomeNoConsensus, evaluation.ProposalVersion, reason, evaluation)
+}
+
+func (o *Orchestrator) recordTerminal(kind types.TerminalOutcomeKind, proposalVersion int, reason string, evaluation types.ConsensusEvaluation) {
+	if o.state.Control == nil || o.state.Control.Phase == types.PhaseTerminal {
+		o.state.Running = false
+		o.state.HaltedBy = reason
+		return
+	}
+
+	terminal, err := cloneControlState(o.state.Control)
+	if err != nil {
+		o.fail("control_error:", err)
+		return
+	}
+	terminal.Phase = types.PhaseTerminal
+	terminal.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	terminal.Convergence.RequiredEndorsements = o.state.Control.Convergence.RequiredEndorsements
+	terminal.Convergence.MinimumRounds = o.state.Config.EffectiveMinRounds()
+	if o.state.DeliverableGate != nil {
+		terminal.Convergence.RequiredDeliverableItems = o.state.DeliverableGate.MinItems
+	} else {
+		terminal.Convergence.RequiredDeliverableItems = 0
+	}
+	terminal.Convergence.CurrentEndorsements = len(evaluation.EndorsementAgentIDs)
+	terminal.Convergence.UnresolvedObjections = len(evaluation.UnresolvedObjectionIDs)
+	terminal.Convergence.EvidenceGaps = len(evaluation.EvidenceGapClaimIDs)
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   kind,
+		ProposalVersion:        proposalVersion,
+		Reason:                 reason,
+		DissentingAgentIDs:     append([]string{}, evaluation.DissentingAgentIDs...),
+		UnresolvedObjectionIDs: append([]string{}, evaluation.UnresolvedObjectionIDs...),
+		EvidenceGapClaimIDs:    append([]string{}, evaluation.EvidenceGapClaimIDs...),
+	}
+	if err := terminal.Validate(); err != nil {
+		o.fail("control_error:", err)
+		return
+	}
+	if err := types.ValidateDeliberationTransition(o.state.Control, terminal); err != nil {
+		o.fail("control_error:", err)
+		return
+	}
+	if err := o.transcript.Append(types.TurnRecord{
+		Turn:      -1,
+		AgentID:   "moderator",
+		Timestamp: float64(time.Now().UnixNano()) / 1e9,
+		Control:   terminal,
+	}); err != nil {
+		o.fail("error:", err)
+		return
+	}
+	o.state.Control = terminal
+	o.state.Running = false
+	o.state.HaltedBy = reason
+}
+
+func cloneControlState(state *types.DeliberationControlState) (*types.DeliberationControlState, error) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		return nil, fmt.Errorf("cloning terminal control state: %w", err)
+	}
+	var clone types.DeliberationControlState
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return nil, fmt.Errorf("cloning terminal control state: %w", err)
+	}
+	return &clone, nil
+}
+
+func terminalHaltReason(outcome types.TerminalOutcome) string {
+	if outcome.Reason != "" {
+		return outcome.Reason
+	}
+	if outcome.Kind == types.OutcomeConsensus {
+		return fmt.Sprintf("consensus (proposal v%d)", outcome.ProposalVersion)
+	}
+	if outcome.Kind == types.OutcomeNoConsensus {
+		return "no_consensus"
+	}
+	return ""
 }
 
 func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool) {
@@ -454,7 +571,10 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		return types.TurnRecord{}, false
 	}
 
-	cleanedContent, hasConsensus, consensusStmt, consensusIgnored := agent.ExtractConsensus(content)
+	var cleanedContent string
+	var hasConsensus bool
+	var consensusStmt string
+	var consensusIgnored bool
 	var nextControl *types.DeliberationControlState
 	if o.state.Control != nil {
 		var err error
@@ -469,9 +589,10 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 			return types.TurnRecord{}, false
 		}
 		cleanedContent = nextControl.Contributions[len(nextControl.Contributions)-1].Position
-		hasConsensus = false
-		consensusStmt = ""
-		consensusIgnored = false
+	} else {
+		// Legacy transcripts may still display the old marker, but it is not
+		// available to typed runs and never controls halting.
+		cleanedContent, hasConsensus, consensusStmt, consensusIgnored = agent.ExtractConsensus(content)
 	}
 
 	var tokens types.TokenUsage

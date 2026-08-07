@@ -215,6 +215,22 @@ func (o *OutputManager) renderTranscriptEvent(record types.TurnRecord, index int
 	if record.Evidence != nil {
 		writeTranscriptEvidenceSections(writeSection, record.Evidence)
 	}
+	if record.Control != nil && record.Control.Phase == types.PhaseTerminal {
+		outcome := record.Control.Outcome
+		lines := []string{
+			fmt.Sprintf("kind: %s", outcome.Kind),
+			fmt.Sprintf("proposal version: %d", outcome.ProposalVersion),
+		}
+		if outcome.Reason != "" {
+			lines = append(lines, "reason: "+outcome.Reason)
+		}
+		lines = append(lines,
+			"dissenting agents: "+strings.Join(outcome.DissentingAgentIDs, ", "),
+			"unresolved objections: "+strings.Join(outcome.UnresolvedObjectionIDs, ", "),
+			"evidence gaps: "+strings.Join(outcome.EvidenceGapClaimIDs, ", "),
+		)
+		writeSection("Terminal outcome", lines)
+	}
 	if record.Consensus {
 		statement := strings.TrimSpace(record.ConsensusStatement)
 		if statement == "" {

@@ -1,0 +1,27 @@
+id: eprrpqhkrb
+artifact: todo
+record:
+  kind: fix
+  target_version: null
+  title: Bind terminal consensus gates to the established run contract
+  requirements:
+    - Resolve blocked plan task kgthugrlgf by making RequiredEndorsements, MinimumRounds, and RequiredDeliverableItems immutable across active-to-terminal transition.
+    - Authenticate standalone terminal consensus against trusted transcript metadata or prior control state; reject consensus snapshots lacking trustworthy gate provenance.
+    - Preserve current-version unique-vote checks, canonical proposal deliverable evaluation, typed no-consensus cap reasons, protocol-v2 evidence authority, and typed-v1 migration.
+    - Carry forward audit-1/audit-2 provenance and progress records yhnzidvxfg, zgftlmoasp, and cdnyfokvcj.
+  acceptance:
+    - Given an active run contract, when terminal consensus lowers endorsement, round, or deliverable requirements, then validation, load, and resume reject it.
+    - Given a valid terminal consensus, when persisted and resumed, then its gate requirements match the established run contract and all typed consensus conditions remain satisfied.
+    - Given a transcript beginning with terminal consensus, when no trusted gate provenance exists, then the snapshot is rejected rather than self-authenticated.
+    - Independent Audit verifies gate immutability, canonical deliverable behavior, stale/split vote rejection, and terminal persistence.
+  release_blocker: false
+  severity: degraded
+  status: open
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: "[fix] Bind terminal consensus gates to the established run contract"
+      severity: degraded
+      status: open
+      order: 2

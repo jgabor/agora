@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -124,8 +125,8 @@ func TestRunGivesEveryAgentOneIndependentOpening(t *testing.T) {
 	if want := []string{"alpha", "beta", "gamma"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("opening speakers: got %v, want %v", got, want)
 	}
-	if state.Control.Phase != types.PhaseRebuttal {
-		t.Fatalf("phase after complete opening: got %s", state.Control.Phase)
+	if state.Control.Phase != types.PhaseTerminal || state.Control.Outcome.Kind != types.OutcomeNoConsensus {
+		t.Fatalf("cap terminal after complete opening: phase=%s outcome=%#v", state.Control.Phase, state.Control.Outcome)
 	}
 }
 
@@ -226,7 +227,7 @@ func TestPrepareNextTurnKeepsImbalancedDirectedWorkInPhase(t *testing.T) {
 
 func TestRunAdvancesThroughPhasesWithStateDrivenWork(t *testing.T) {
 	agents := []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}}
-	state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents})
+	state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents, ConsensusThreshold: 2})
 	state.MaxTurns = 8
 	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
 	responses := []mockResponse{
@@ -271,14 +272,62 @@ func TestRunAdvancesThroughPhasesWithStateDrivenWork(t *testing.T) {
 			t.Fatalf("turn %d directive: got %#v, want %#v", i, directive, wantDirectives[i])
 		}
 	}
-	if state.Control.Phase != types.PhaseVoting || state.Control.Directive.Kind != types.DirectiveNone {
-		t.Fatalf("final phase/directive: got %s/%#v", state.Control.Phase, state.Control.Directive)
+	if state.Control.Phase != types.PhaseTerminal || state.Control.Outcome.Kind != types.OutcomeConsensus ||
+		state.Control.Outcome.ProposalVersion != 3 || state.Control.Directive.Kind != types.DirectiveNone {
+		t.Fatalf("final consensus state: phase=%s directive=%#v outcome=%#v", state.Control.Phase, state.Control.Directive, state.Control.Outcome)
 	}
 	if len(state.Control.Proposals) != 3 || len(state.Control.CurrentVotes()) != 2 {
 		t.Fatalf("final canonical work: proposals=%d votes=%d", len(state.Control.Proposals), len(state.Control.CurrentVotes()))
 	}
 	if info, err := transcript.ProtocolFromRecords(tm.Records()); err != nil || info.Legacy {
 		t.Fatalf("phase transcript protocol: info=%+v err=%v", info, err)
+	}
+}
+
+func typedProposalDeliverableResponses(finalContent string) []mockResponse {
+	return []mockResponse{
+		{content: `{"position":"opening proposal","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"proposal one"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"independent opening","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"answer objection","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"rebuttal follow-up","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"draft revision one","responses":[],"concessions":[],"proposal_action":{"kind":"revise","content":"proposal two","supersedes":1},"objections":[],"vote":null,"claims":[]}`},
+		{content: fmt.Sprintf(`{"position":"draft revision two","responses":[],"concessions":[],"proposal_action":{"kind":"revise","content":%q,"supersedes":2},"objections":[],"vote":null,"claims":[]}`, finalContent)},
+		{content: `{"position":"vote one","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":{"proposal_version":3,"choice":"endorse"},"claims":[]}`},
+		{content: `{"position":"vote two","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":{"proposal_version":3,"choice":"endorse"},"claims":[]}`},
+	}
+}
+
+func TestCanonicalProposalContentControlsTypedConsensus(t *testing.T) {
+	artifact := "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+	tests := []struct {
+		name        string
+		finalText   string
+		wantOutcome types.TerminalOutcomeKind
+	}{
+		{name: "canonical artifact satisfies gate", finalText: artifact, wantOutcome: types.OutcomeConsensus},
+		{name: "missing canonical artifact blocks gate", finalText: "proposal three without the artifact", wantOutcome: types.OutcomeNoConsensus},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agents := []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}}
+			state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents, ConsensusThreshold: 2})
+			state.MaxTurns = 8
+			state.Control = types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+			state.DeliverableGate = &types.DeliverableGate{MinItems: 3}
+			path := t.TempDir() + "/canonical-deliverable.jsonl"
+			tm := transcript.NewTranscriptManager(path)
+			runner := &recordingRunner{responses: typedProposalDeliverableResponses(tt.finalText)}
+			NewOrchestrator(state, tm, runner).Run()
+			if state.Control.Outcome.Kind != tt.wantOutcome {
+				t.Fatalf("outcome=%#v, want %s; halted=%q failure=%v", state.Control.Outcome, tt.wantOutcome, state.HaltedBy, state.Failure)
+			}
+			if tt.wantOutcome == types.OutcomeConsensus && state.Control.Outcome.ProposalVersion != 3 {
+				t.Fatalf("consensus proposal version=%d, want 3", state.Control.Outcome.ProposalVersion)
+			}
+			if loaded, err := transcript.LoadFileStrict(path); err != nil || loaded[len(loaded)-1].Control.Outcome.Kind != tt.wantOutcome {
+				t.Fatalf("persisted canonical deliverable outcome: records=%#v err=%v", loaded, err)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 )
 
 // DeliberationProtocolVersion identifies the strengthened typed deliberation
@@ -205,15 +206,18 @@ type ModeratorAction struct {
 	ClaimIDs        []string            `yaml:"claim_ids" json:"claim_ids"`
 }
 
-// ConvergenceSignals captures computed control inputs without deciding how the
-// orchestrator advances or halts.
+// ConvergenceSignals captures computed control inputs used by typed halt
+// evaluation. It is persisted with the control state so threshold and current
+// vote counts remain inspectable across transcript boundaries.
 type ConvergenceSignals struct {
-	CurrentEndorsements  int  `yaml:"current_endorsements" json:"current_endorsements"`
-	RequiredEndorsements int  `yaml:"required_endorsements" json:"required_endorsements"`
-	UnresolvedObjections int  `yaml:"unresolved_objections" json:"unresolved_objections"`
-	EvidenceGaps         int  `yaml:"evidence_gaps" json:"evidence_gaps"`
-	StagnantRounds       int  `yaml:"stagnant_rounds" json:"stagnant_rounds"`
-	ReadyToVote          bool `yaml:"ready_to_vote" json:"ready_to_vote"`
+	CurrentEndorsements      int  `yaml:"current_endorsements" json:"current_endorsements"`
+	RequiredEndorsements     int  `yaml:"required_endorsements" json:"required_endorsements"`
+	MinimumRounds            int  `yaml:"minimum_rounds" json:"minimum_rounds"`
+	RequiredDeliverableItems int  `yaml:"required_deliverable_items" json:"required_deliverable_items"`
+	UnresolvedObjections     int  `yaml:"unresolved_objections" json:"unresolved_objections"`
+	EvidenceGaps             int  `yaml:"evidence_gaps" json:"evidence_gaps"`
+	StagnantRounds           int  `yaml:"stagnant_rounds" json:"stagnant_rounds"`
+	ReadyToVote              bool `yaml:"ready_to_vote" json:"ready_to_vote"`
 }
 
 // TerminalOutcomeKind distinguishes an active deliberation from its two typed
@@ -236,6 +240,20 @@ type TerminalOutcome struct {
 	UnresolvedObjectionIDs []string            `yaml:"unresolved_objection_ids" json:"unresolved_objection_ids"`
 	EvidenceGapClaimIDs    []string            `yaml:"evidence_gap_claim_ids" json:"evidence_gap_claim_ids"`
 }
+
+// ConsensusEvaluation is the typed result of evaluating the control-state
+// consensus gates. It intentionally contains no model prose: an endorsement
+// counts only when it is the unique current vote for the current proposal.
+type ConsensusEvaluation struct {
+	Ready                  bool
+	ProposalVersion        int
+	EndorsementAgentIDs    []string
+	DissentingAgentIDs     []string
+	UnresolvedObjectionIDs []string
+	EvidenceGapClaimIDs    []string
+}
+
+var deliverableItemLine = regexp.MustCompile(`(?im)^\s*\d+\.\s+An agent must\b`)
 
 // DeliberationControlState is the versioned typed control plane for one
 // deliberation. It contains model-produced debate decisions and computed
@@ -352,6 +370,109 @@ func (s *DeliberationControlState) EvidenceGaps() []ClaimEvidence {
 		}
 	}
 	return gaps
+}
+
+// DeliverableItemCount counts the canonical numbered artifact items accepted
+// by the existing deliverable contract.
+func DeliverableItemCount(content string) int {
+	return len(deliverableItemLine.FindAllString(content, -1))
+}
+
+// DeliverablePresent reports whether the typed state itself contains the
+// required artifact, either in the current canonical proposal or in an
+// accepted ordinary contribution position.
+func (s *DeliberationControlState) DeliverablePresent(minItems int) bool {
+	if minItems <= 0 {
+		return true
+	}
+	if s == nil {
+		return false
+	}
+	for _, proposal := range s.Proposals {
+		if proposal.Version == s.CurrentProposalVersion && DeliverableItemCount(proposal.Content) >= minItems {
+			return true
+		}
+	}
+	for _, contribution := range s.Contributions {
+		if DeliverableItemCount(contribution.Position) >= minItems {
+			return true
+		}
+	}
+	return false
+}
+
+// EvaluateConsensus evaluates every typed consensus gate. The configured
+// endorsement threshold is carried in Convergence.RequiredEndorsements; the
+// minimum rounds and deliverable requirement are persisted in convergence
+// state before a terminal snapshot is written.
+func (s *DeliberationControlState) EvaluateConsensus(minimumRounds int, deliverablePresent bool) ConsensusEvaluation {
+	if s == nil {
+		return emptyConsensusEvaluation()
+	}
+	if err := s.Validate(); err != nil {
+		return emptyConsensusEvaluation()
+	}
+	return s.evaluateConsensus(minimumRounds, deliverablePresent)
+}
+
+func emptyConsensusEvaluation() ConsensusEvaluation {
+	return ConsensusEvaluation{
+		EndorsementAgentIDs:    []string{},
+		DissentingAgentIDs:     []string{},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+}
+
+func (s *DeliberationControlState) evaluateConsensus(minimumRounds int, deliverablePresent bool) ConsensusEvaluation {
+	evaluation := emptyConsensusEvaluation()
+
+	if s.CurrentProposalVersion > 0 {
+		for _, proposal := range s.Proposals {
+			if proposal.Version == s.CurrentProposalVersion {
+				evaluation.ProposalVersion = proposal.Version
+				break
+			}
+		}
+	}
+
+	currentVotes := make(map[string]ProposalVote)
+	unique := true
+	for _, vote := range s.CurrentVotes() {
+		if _, exists := currentVotes[vote.AgentID]; exists {
+			unique = false
+			continue
+		}
+		currentVotes[vote.AgentID] = vote
+	}
+	for _, agentID := range s.AgentIDs {
+		vote, voted := currentVotes[agentID]
+		if voted && vote.Choice == VoteEndorse {
+			evaluation.EndorsementAgentIDs = append(evaluation.EndorsementAgentIDs, agentID)
+		} else {
+			evaluation.DissentingAgentIDs = append(evaluation.DissentingAgentIDs, agentID)
+		}
+	}
+	for _, objection := range s.UnresolvedObjections() {
+		evaluation.UnresolvedObjectionIDs = append(evaluation.UnresolvedObjectionIDs, objection.ID)
+	}
+	for _, claim := range s.EvidenceGaps() {
+		evaluation.EvidenceGapClaimIDs = append(evaluation.EvidenceGapClaimIDs, claim.ID)
+	}
+
+	if minimumRounds < 1 {
+		minimumRounds = 1
+	}
+	evaluation.Ready = unique &&
+		(s.Phase == PhaseVoting || s.Phase == PhaseTerminal) &&
+		evaluation.ProposalVersion == s.CurrentProposalVersion &&
+		s.Convergence.RequiredEndorsements > 0 &&
+		len(evaluation.EndorsementAgentIDs) >= s.Convergence.RequiredEndorsements &&
+		s.PhaseWorkComplete(minimumRounds) &&
+		deliverablePresent &&
+		len(evaluation.UnresolvedObjectionIDs) == 0 &&
+		len(evaluation.EvidenceGapClaimIDs) == 0
+	return evaluation
 }
 
 // Validate checks all identities, references, vote uniqueness, and terminal
@@ -537,11 +658,11 @@ func (s *DeliberationControlState) Validate() error {
 	if err := s.validateAction(agents, proposals, objections, claims); err != nil {
 		return err
 	}
+	if s.Convergence.CurrentEndorsements < 0 || s.Convergence.RequiredEndorsements < 0 || s.Convergence.MinimumRounds < 0 || s.Convergence.RequiredDeliverableItems < 0 || s.Convergence.UnresolvedObjections < 0 || s.Convergence.EvidenceGaps < 0 || s.Convergence.StagnantRounds < 0 {
+		return fmt.Errorf("convergence signal counts must be >= 0")
+	}
 	if err := s.validateOutcome(agents, proposals, objections, claims); err != nil {
 		return err
-	}
-	if s.Convergence.CurrentEndorsements < 0 || s.Convergence.RequiredEndorsements < 0 || s.Convergence.UnresolvedObjections < 0 || s.Convergence.EvidenceGaps < 0 || s.Convergence.StagnantRounds < 0 {
-		return fmt.Errorf("convergence signal counts must be >= 0")
 	}
 	return nil
 }
@@ -772,6 +893,31 @@ func (s *DeliberationControlState) validateOutcome(agents map[string]bool, propo
 			return fmt.Errorf("terminal outcome references unknown proposal version %d", outcome.ProposalVersion)
 		}
 	}
+	if outcome.Kind == OutcomeConsensus {
+		if s.CurrentProposalVersion == 0 || outcome.ProposalVersion != s.CurrentProposalVersion {
+			return fmt.Errorf("consensus outcome must name the current proposal version")
+		}
+	}
+	if outcome.Kind == OutcomeNoConsensus && outcome.ProposalVersion != 0 && outcome.ProposalVersion != s.CurrentProposalVersion {
+		return fmt.Errorf("no-consensus outcome must name the current proposal version when present")
+	}
+	evaluation := s.evaluateConsensus(s.Convergence.MinimumRounds, s.DeliverablePresent(s.Convergence.RequiredDeliverableItems))
+	if s.Phase == PhaseTerminal {
+		if s.Convergence.CurrentEndorsements != len(evaluation.EndorsementAgentIDs) {
+			return fmt.Errorf("terminal convergence endorsements contradict current votes")
+		}
+		if s.Convergence.UnresolvedObjections != len(evaluation.UnresolvedObjectionIDs) {
+			return fmt.Errorf("terminal convergence objections contradict current state")
+		}
+		if s.Convergence.EvidenceGaps != len(evaluation.EvidenceGapClaimIDs) {
+			return fmt.Errorf("terminal convergence evidence gaps contradict current state")
+		}
+		if !equalStrings(outcome.DissentingAgentIDs, evaluation.DissentingAgentIDs) ||
+			!equalStrings(outcome.UnresolvedObjectionIDs, evaluation.UnresolvedObjectionIDs) ||
+			!equalStrings(outcome.EvidenceGapClaimIDs, evaluation.EvidenceGapClaimIDs) {
+			return fmt.Errorf("terminal outcome witnesses contradict current control state")
+		}
+	}
 	for _, id := range outcome.DissentingAgentIDs {
 		if !agents[id] {
 			return fmt.Errorf("terminal outcome references unknown dissenting agent %q", id)
@@ -785,6 +931,14 @@ func (s *DeliberationControlState) validateOutcome(agents map[string]bool, propo
 	for _, id := range outcome.EvidenceGapClaimIDs {
 		if !claims[id] {
 			return fmt.Errorf("terminal outcome references unknown claim %q", id)
+		}
+	}
+	if outcome.Kind == OutcomeConsensus {
+		if s.Convergence.RequiredEndorsements <= 0 || s.Convergence.MinimumRounds <= 0 {
+			return fmt.Errorf("consensus outcome is missing persisted halt requirements")
+		}
+		if !evaluation.Ready {
+			return fmt.Errorf("consensus outcome does not satisfy persisted halt gates")
 		}
 	}
 	return nil

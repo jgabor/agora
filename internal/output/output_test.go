@@ -507,6 +507,36 @@ func TestRenderTranscriptUsesRunStylePlainOutput(t *testing.T) {
 	assertNoUnicodeBox(t, got)
 }
 
+func TestRenderTranscriptDisplaysTypedTerminalOutcome(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	control := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	control.Phase = types.PhaseTerminal
+	control.CurrentProposalVersion = 2
+	control.Proposals = []types.CanonicalProposal{
+		{Version: 1, AuthorID: "alpha", Content: "first"},
+		{Version: 2, AuthorID: "beta", Content: "second", Supersedes: 1},
+	}
+	control.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeNoConsensus,
+		ProposalVersion:        2,
+		Reason:                 "max_turns (4)",
+		DissentingAgentIDs:     []string{"alpha"},
+		UnresolvedObjectionIDs: []string{"obj-1"},
+		EvidenceGapClaimIDs:    []string{"claim-1"},
+	}
+	var out bytes.Buffer
+	RenderTranscript(&out, []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}})
+	got := out.String()
+	assertContains(t, got, "Terminal outcome")
+	assertContains(t, got, "kind: no_consensus")
+	assertContains(t, got, "proposal version: 2")
+	assertContains(t, got, "reason: max_turns (4)")
+	assertContains(t, got, "obj-1")
+	assertContains(t, got, "claim-1")
+	assertNoANSI(t, got)
+}
+
 func TestRenderTranscriptUsesRunStyleRichOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("CI", "")
@@ -665,7 +695,7 @@ func TestFinalStatsPreservesSummaryAndPerAgentMetrics(t *testing.T) {
 	assertContains(t, got, "Total cost")
 	assertContains(t, got, "$0.200000")
 	assertContains(t, got, "Halted by")
-	assertContains(t, got, "Completed: all planned turns finished")
+	assertContains(t, got, "No consensus: all planned turns finished")
 	assertContains(t, got, "Per-Agent Stats")
 	assertContains(t, got, "[A2 skeptic]")
 	assertContains(t, got, "$0.2") // Robust to truncation in narrow tables

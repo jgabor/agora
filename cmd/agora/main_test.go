@@ -38,6 +38,16 @@ func TestApplyDefaultModelFromConfigUsesConfigWhenFlagOmitted(t *testing.T) {
 	}
 }
 
+func TestTranscriptShowPreservesTypedTerminalControl(t *testing.T) {
+	control := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	control.Phase = types.PhaseTerminal
+	control.Outcome = types.TerminalOutcome{Kind: types.OutcomeNoConsensus, Reason: "max_turns (1)", DissentingAgentIDs: []string{"alpha"}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	data := transcriptRecordData([]types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}}, nil)
+	if len(data) != 1 || data[0].Control == nil || data[0].Control.Outcome.Kind != types.OutcomeNoConsensus || data[0].Control.Outcome.Reason != "max_turns (1)" {
+		t.Fatalf("typed terminal control lost at show boundary: %#v", data)
+	}
+}
+
 func TestApplyDefaultModelFromConfigKeepsExplicitModelFlag(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME path behavior is Linux-specific")

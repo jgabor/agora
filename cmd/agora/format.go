@@ -326,16 +326,17 @@ type transcriptMetadataOutput struct {
 }
 
 type transcriptRecordOutput struct {
-	RecordIndex        int                       `json:"record_index"`
-	Turn               int                       `json:"turn"`
-	AgentID            string                    `json:"agent_id"`
-	Model              string                    `json:"model,omitempty"`
-	Timestamp          float64                   `json:"timestamp"`
-	Content            string                    `json:"content,omitempty"`
-	Evidence           *transcriptEvidenceOutput `json:"evidence,omitempty"`
-	Consensus          bool                      `json:"consensus"`
-	ConsensusStatement string                    `json:"consensus_statement,omitempty"`
-	CastMember         *types.CastMember         `json:"cast_member,omitempty"`
+	RecordIndex        int                             `json:"record_index"`
+	Turn               int                             `json:"turn"`
+	AgentID            string                          `json:"agent_id"`
+	Model              string                          `json:"model,omitempty"`
+	Timestamp          float64                         `json:"timestamp"`
+	Content            string                          `json:"content,omitempty"`
+	Evidence           *transcriptEvidenceOutput       `json:"evidence,omitempty"`
+	Control            *types.DeliberationControlState `json:"control,omitempty"`
+	Consensus          bool                            `json:"consensus"`
+	ConsensusStatement string                          `json:"consensus_statement,omitempty"`
+	CastMember         *types.CastMember               `json:"cast_member,omitempty"`
 }
 
 type transcriptEvidenceOutput struct {
@@ -391,6 +392,7 @@ func transcriptRecordData(records []types.TurnRecord, metadata *types.Transcript
 			AgentID:            strings.TrimSpace(record.AgentID),
 			Timestamp:          record.Timestamp,
 			Content:            strings.TrimSpace(record.Content),
+			Control:            record.Control,
 			Consensus:          record.Consensus,
 			ConsensusStatement: strings.TrimSpace(record.ConsensusStatement),
 		}
@@ -503,6 +505,17 @@ func writeTranscriptMarkdown(w io.Writer, data transcriptShowOutput) error {
 		fmt.Fprintf(&sb, "- **Timestamp:** %v\n", record.Timestamp)
 		if record.Content != "" {
 			fmt.Fprintf(&sb, "- **Content:** %s\n", record.Content)
+		}
+		if record.Control != nil && record.Control.Phase == types.PhaseTerminal {
+			outcome := record.Control.Outcome
+			fmt.Fprintf(&sb, "- **Terminal outcome:** %s\n", outcome.Kind)
+			fmt.Fprintf(&sb, "- **Terminal proposal version:** %d\n", outcome.ProposalVersion)
+			if outcome.Reason != "" {
+				fmt.Fprintf(&sb, "- **Terminal reason:** %s\n", outcome.Reason)
+			}
+			fmt.Fprintf(&sb, "- **Dissenting agents:** %s\n", strings.Join(outcome.DissentingAgentIDs, ", "))
+			fmt.Fprintf(&sb, "- **Unresolved objections:** %s\n", strings.Join(outcome.UnresolvedObjectionIDs, ", "))
+			fmt.Fprintf(&sb, "- **Evidence gaps:** %s\n", strings.Join(outcome.EvidenceGapClaimIDs, ", "))
 		}
 		fmt.Fprintf(&sb, "- **Consensus:** %t\n", record.Consensus)
 		if record.ConsensusStatement != "" {

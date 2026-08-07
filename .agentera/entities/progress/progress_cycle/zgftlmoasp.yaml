@@ -1,0 +1,17 @@
+id: zgftlmoasp
+artifact: progress
+record:
+  timestamp: 2026-08-07 22:28
+  type: fix
+  phase: build
+  what: "Retried kgthugrlgf after audit-1 with the smallest root-cause fix: terminal consensus is now self-authenticating from persisted typed votes, convergence gates, and outcome witnesses, while deliverable evaluation reads canonical proposal content rather than an agent-supplied proxy."
+  context:
+    intent: "Close the two accepted audit-1 findings: terminal consensus authenticity and canonical deliverable evaluation."
+    constraints: Scope limited to kgthugrlgf. Preserve protocol v2 authority and v1 migration, prior progress, audit-1 provenance, blocked gahqkhmvkr and TODO dynufsdiqr, and no moderation, terminal synthesis, ConsensusHint redesign, commit, push, or task completion update.
+    unknowns: Independent evaluator provenance and lifecycle completion remain pending; gopls reported only pre-existing modernization hints, not errors.
+    scope: internal/types, internal/orchestrator, internal/session, internal/transcript, and proportional regression tests.
+  inspiration: Audit-1 showed that persisted terminal outcome fields could be trusted without proving the exact current vote and gate state, and that typed contribution content could satisfy a deliverable without canonical proposal content. The smallest correction was to validate the persisted witness at every terminal boundary and make canonical proposal content authoritative.
+  discovered: Terminal validation now rejects absent, stale, split, mutated, or gate-incomplete terminal states at validation, load, transition, and resume boundaries. The canonical proposal artifact is required for the deliverable gate; typed contributions alone do not satisfy it.
+  verified: Targeted types, orchestrator, transcript, and session tests passed. Restricted PATH `go test ./... -race -coverprofile=coverage.out` passed all packages with race detection and coverage; `go vet ./...`, `go build ./...`, `golangci-lint run ./...` with 0 issues, and `git diff --check` passed. Checkout-authoritative dry-run run produced typed no_consensus with reason max_turns (1) and convergence minimum_rounds 3; checkout show, checkout resume, and the locally built CLI show preserved the terminal outcome.
+  next: Await independent evaluator provenance and required lifecycle transition; do not close the task or commit/push in this cycle.
+  publication_order: 11

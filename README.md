@@ -200,7 +200,7 @@ Lists managed transcripts from the configured transcript store, newest first, wi
 agora show TRANSCRIPT|SLUG [--format text|json|markdown]
 ```
 
-Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references, claim kind/evidence-status labels, and consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage.
+Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references, claim kind/evidence-status labels, typed terminal outcomes, and legacy consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage; typed control snapshots, including terminal outcomes, are included for inspection.
 
 ### `agora resume` — Continue from an existing transcript
 
@@ -258,7 +258,8 @@ Reads and writes the global `config.yaml` file. `agora config init` creates it w
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `topology` | string | `ring` | `ring`, `star`, or `mesh` |
-| `consensus_threshold` | int | `0` | Consecutive consensus signals to trigger early stop (0 = disabled) |
+| `consensus_threshold` | int | `0` | Unique current endorsements required for typed consensus halt (0 = disabled) |
+| `min_rounds` | int | `1` | Minimum complete agent rounds before typed consensus halt |
 | `workdir` | string | caller directory | Base directory for agent execution and relative local-context paths |
 | `synthesis_model` | string | — | Override model for final synthesis (defaults to first agent's model) |
 | `research` | bool | `false` | Enable topic-inferred web research before deliberation for runs using this config |
@@ -308,7 +309,20 @@ Current limitations: local context is text-only; PDF, DOCX, binary parsing, brow
 
 ## Consensus
 
-Agents signal consensus with `[CONSENSUS: <statement>]` in their response. When `consensus_threshold` consecutive turns contain markers, deliberation terminates early.
+Typed control state, not response prose, authorizes halting. A consensus outcome
+requires one current canonical proposal, unique current votes at the configured
+`consensus_threshold`, the configured `min_rounds`, any required deliverable,
+resolved or withdrawn objections, and no decisive evidence gaps. Votes for a
+superseded proposal are stale and do not count; repeated agreement prose does
+not advance consensus. Turn, time, and budget caps record a typed
+`no_consensus` outcome with the current dissents, unresolved objections, and
+evidence gaps. Legacy `[CONSENSUS: <statement>]` fields remain readable for
+transcript compatibility only. Terminal control snapshots persist the
+threshold, minimum-round, and deliverable gate requirements; loaders validate a
+consensus outcome against that persisted typed state, while binding those
+requirements to the established run contract remains pending. Deliverable
+evaluation considers the current canonical proposal content as well as
+ordinary typed contribution positions.
 
 ## Synthesis
 

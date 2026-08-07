@@ -6,7 +6,7 @@ record:
     - wudpmngihx
     - gcsqbkzjyj
     - vfrtijepkq
-  status: pending
+  status: blocked
   acceptance:
     - GIVEN agents endorse different proposal versions WHEN halting is evaluated THEN the endorsements are incompatible and no consensus halt occurs.
     - GIVEN one current proposal has enough unique current votes WHEN minimum rounds, deliverable requirements, and objection-disposition rules are also satisfied THEN the run halts with a typed consensus outcome naming that proposal version.
@@ -14,3 +14,13 @@ record:
     - GIVEN a turn, time, or budget cap ends the run before consensus WHEN terminal state is recorded THEN the result is explicit no-consensus with dissents, unresolved objections, and evidence gaps.
     - Test proportionality target — one pass and one fail per halt precondition, including stale votes, repeated prose, max-turn no-consensus, and unmet deliverable requirements.
   plan: josxwbovpf
+  evaluation:
+    attempt_count: 2
+    failure_count: 2
+    last_verdict: fail
+    last_failure_evidence: "Terminal consensus gate requirements remain mutable self-claims: RequiredEndorsements, MinimumRounds, and RequiredDeliverableItems can be lowered during active-to-terminal transition, then strict load/resume accepts consensus against the weakened snapshot rather than the established run contract."
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_02231f64dffeMsQuNdgjbpHdX0
+      recorded_at: 2026-08-07 22:37
+      writer_command: agentera state plan record-evaluation

@@ -141,9 +141,11 @@ func buildState(req RunRequest, existingTurns int) *types.DeliberationState {
 	for i := range req.Config.Agents {
 		agentIDs[i] = req.Config.Agents[i].ID
 	}
+	control := types.NewDeliberationControlState(agentIDs, 0)
+	control.Convergence.RequiredEndorsements = req.Config.ConsensusThreshold
 	return &types.DeliberationState{
 		Config:              req.Config,
-		Control:             types.NewDeliberationControlState(agentIDs, 0),
+		Control:             control,
 		Topic:               req.Topic,
 		Window:              req.Window,
 		MaxTurns:            maxTurns,
