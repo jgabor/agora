@@ -71,14 +71,156 @@ func TestValidateDeliberationTransitionRequiresOrderedPhases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			previous := NewDeliberationControlState([]string{"alpha"}, 0)
 			previous.Phase = tt.from
+			for turn := 0; turn < phaseWorkContributions(tt.from); turn++ {
+				previous.Contributions = append(previous.Contributions, AgentContribution{
+					AgentID: "alpha", Turn: turn, Position: "position",
+					ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+				})
+			}
+			if tt.from == PhaseDrafting {
+				previous.CurrentProposalVersion = 1
+				previous.Proposals = append(previous.Proposals, CanonicalProposal{
+					Version: 1, AuthorID: "alpha", Content: "proposal",
+				})
+			}
 			next := cloneControlState(t, previous)
 			next.Phase = tt.to
 			if err := ValidateDeliberationTransition(previous, next); err != nil {
 				t.Fatalf("valid phase transition: %v", err)
 			}
 			next.Phase = tt.invalid
+			if next.Phase == PhaseOpening && len(next.Contributions) > 1 {
+				next.Contributions = next.Contributions[:1]
+			}
 			if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "invalid phase transition") {
 				t.Fatalf("illegal phase transition error: %v", err)
+			}
+		})
+	}
+}
+
+func phaseWorkContributions(phase DeliberationPhase) int {
+	switch phase {
+	case PhaseOpening:
+		return 1
+	case PhaseRebuttal:
+		return 2
+	case PhaseDrafting:
+		return 3
+	default:
+		return 0
+	}
+}
+
+func TestValidateDeliberationTransitionRequiresPhaseWork(t *testing.T) {
+	tests := []struct {
+		name  string
+		from  DeliberationPhase
+		to    DeliberationPhase
+		setup func(*DeliberationControlState)
+	}{
+		{
+			name: "opening lacks one active agent",
+			from: PhaseOpening,
+			to:   PhaseRebuttal,
+			setup: func(state *DeliberationControlState) {
+				state.AgentIDs = []string{"alpha", "beta"}
+				state.Contributions = []AgentContribution{{
+					AgentID: "alpha", Turn: 0, Position: "position",
+					ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+				}}
+			},
+		},
+		{
+			name: "rebuttal lacks the second contribution per agent",
+			from: PhaseRebuttal,
+			to:   PhaseDrafting,
+			setup: func(state *DeliberationControlState) {
+				state.AgentIDs = []string{"alpha", "beta"}
+				state.Contributions = []AgentContribution{
+					{AgentID: "alpha", Turn: 0, Position: "position", ProposalAction: ContributionProposalAction{Kind: ProposalActionNone}},
+					{AgentID: "beta", Turn: 1, Position: "position", ProposalAction: ContributionProposalAction{Kind: ProposalActionNone}},
+					{AgentID: "alpha", Turn: 2, Position: "position", ProposalAction: ContributionProposalAction{Kind: ProposalActionNone}},
+				}
+			},
+		},
+		{
+			name: "drafting lacks a proposal",
+			from: PhaseDrafting,
+			to:   PhaseVoting,
+			setup: func(state *DeliberationControlState) {
+				state.AgentIDs = []string{"alpha", "beta"}
+				for turn := 0; turn < 6; turn++ {
+					state.Contributions = append(state.Contributions, AgentContribution{
+						AgentID: state.AgentIDs[turn%2], Turn: turn, Position: "position",
+						ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+					})
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+			previous.Phase = tt.from
+			tt.setup(previous)
+			next := cloneControlState(t, previous)
+			next.Phase = tt.to
+			if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "phase") {
+				t.Fatalf("missing phase-work error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateDeliberationTransitionRequiresBalancedPhaseWork(t *testing.T) {
+	makeState := func(phase DeliberationPhase, alpha, beta int, proposal bool) *DeliberationControlState {
+		state := NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+		state.Phase = phase
+		for turn := 0; turn < alpha; turn++ {
+			state.Contributions = append(state.Contributions, AgentContribution{
+				AgentID: "alpha", Turn: len(state.Contributions), Position: "position",
+				ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+			})
+		}
+		for turn := 0; turn < beta; turn++ {
+			state.Contributions = append(state.Contributions, AgentContribution{
+				AgentID: "beta", Turn: len(state.Contributions), Position: "position",
+				ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+			})
+		}
+		if proposal {
+			state.CurrentProposalVersion = 1
+			state.Proposals = []CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+		}
+		return state
+	}
+	tests := []struct {
+		name      string
+		from      DeliberationPhase
+		to        DeliberationPhase
+		alpha     int
+		beta      int
+		proposal  bool
+		wantError bool
+	}{
+		{name: "rebuttal balanced pass", from: PhaseRebuttal, to: PhaseDrafting, alpha: 2, beta: 2},
+		{name: "rebuttal imbalanced fail", from: PhaseRebuttal, to: PhaseDrafting, alpha: 3, beta: 1, wantError: true},
+		{name: "drafting balanced pass", from: PhaseDrafting, to: PhaseVoting, alpha: 3, beta: 3, proposal: true},
+		{name: "drafting imbalanced fail", from: PhaseDrafting, to: PhaseVoting, alpha: 5, beta: 1, proposal: true, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := makeState(tt.from, tt.alpha, tt.beta, tt.proposal)
+			next := cloneControlState(t, previous)
+			next.Phase = tt.to
+			err := ValidateDeliberationTransition(previous, next)
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), "phase") {
+					t.Fatalf("imbalanced transition error: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("balanced transition: %v", err)
 			}
 		})
 	}
@@ -90,26 +232,31 @@ func TestDeliberationControlStateValidatesEachDirectiveKind(t *testing.T) {
 	base.Objections = []Objection{{ID: "objection-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
 	tests := []struct {
 		name    string
+		phase   DeliberationPhase
 		valid   TurnDirective
 		invalid TurnDirective
 	}{
 		{
 			name:    "response",
+			phase:   PhaseRebuttal,
 			valid:   TurnDirective{Kind: DirectiveRespond, TargetAgentID: "beta", ObjectionID: "objection-1"},
 			invalid: TurnDirective{Kind: DirectiveRespond, TargetAgentID: "beta", ObjectionID: "missing"},
 		},
 		{
 			name:    "verification",
+			phase:   PhaseDrafting,
 			valid:   TurnDirective{Kind: DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"},
 			invalid: TurnDirective{Kind: DirectiveVerify, TargetAgentID: "beta", ClaimID: "missing"},
 		},
 		{
 			name:    "proposal revision",
+			phase:   PhaseDrafting,
 			valid:   TurnDirective{Kind: DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 1},
 			invalid: TurnDirective{Kind: DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 2},
 		},
 		{
 			name:    "vote",
+			phase:   PhaseVoting,
 			valid:   TurnDirective{Kind: DirectiveVote, TargetAgentID: "beta", ProposalVersion: 1},
 			invalid: TurnDirective{Kind: DirectiveVote, TargetAgentID: "missing", ProposalVersion: 1},
 		},
@@ -117,14 +264,37 @@ func TestDeliberationControlStateValidatesEachDirectiveKind(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			valid := cloneControlState(t, base)
+			valid.Phase = tt.phase
 			valid.Directive = tt.valid
 			if err := valid.Validate(); err != nil {
 				t.Fatalf("valid directive: %v", err)
 			}
 			invalid := cloneControlState(t, base)
+			invalid.Phase = tt.phase
 			invalid.Directive = tt.invalid
 			if err := invalid.Validate(); err == nil {
 				t.Fatal("invalid directive unexpectedly validated")
+			}
+		})
+	}
+}
+
+func TestDeliberationControlStateRejectsDirectiveOutsidePhase(t *testing.T) {
+	base := protocolStateWithProposal()
+	base.Claims = []ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Status: EvidenceUnverified}}
+	base.Objections = []Objection{{ID: "objection-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
+	tests := []TurnDirective{
+		{Kind: DirectiveRespond, TargetAgentID: "beta", ObjectionID: "objection-1"},
+		{Kind: DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"},
+		{Kind: DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 1},
+		{Kind: DirectiveVote, TargetAgentID: "beta", ProposalVersion: 1},
+	}
+	for _, directive := range tests {
+		t.Run(string(directive.Kind), func(t *testing.T) {
+			state := cloneControlState(t, base)
+			state.Directive = directive
+			if err := state.Validate(); err == nil || !strings.Contains(err.Error(), "not valid in phase") {
+				t.Fatalf("outside-phase directive error: %v", err)
 			}
 		})
 	}

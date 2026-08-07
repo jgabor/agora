@@ -4,3 +4,11 @@ record:
   severity: critical
   status: open
   description: Make the debate ledger the authoritative control plane for proposals,
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Make the debate ledger the authoritative control plane for proposals,
+      severity: critical
+      status: open
+      order: 1

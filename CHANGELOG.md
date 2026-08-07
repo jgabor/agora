@@ -6,6 +6,9 @@
 - Versioned typed deliberation control state for proposal revisions, objections and dispositions, unique-agent votes, claim evidence status, moderation, convergence, and terminal outcomes, with strict validation and explicit legacy transcript classification.
 - `internal/orchestrator/phases.go` makes `agora run` advance `DeliberationControlState` through ordered opening, rebuttal, drafting, and voting phases with independent openings, deterministic speakers, and persisted typed directives.
 
+### Fixed
+- Implementation attempt: phased control validation now rejects incomplete per-agent phase work and phase-incompatible directives, keeps prior model work out of opening envelopes, enforces one opening contribution per active agent and directed-agent selection, and consumes proposal-revision directives before deriving the next directive. The opening contract still advertises `proposal_action:create` to independent openers; follow-up `dynufsdiqr` tracks that blocker.
+
 ## [0.4.2] - 2026-08-03
 
 ### Changed

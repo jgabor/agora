@@ -130,6 +130,16 @@ func applyContribution(current *types.DeliberationControlState, agentID string, 
 	if !contains(current.AgentIDs, agentID) {
 		return nil, fmt.Errorf("unknown agent")
 	}
+	if current.Directive.Kind != "" && current.Directive.Kind != types.DirectiveNone && current.Directive.TargetAgentID != agentID {
+		return nil, fmt.Errorf("turn is directed to agent %q", current.Directive.TargetAgentID)
+	}
+	if current.Phase == types.PhaseOpening {
+		for _, prior := range current.Contributions {
+			if prior.AgentID == agentID {
+				return nil, fmt.Errorf("opening phase permits one contribution per agent")
+			}
+		}
+	}
 	if turn < 0 {
 		return nil, fmt.Errorf("turn must be >= 0")
 	}
@@ -171,6 +181,9 @@ func applyContribution(current *types.DeliberationControlState, agentID string, 
 	}
 	if err := validateConcessions(payload.Concessions); err != nil {
 		return nil, err
+	}
+	if current.Directive.Kind == types.DirectiveReviseProposal && next.CurrentProposalVersion > current.Directive.ProposalVersion {
+		next.Directive = types.TurnDirective{Kind: types.DirectiveNone}
 	}
 
 	next.Contributions = append(next.Contributions, contribution)

@@ -4,3 +4,11 @@ record:
   severity: annoying
   status: open
   description: Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
+      severity: annoying
+      status: open
+      order: 4

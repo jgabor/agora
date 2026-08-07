@@ -1,0 +1,16 @@
+id: sltfmyphjl
+artifact: progress
+record:
+  timestamp: 2026-08-07 19:47
+  type: feat
+  phase: build
+  what: Strengthened the authoritative phased control path so phase work criteria and phase-compatible directives are validated, opening turns remain one-per-agent, directed turns cannot be answered by another agent, and a consumed proposal-revision directive is cleared before the next directive is derived.
+  context:
+    intent: "Execute only Task gahqkhmvkr: explicit opening, rebuttal, drafting, and voting lifecycle plus deterministic directive delivery and resume continuity."
+    constraints: Keep the task in_progress; no commit, push, or plan-state mutation. Preserve the Agentera decisions-list optional-detail omission caveat and the prior glossary personal-input-unavailable caveat.
+    unknowns: No applicable project glossary entry was returned for phase. Agentera decisions list intentionally omitted optional detail under byte budget; unseen decision details were not reconstructed.
+    scope: internal/types protocol transition/directive validation, internal/ledger directed contribution enforcement, and proportional phase/directive regression tests.
+  discovered: A directed proposal revision was rejected before the orchestrator could derive the next directive because the cloned state still referenced the superseded proposal version. Clearing that consumed directive at the contribution boundary preserves validation and lets the orchestrator derive the next state-driven revision or vote directive.
+  verified: "Observed feature behavior: the checkout go run ./cmd/agora dry-run persisted opening, rebuttal, and drafting control snapshots; resuming that transcript preserved the drafting phase and outstanding directive. Focused tests exercised every ordered phase transition, every response/verification/proposal-revision/vote directive, illegal phase and phase-incompatible directive states, one opening per active agent, directed-agent enforcement, revision consumption, and resume continuity. The end-to-end stateful test observed proposal creation, objection response, two drafting revisions, and unique votes at the directed envelopes. The restricted race/coverage suite, vet, build, golangci-lint, and checkout prime all passed."
+  next: Keep gahqkhmvkr in_progress pending independent evaluator audit and provenance; do not mark the plan task complete.
+  publication_order: 6

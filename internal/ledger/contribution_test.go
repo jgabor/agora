@@ -245,3 +245,44 @@ func TestProcessContributionRejectsUnknownAndTrailingFields(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
+	opening := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	openingOutput := contributionJSON(t, nil)
+	first, err := ProcessContribution(opening, "alpha", 0, openingOutput)
+	if err != nil {
+		t.Fatalf("first opening contribution: %v", err)
+	}
+	if _, err := ProcessContribution(first, "alpha", 1, openingOutput); err == nil || !strings.Contains(err.Error(), "one contribution per agent") {
+		t.Fatalf("duplicate opening contribution error: %v", err)
+	}
+
+	directed := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	directed.Phase = types.PhaseRebuttal
+	directed.CurrentProposalVersion = 1
+	directed.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+	directed.Objections = []types.Objection{{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
+	directed.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: "beta", ObjectionID: "obj-1"}
+	if _, err := ProcessContribution(directed, "alpha", 0, openingOutput); err == nil || !strings.Contains(err.Error(), "directed to agent") {
+		t.Fatalf("wrong directed agent error: %v", err)
+	}
+	if _, err := ProcessContribution(directed, "beta", 0, openingOutput); err != nil {
+		t.Fatalf("directed agent contribution: %v", err)
+	}
+
+	revision := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	revision.Phase = types.PhaseDrafting
+	revision.CurrentProposalVersion = 1
+	revision.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+	revision.Directive = types.TurnDirective{Kind: types.DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 1}
+	revisionOutput := contributionJSON(t, map[string]any{
+		"proposal_action": map[string]any{"kind": "revise", "content": "revised proposal", "supersedes": 1},
+	})
+	next, err := ProcessContribution(revision, "beta", 0, revisionOutput)
+	if err != nil {
+		t.Fatalf("directed proposal revision: %v", err)
+	}
+	if next.CurrentProposalVersion != 2 || next.Directive.Kind != types.DirectiveNone {
+		t.Fatalf("revision directive was not consumed: proposal=%d directive=%#v", next.CurrentProposalVersion, next.Directive)
+	}
+}

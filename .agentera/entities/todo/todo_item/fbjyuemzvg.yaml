@@ -4,3 +4,11 @@ record:
   severity: annoying
   status: open
   description: Tune auto mode level caps based on usage — Decision 4 caps are provisional
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Tune auto mode level caps based on usage — Decision 4 caps are provisional
+      severity: annoying
+      status: open
+      order: 6

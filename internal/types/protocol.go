@@ -276,6 +276,24 @@ func NewDeliberationControlState(agentIDs []string, sourceReferenceCount int) *D
 	}
 }
 
+// PhaseWorkComplete reports whether every active agent has at least minimum
+// accepted contributions in the control state.
+func (s *DeliberationControlState) PhaseWorkComplete(minimum int) bool {
+	if s == nil || len(s.AgentIDs) == 0 || minimum < 1 {
+		return false
+	}
+	counts := make(map[string]int, len(s.AgentIDs))
+	for _, contribution := range s.Contributions {
+		counts[contribution.AgentID]++
+	}
+	for _, agentID := range s.AgentIDs {
+		if counts[agentID] < minimum {
+			return false
+		}
+	}
+	return true
+}
+
 // IsCurrentVote reports whether vote can count for the canonical proposal.
 func (s *DeliberationControlState) IsCurrentVote(v ProposalVote) bool {
 	return s != nil && s.CurrentProposalVersion > 0 && v.ProposalVersion == s.CurrentProposalVersion
@@ -350,9 +368,16 @@ func (s *DeliberationControlState) Validate() error {
 		agents[id] = true
 	}
 	turns := make(map[int]bool, len(s.Contributions))
+	openingAgents := make(map[string]bool, len(s.AgentIDs))
 	for i, contribution := range s.Contributions {
 		if !agents[contribution.AgentID] {
 			return fmt.Errorf("contribution %d references unknown agent %q", i, contribution.AgentID)
+		}
+		if s.Phase == PhaseOpening {
+			if openingAgents[contribution.AgentID] {
+				return fmt.Errorf("opening phase has multiple contributions from agent %q", contribution.AgentID)
+			}
+			openingAgents[contribution.AgentID] = true
 		}
 		if contribution.Turn < 0 || turns[contribution.Turn] {
 			return fmt.Errorf("duplicate or invalid contribution turn %d", contribution.Turn)
@@ -624,6 +649,9 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 	if !validPhaseTransition(previous.Phase, next.Phase) {
 		return fmt.Errorf("invalid phase transition from %q to %q", previous.Phase, next.Phase)
 	}
+	if err := validatePhaseWork(previous, next); err != nil {
+		return err
+	}
 	if next.CurrentProposalVersion < previous.CurrentProposalVersion || next.CurrentProposalVersion > previous.CurrentProposalVersion+1 {
 		return fmt.Errorf("invalid proposal lifecycle transition from version %d to %d", previous.CurrentProposalVersion, next.CurrentProposalVersion)
 	}
@@ -648,6 +676,9 @@ func (s *DeliberationControlState) validateDirective(agents map[string]bool, pro
 	directive := s.Directive
 	if directive.Kind == "" { // Backward-compatible typed snapshots predate directives.
 		directive.Kind = DirectiveNone
+	}
+	if !validDirectiveForPhase(s.Phase, directive.Kind) {
+		return fmt.Errorf("directive kind %q is not valid in phase %q", directive.Kind, s.Phase)
 	}
 	if directive.Kind == DirectiveNone {
 		if directive.TargetAgentID != "" || directive.Crux != "" || directive.ObjectionID != "" || directive.ClaimID != "" || directive.ProposalVersion != 0 {
@@ -746,6 +777,49 @@ func (s *DeliberationControlState) validateOutcome(agents map[string]bool, propo
 
 func validPhase(v DeliberationPhase) bool {
 	return v == PhaseOpening || v == PhaseRebuttal || v == PhaseDrafting || v == PhaseVoting || v == PhaseTerminal
+}
+
+func validatePhaseWork(previous, next *DeliberationControlState) error {
+	if previous.Phase == next.Phase {
+		return nil
+	}
+	switch {
+	case previous.Phase == PhaseOpening && next.Phase == PhaseRebuttal:
+		if !allAgentsHaveOpening(next) {
+			return fmt.Errorf("opening phase requires one contribution from every active agent")
+		}
+	case previous.Phase == PhaseRebuttal && next.Phase == PhaseDrafting:
+		if !next.PhaseWorkComplete(2) {
+			return fmt.Errorf("rebuttal phase requires two contributions per active agent")
+		}
+	case previous.Phase == PhaseDrafting && next.Phase == PhaseVoting:
+		if !next.PhaseWorkComplete(3) {
+			return fmt.Errorf("drafting phase requires three contributions per active agent")
+		}
+		if next.CurrentProposalVersion == 0 {
+			return fmt.Errorf("drafting phase requires a current proposal before voting")
+		}
+	}
+	return nil
+}
+
+func allAgentsHaveOpening(state *DeliberationControlState) bool {
+	return state.PhaseWorkComplete(1)
+}
+
+func validDirectiveForPhase(phase DeliberationPhase, kind DirectiveKind) bool {
+	switch phase {
+	case PhaseOpening, PhaseTerminal:
+		return kind == DirectiveNone
+	case PhaseRebuttal:
+		return kind == DirectiveNone || kind == DirectiveRespond
+	case PhaseDrafting:
+		return kind == DirectiveNone || kind == DirectiveRespond || kind == DirectiveVerify || kind == DirectiveReviseProposal
+	case PhaseVoting:
+		return kind == DirectiveNone || kind == DirectiveVote
+	default:
+		return false
+	}
 }
 
 func validPhaseTransition(previous, next DeliberationPhase) bool {

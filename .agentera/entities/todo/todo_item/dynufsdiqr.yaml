@@ -1,0 +1,27 @@
+id: dynufsdiqr
+artifact: todo
+record:
+  kind: fix
+  target_version: null
+  title: Align opening proposal contract with independent opening envelopes
+  requirements:
+    - Resolve blocked plan task gahqkhmvkr without exposing prior model-produced work to later opening agents.
+    - During opening, advertise and enforce position-only proposal behavior so multiple proposal-minded agents cannot terminate the run by independently choosing proposal_action:create.
+    - Preserve authoritative control-state persistence and the completed per-agent phase-work invariant.
+    - Carry forward audit-1 and audit-2 evidence and Agentera progress records sltfmyphjl and fhdosoadsy.
+  acceptance:
+    - Given multiple active agents with proposal-minded opening positions, when each opening envelope is processed, then every active agent receives one independent opening turn without canonical proposal conflict.
+    - Given an opening envelope, when its contribution contract is rendered, then only opening-valid proposal behavior is advertised and the contribution boundary enforces the same invariant.
+    - Given opening completes, when canonical proposal work begins, then proposal creation remains available in the appropriate later phase.
+    - Independent Audit verifies the opening contract, persistence, phase progression, and task evidence.
+  release_blocker: false
+  severity: degraded
+  status: open
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: "[fix] Align opening proposal contract with independent opening envelopes"
+      severity: degraded
+      status: open
+      order: 1

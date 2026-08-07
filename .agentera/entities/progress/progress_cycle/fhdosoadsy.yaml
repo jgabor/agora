@@ -1,0 +1,16 @@
+id: fhdosoadsy
+artifact: progress
+record:
+  timestamp: 2026-08-07 20:07
+  type: feat
+  phase: build
+  what: "Addressed the two accepted audit-1 findings for Task gahqkhmvkr: opening envelopes now use a safe protocol view, and rebuttal/drafting transitions require per-agent contribution minima."
+  context:
+    intent: Retry only Task gahqkhmvkr after audit-1 failure; preserve all original acceptance criteria and the existing uncommitted implementation.
+    constraints: Do not broaden scope, commit, push, mark the plan task complete, or alter/remove audit-1 failure provenance. Preserve prior Agentera decisions optional-detail omission and glossary personal-input-unavailable caveats.
+    unknowns: The project glossary has no applicable phase entry. Agentera decisions detail remains intentionally omitted under byte budget; unseen decision details were not reconstructed.
+    scope: internal/orchestrator opening envelope construction and phase tests, internal/types per-agent phase-work invariant and tests, plus the directly affected changelog.
+  discovered: The existing opening history suppression left the full control state and current ledger in the envelope. Aggregate total thresholds also treated repeated directed attempts as other agents work; one shared PhaseWorkComplete predicate now controls both scheduling and transition validation.
+  verified: "Observed feature behavior: internal/orchestrator/orchestrator.go:482 openingControlStateView produced later-opening control_state with only protocol_version, phase, agent_ids, and source_reference_count; TestOpeningEnvelopeHidesPriorModelWork marshaled the full envelope and found no prior proposal, objection, contribution, or ledger content, while state.Control retained that work. internal/types/protocol.go:290 PhaseWorkComplete and the phase tests observed balanced per-agent rebuttal/drafting fixtures advance, equal-total imbalanced fixtures fail, and preserved directed work remains in phase. Checkout go run and /tmp/opencode/agora-gahqkhmvkr-retry-local persisted opening -> rebuttal -> drafting and resumed at drafting. Restricted race/coverage, vet, build, golangci-lint, targeted tests, and git diff --check passed."
+  next: Keep gahqkhmvkr in_progress pending independent Audit PASS and evaluator provenance; do not mark the plan task complete.
+  publication_order: 7

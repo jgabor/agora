@@ -397,7 +397,11 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		"halting_rule":     o.buildHaltingRule(),
 	}
 	if o.state.Control != nil {
-		envelope["control_state"] = o.state.Control
+		controlState := any(o.state.Control)
+		if opening {
+			controlState = openingControlStateView(o.state.Control)
+		}
+		envelope["control_state"] = controlState
 		envelope["directive"] = o.state.Control.Directive
 		envelope["contribution_contract"] = ledger.ContributionContract
 	}
@@ -405,7 +409,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		envelope["evidence"] = o.sharedEvidence
 		o.evidenceSent[ag.ID] = true
 	}
-	if o.currentLedger != nil && ledgerEnabled(o.state.LedgerUpdateEnabled) {
+	if !opening && o.currentLedger != nil && ledgerEnabled(o.state.LedgerUpdateEnabled) {
 		envelope["ledger"] = o.currentLedger
 	}
 
@@ -473,6 +477,15 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		ConsensusIgnored:   consensusIgnored,
 		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
+}
+
+func openingControlStateView(state *types.DeliberationControlState) map[string]any {
+	return map[string]any{
+		"protocol_version":       state.ProtocolVersion,
+		"phase":                  state.Phase,
+		"agent_ids":              append([]string(nil), state.AgentIDs...),
+		"source_reference_count": state.SourceReferenceCount,
+	}
 }
 
 func (o *Orchestrator) nextAgent() types.AgentConfig {

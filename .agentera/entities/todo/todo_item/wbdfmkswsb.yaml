@@ -4,3 +4,11 @@ record:
   severity: critical
   status: open
   description: Add active deliberation control driven by the typed ledger. Run a
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Add active deliberation control driven by the typed ledger. Run a
+      severity: critical
+      status: open
+      order: 2

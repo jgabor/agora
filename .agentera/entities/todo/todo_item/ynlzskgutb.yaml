@@ -4,3 +4,11 @@ record:
   severity: annoying
   status: open
   description: Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Evaluate non-text context support (PDF/DOCX/browser-rendered pages) without weakening current text-only safety
+      severity: annoying
+      status: open
+      order: 3

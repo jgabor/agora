@@ -5,7 +5,7 @@ record:
   depends_on:
     - wudpmngihx
     - gcsqbkzjyj
-  status: in_progress
+  status: blocked
   acceptance:
     - GIVEN a new deliberation begins WHEN the opening phase runs THEN every active agent receives one opportunity to state an independent opening position before state-driven speaker selection begins.
     - GIVEN the debate advances WHEN phase criteria are met THEN control state moves through opening, rebuttal, drafting, and voting without skipping required work.
@@ -13,3 +13,13 @@ record:
     - GIVEN a phased run is persisted and resumed WHEN deliberation continues THEN the current phase and outstanding directive remain consistent.
     - Test proportionality target — one pass and one fail per phase transition and directive kind, including resume and illegal-transition coverage.
   plan: josxwbovpf
+  evaluation:
+    attempt_count: 2
+    failure_count: 2
+    last_verdict: fail
+    last_failure_evidence: Opening-safe envelopes hide canonical proposal state while the generic contribution contract still advertises proposal_action:create. A later independent opener can validly choose create, be rejected because a proposal already exists, and terminate the run before all agents receive opening turns.
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_022a73f43ffen5rjUKnyz97jpp
+      recorded_at: 2026-08-07 20:12
+      writer_command: agentera state plan record-evaluation

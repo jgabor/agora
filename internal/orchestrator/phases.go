@@ -12,19 +12,17 @@ func prepareNextTurn(state *types.DeliberationControlState, debate *types.Debate
 		return
 	}
 
-	contributions := len(state.Contributions)
-	agents := len(state.AgentIDs)
 	switch state.Phase {
 	case types.PhaseOpening:
 		if openingComplete(state) {
 			state.Phase = types.PhaseRebuttal
 		}
 	case types.PhaseRebuttal:
-		if contributions >= 2*agents {
+		if state.PhaseWorkComplete(2) {
 			state.Phase = types.PhaseDrafting
 		}
 	case types.PhaseDrafting:
-		if contributions >= 3*agents && state.CurrentProposalVersion > 0 {
+		if state.PhaseWorkComplete(3) && state.CurrentProposalVersion > 0 {
 			state.Phase = types.PhaseVoting
 		}
 	}
@@ -96,16 +94,7 @@ func directiveFulfilled(directive types.TurnDirective, state *types.Deliberation
 }
 
 func openingComplete(state *types.DeliberationControlState) bool {
-	seen := make(map[string]bool, len(state.AgentIDs))
-	for _, contribution := range state.Contributions {
-		seen[contribution.AgentID] = true
-	}
-	for _, id := range state.AgentIDs {
-		if !seen[id] {
-			return false
-		}
-	}
-	return true
+	return state.PhaseWorkComplete(1)
 }
 
 func nextScheduledAgent(state *types.DeliberationControlState) string {
