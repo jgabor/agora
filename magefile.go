@@ -94,14 +94,12 @@ func (Check) All() error {
 	return nil
 }
 
-// E2E runs the optional rmux-based terminal smoke test in scripts/e2e-rmux.sh.
+// E2E runs the optional termctrl-based terminal smoke test.
 func E2E() error {
-	return sh.RunV("./scripts/e2e-rmux.sh")
+	return sh.RunV("./scripts/e2e-termctrl.sh")
 }
 
 // Clean removes build artifacts.
 func Clean() error {
 	return os.RemoveAll("build")
 }
-
-
