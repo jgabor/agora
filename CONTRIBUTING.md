@@ -51,12 +51,12 @@ Pre-commit runs `go mod tidy`, `golangci-lint run --fix`, and `go vet`. Pre-push
 
 ### Optional terminal e2e
 
-Maintainer-only smoke test. Requires `rmux` in `PATH` and builds a temporary binary at `/tmp/agora-e2e`.
+Maintainer-only smoke test. Requires `termctrl` in `PATH` and keeps its binary and transcript in an isolated temporary directory.
 
 ```bash
-./scripts/e2e-rmux.sh
+./scripts/e2e-termctrl.sh
 # or
-go run magefile.go e2e
+mage e2e
 ```
 
 By default the script dry-runs a quick auto deliberation. Set `AGORA_E2E_DRY_RUN=0` for a live API smoke test when OpenCode and model credentials are configured.
@@ -64,10 +64,12 @@ By default the script dry-runs a quick auto deliberation. Set `AGORA_E2E_DRY_RUN
 | Variable | Default | Purpose |
 |---|---|---|
 | `AGORA_E2E_DRY_RUN` | `1` | `0` runs a short live deliberation instead of `--dry-run` |
-| `AGORA_E2E_SESSION` | `agora-e2e` | rmux session name |
+| `AGORA_E2E_SESSION` | `agora-e2e-<PID>` | termctrl session name |
 | `AGORA_E2E_COLS` | `100` | Terminal width |
 | `AGORA_E2E_ROWS` | `35` | Terminal height |
-| `AGORA_E2E_WAIT` | `2` | Seconds to wait after each command before capture |
+| `AGORA_E2E_COMMAND_TIMEOUT_MS` | `10000` | Timeout for each short command |
+| `AGORA_E2E_DELIBERATION_TIMEOUT_MS` | `300000` | Timeout for the deliberation |
+| `AGORA_E2E_MODEL` | `opencode/big-pickle` | Model used by the deliberation |
 
 ### README contract tests
 
@@ -80,7 +82,7 @@ README command examples marked with `<!-- agora-contract: ... -->` are verified 
 | `cmd/agora/` | CLI entrypoint and command wiring |
 | `internal/` | Core packages (orchestrator, agent, transcript, output, evidence, …) |
 | `examples/` | Sample YAML configs |
-| `scripts/` | Maintainer tooling (`e2e-rmux.sh`) |
+| `scripts/` | Maintainer tooling (`e2e-termctrl.sh`) |
 | `.agentera/` | Tracked Agentera SDLC artifacts (vision, decisions, progress, health) |
 | `.agentera/archive/` | Completed plan archive |
 
