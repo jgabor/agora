@@ -1,0 +1,14 @@
+id: zrmzxwjaey
+artifact: progress
+record:
+  timestamp: 2026-08-09 19:18
+  type: feat
+  phase: build
+  what: "vwhcvrbwdm: made CLI discovery evidence analysis deterministic and provider-free."
+  context:
+    intent: vwhcvrbwdm requires deterministic provider-free analysis of isolated OpenCode and Agora discovery evidence.
+    constraints: Preserve task1 isolation, checkout-rooted build, credential hygiene, forced nested dry-run, and quiet output. Do not change product code, help, CI, release artifacts, task evaluation, or task completion.
+    unknowns: No blocking gap. Qualification intentionally treats the first source-ordered record for a stable tool-call identity as canonical; observed OpenCode 1.18.11 capture had 48 unique tool records with no duplicate identities.
+    scope: Maintainer evaluator scripts and provider-free synthetic evidence only.
+  verified: Ran bash syntax checks and shellcheck for both evaluator scripts. ./scripts/eval-cli-discovery.sh --self-test passed 63 provider-free boundary checks and 24 offline analysis checks. Fixtures proved first completed qualifying wrapper scoring across duplicate, failed, incomplete, compound, spoofed, late, and out-of-order records; preserved unknown null versus known zero/false metrics; stable schema/version, provenance, ordered checklist/trace, relative raw paths, redaction, and strict quiet stdout with no failure path. Restricted PATH Go test ./..., vet ./..., and build ./... passed. git diff --check and artifact/credential hygiene passed. No live provider call or non-dry nested run occurred.
+  publication_order: 6
