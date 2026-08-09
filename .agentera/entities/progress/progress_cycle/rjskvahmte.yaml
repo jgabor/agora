@@ -1,0 +1,14 @@
+id: rjskvahmte
+artifact: progress
+record:
+  timestamp: 2026-08-09 21:23
+  type: fix
+  phase: build
+  what: "mcrpjqlwfh: made Mage evaluator execution literal and failure reporting bounded."
+  context:
+    intent: Correct the audited Mage executor defect without changing evaluator or Agora product behavior.
+    constraints: Preserve typed options, provider-free verification, exact ShellCheck pinning, evaluator isolation, terminal E2E behavior, and opt-in live execution.
+    scope: Mage evaluator process execution, adversarial provider-free regression checks, and Agentera progress only.
+  verified: Audit established that Mage v1.17.2 sh.RunV applies os.Expand to every argument and includes the complete expanded argv in returned failures. The evaluator targets now use os/exec with a fixed executable, direct argv, inherited stdin, and explicitly wired stdout and stderr; nonzero exits retain their status through a bounded error that contains no argument values. Fake OpenCode, synthetic auth, and a recording timeout prove literal dollar signs, spaces, double and single quote characters in output, auth, model, and timeout values survive byte-for-byte, the expansion sentinel never appears, and quiet success emits only the exact result path. A provider-free timeout failure retains status 125 and the evaluator's invalid-duration diagnostic while all captured Mage output omits argv, auth path, model, output path, and credential content. The checksum-verified ShellCheck 0.11.0 linux.x86_64 artifact passed the empty-auth/state CI-equivalent checker and version enforcement; the narrow ignore-root contamination probe, full evaluator self-test with 63 boundary and 57 analysis checks, dry terminal E2E with byte-identical script hash, typed Mage compilation, restricted-PATH Go race tests and vet, managed-worktree-safe Go build, golangci-lint, workflow YAML parsing, diff, and residue checks passed. Default, Check.All, Install, E2E, normal Go, release, and live CI paths remain unchanged. No live provider or non-dry nested run occurred.
+  next: Keep mcrpjqlwfh in_progress pending independent task evaluation.
+  publication_order: 10

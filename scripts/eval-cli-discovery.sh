@@ -6,6 +6,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_MODEL="${AGORA_EVALUATOR_MODEL:-opencode/big-pickle}"
 EVALUATOR_AGENT="agora-evaluator"
 PROMPT="Run \`agora\` and initiate a quick debate between grumpy old people on the latest weather report."
+EVALUATOR_RESULT_ROOT_RELATIVE=".agora-evaluator/cli-discovery"
 RESULT_SCHEMA="agora.cli-discovery.result"
 RESULT_SCHEMA_VERSION=1
 RESULT_FILENAME="result.json"
@@ -21,6 +22,8 @@ Usage:
 Run one isolated OpenCode evaluation trial against a freshly built Agora
 checkout. The outer OpenCode call can use the selected provider. Every nested
 Agora run is normalized to a dry run with a fresh transcript path.
+Store trial evidence beneath $EVALUATOR_RESULT_ROOT_RELATIVE/ (ignored); an
+explicit --output path is still required.
 
 Options:
   --output DIR       New directory for trial evidence (required for a trial).

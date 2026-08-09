@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -92,6 +93,64 @@ type Check mg.Namespace
 func (Check) All() error {
 	mg.Deps(Lint, Vet, Test)
 	return nil
+}
+
+type Eval mg.Namespace
+
+const evaluatorScript = "./scripts/eval-cli-discovery.sh"
+
+// runEvaluator preserves typed target values as literal argv and bounds target errors.
+func runEvaluator(args ...string) error {
+	cmd := exec.Command(evaluatorScript, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if code := exitErr.ExitCode(); code > 0 {
+				return mg.Fatalf(code, "evaluator failed with exit code %d", code)
+			}
+			return mg.Fatalf(1, "evaluator terminated without an exit code")
+		}
+		return fmt.Errorf("evaluator failed to start: %w", err)
+	}
+	return nil
+}
+
+// CliDiscovery runs an opt-in live evaluator trial.
+func (Eval) CliDiscovery(output string, model, authFile, timeout *string, quiet *bool) error {
+	if output == "" {
+		return fmt.Errorf("output is required")
+	}
+	args := []string{"--output", output}
+	if model != nil {
+		args = append(args, "--model", *model)
+	}
+	if authFile != nil {
+		args = append(args, "--auth-file", *authFile)
+	}
+	if timeout != nil {
+		args = append(args, "--timeout", *timeout)
+	}
+	if quiet != nil && *quiet {
+		args = append(args, "--quiet")
+	}
+	return runEvaluator(args...)
+}
+
+// CliDiscoveryHelp prints the evaluator's authoritative usage.
+func (Eval) CliDiscoveryHelp() error {
+	return runEvaluator("--help")
+}
+
+// CliDiscoverySelfTest runs the full provider-free evaluator self-test.
+func (Eval) CliDiscoverySelfTest() error {
+	return runEvaluator("--self-test")
+}
+
+// CliDiscoveryOfflineSelfTest runs the provider-free offline evaluator self-test.
+func (Eval) CliDiscoveryOfflineSelfTest() error {
+	return runEvaluator("--analysis-self-test")
 }
 
 // E2E runs the optional termctrl-based terminal smoke test.

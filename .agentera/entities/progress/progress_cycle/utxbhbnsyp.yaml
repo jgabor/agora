@@ -1,0 +1,14 @@
+id: utxbhbnsyp
+artifact: progress
+record:
+  timestamp: 2026-08-09 20:58
+  type: fix
+  phase: build
+  what: "mcrpjqlwfh: corrected audited Mage forwarding and ShellCheck pin gaps."
+  context:
+    intent: Correct the accepted maintainer-tooling audit findings without changing Agora product behavior.
+    constraints: Keep live evaluation opt-in, pin CI ShellCheck, preserve evaluator isolation, and retain terminal E2E behavior.
+    scope: Mage evaluator target, provider-free checks, CI tool setup, and Agentera progress only.
+  verified: Audit found that eval:cliDiscovery only printed help and CI relied on mutable ShellCheck. The repository-pinned Mage v1.17.2 target now takes required output and optional model, authFile, timeout, and quiet typed inputs, builds an argv slice without shell parsing, and keeps eval:cliDiscoveryHelp as the authoritative evaluator-help path. scripts/eval-cli-discovery-mage-test.sh builds the pinned Mage binary and uses fake OpenCode plus synthetic auth to prove listing and help do not start evaluation; missing, invalid, and empty inputs fail before evaluation; and output, model, auth, timeout, and quiet behavior reaches a provider-free trial. CI downloads ShellCheck v0.11.0 linux.x86_64 with SHA-256 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198, passes its absolute path to the checker, and the checker rejects version 0.10.0. The exact artifact passed the empty-auth/state CI-equivalent check. Default remains Build and Check.All remains Lint, Vet, Test. Ignore probes, full evaluator self-test (63 boundary and 57 analysis checks), terminal E2E dry run with byte-identical e2e-termctrl.sh, restricted-PATH Go test -race, vet, build, golangci-lint, workflow YAML parsing, and diff checks passed. No live provider or non-dry nested run occurred.
+  next: Keep mcrpjqlwfh in_progress pending independent task evaluation.
+  publication_order: 9
