@@ -1,0 +1,14 @@
+id: ufcqaxphcx
+artifact: plan
+record:
+  name: Authenticate terminal consensus against the run contract
+  depends_on:
+    []
+  status: pending
+  acceptance:
+    - GIVEN each persisted record class and version WHEN terminal policy is evaluated THEN its trusted requirement source and allowed load, show, and resume behavior are explicit.
+    - GIVEN an active run contract WHEN terminal consensus changes endorsement, round, or deliverable requirements THEN validation, loading, and resume reject it.
+    - GIVEN valid terminal consensus WHEN persisted and resumed THEN requirements match trusted provenance and current-vote, objection, evidence, and deliverable gates remain satisfied.
+    - GIVEN terminal consensus lacks trusted provenance WHEN loaded or resumed THEN it is rejected rather than self-authenticated.
+    - "Test proportionality target: one pass and one fail per gate mutation, stale or split vote, provenance class, canonical deliverable, transition, load, and resume."
+  plan: ogdtuxdwhi

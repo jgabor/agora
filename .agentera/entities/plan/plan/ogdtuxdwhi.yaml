@@ -1,0 +1,44 @@
+id: ogdtuxdwhi
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-08-08
+    status: open
+    reviewed: 2026-08-08
+    critic_issues: 6 found, 6 addressed, 0 dismissed
+    revised: Added deterministic non-live integration evidence, a sole terminal outcome authority, an explicit provenance and compatibility boundary, nonterminating opening recovery, predecessor-lineage preflight, and separate integration and state-sync tasks.
+    title: "Plan: Unblock Authoritative Ledger-Controlled Deliberation"
+  what: Replace the stuck execution plan with a successor that repairs the two independently audited authority gaps, then completes moderation, terminal-state synthesis and CLI behavior, integrated verification, and release-state reconciliation.
+  why: The predecessor cannot progress because opening-phase and terminal-consensus tasks exhausted evaluator retries. The successor preserves completed protocol, contribution, and claim-evidence outcomes plus failed-evaluation provenance while creating fresh auditable lifecycle boundaries for remaining behavior.
+  constraints: Preserve protocol-v2 evidence authority, explicit typed-v1 compatibility, completed task outcomes, predecessor lineage, blocked-task audits, and TODO evidence. Opening independence, terminal authenticity, moderation, presentation, integration, and state reconciliation remain distinct claims. Use deterministic non-provider evidence and the newly built checkout artifact. Do not make live provider calls, push remotely, mutate vision, or rewrite failed evidence as success. Relevant decision details remain unavailable because bounded decision retrieval omitted them; do not reconstruct unseen constraints.
+  overall_acceptance: GIVEN the successor plan completes WHEN deterministic authenticated-consensus and explicit no-consensus runs are inspected THEN opening turns remain independent, terminal outcomes are bound to the established run contract, moderation is state-driven, claims and evidence remain distinguishable, synthesis and CLI agree with terminal state, compatibility is explicit, and release and project state are synchronized.
+  scope:
+    included:
+      - Resolve the independent-opening proposal-action conflict.
+      - Bind terminal consensus requirements to trusted run provenance.
+      - Complete active moderation and stagnation control.
+      - Ground synthesis and CLI surfaces in terminal state.
+      - Verify deterministic non-live integrated consensus and no-consensus behavior through the built checkout artifact.
+      - Synchronize versioning, release notes, TODO, decisions, progress, plan lineage, and lifecycle state.
+    excluded:
+      - New providers or paid model behavior.
+      - Unrelated TODO backlog, UI themes, and profile work.
+      - Redesign of completed claim-evidence behavior except to prevent regression.
+      - Remote release, tag, or push.
+    deferred:
+      - Remove non-authoritative consensus hints only if terminal-surface evidence proves they remain behaviorally confusing.
+  design: Preserve the incomplete predecessor and its evaluator evidence through the writer lineage boundary. Repair opening and terminal authority independently. Establish the terminal record-version and trusted-provenance matrix before changing terminal acceptance. Use both repaired contracts as prerequisites for moderation, then make terminal state the sole presentation and synthesis authority. Prove integration with deterministic non-live inputs through the built CLI before synchronizing release and project state.
+  unknowns:
+    - question: Can a transcript beginning at terminal consensus authenticate its requirements from trusted persisted metadata, or must standalone consensus always reject?
+      affects_task: 2
+      resolve_by: Classify each persisted record version by trusted requirement source and permitted load, show, and resume behavior before changing terminal acceptance; reject when trusted provenance is absent.
+    - question: Which existing deterministic non-provider input path can produce authenticated consensus through the built CLI?
+      affects_task: 5
+      resolve_by: Evaluate current fixture and dry-run paths before integration work; use a bounded deterministic public-CLI path and re-plan rather than fall back to a live provider.
+    - question: Do the two repair audits materially change moderation or terminal-presentation assumptions?
+      affects_task: 3
+      resolve_by: Use independent PASS evidence from tasks 1 and 2 before task 3; re-invoke Plan if downstream acceptance must change.
+  surprises: "Carried forward: opening-safe redaction conflicted with a generic proposal-create action; terminal consensus requirement witnesses remained mutable despite self-consistent terminal validation; deterministic non-live consensus evidence and predecessor lineage must be established before release closure."
+  previous_plan_archived: josxwbovpf
+  replacement_input_sha256: 1034ce4971a83326873664829e34278b48472a6ada1afb0166bd993bade11646

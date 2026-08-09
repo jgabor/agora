@@ -1,0 +1,15 @@
+id: frlozgqbmw
+artifact: plan
+record:
+  name: Activate moderation and stagnation control
+  depends_on:
+    - tibgrkmilp
+    - ufcqaxphcx
+  status: pending
+  acceptance:
+    - GIVEN a round ends or stagnation is detected WHEN moderation runs THEN one validated action selects the leading unresolved crux and directs work, requests verification or revision, calls a vote, or requests no consensus.
+    - GIVEN moderation requests no consensus WHEN terminal evaluation runs THEN only the authenticated terminal evaluator may record the outcome.
+    - GIVEN opening is complete WHEN a speaker is selected THEN unresolved state drives selection and no active agent is indefinitely starved.
+    - GIVEN moderation fails or is invalid WHEN execution continues or stops THEN prior valid state remains intact and no false terminal outcome is created.
+    - "Test proportionality target: one pass and one fail per moderator action, stagnation trigger, fairness boundary, invalid output, and premature terminal request."
+  plan: ogdtuxdwhi

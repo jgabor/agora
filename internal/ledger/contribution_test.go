@@ -33,6 +33,7 @@ func contributionJSON(t *testing.T, fields map[string]any) string {
 func stateWithOpenProposal(t *testing.T) *types.DeliberationControlState {
 	t.Helper()
 	state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 2)
+	state.Phase = types.PhaseRebuttal
 	next, err := ProcessContribution(state, "alpha", 0, contributionJSON(t, map[string]any{
 		"position": "create proposal one",
 		"proposal_action": map[string]any{
@@ -176,6 +177,7 @@ func TestProcessContributionRecordsEveryVerificationOutcome(t *testing.T) {
 
 func TestProcessContributionRequiresExplicitUnverifiedClaimsAndTypedVerification(t *testing.T) {
 	state := types.NewDeliberationControlState([]string{"alpha"}, 1)
+	state.Phase = types.PhaseRebuttal
 	newClaim := func(fields map[string]any) (*types.DeliberationControlState, error) {
 		next, err := ProcessContribution(state, "alpha", 0, contributionJSON(t, map[string]any{
 			"proposal_action": map[string]any{"kind": "create", "content": "proposal"},
@@ -324,11 +326,15 @@ func TestProcessContributionIsDeterministicForIdenticalInput(t *testing.T) {
 		"proposal_action": map[string]any{"kind": "create", "content": "same proposal"},
 		"vote":            map[string]any{"proposal_version": 1, "choice": "endorse"},
 	})
-	first, err := ProcessContribution(types.NewDeliberationControlState([]string{"alpha"}, 0), "alpha", 0, output)
+	firstState := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	firstState.Phase = types.PhaseRebuttal
+	first, err := ProcessContribution(firstState, "alpha", 0, output)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := ProcessContribution(types.NewDeliberationControlState([]string{"alpha"}, 0), "alpha", 0, output)
+	secondState := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	secondState.Phase = types.PhaseRebuttal
+	second, err := ProcessContribution(secondState, "alpha", 0, output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,6 +345,7 @@ func TestProcessContributionIsDeterministicForIdenticalInput(t *testing.T) {
 
 func TestProcessContributionRejectsUnknownAndTrailingFields(t *testing.T) {
 	state := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	state.Phase = types.PhaseRebuttal
 	for _, output := range []string{
 		`{"position":"p","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[],"endorse":true}`,
 		`{"position":"p","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]} {}`,
@@ -351,7 +358,7 @@ func TestProcessContributionRejectsUnknownAndTrailingFields(t *testing.T) {
 
 func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
 	opening := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
-	openingOutput := contributionJSON(t, nil)
+	openingOutput := `{"position":"opening position"}`
 	first, err := ProcessContribution(opening, "alpha", 0, openingOutput)
 	if err != nil {
 		t.Fatalf("first opening contribution: %v", err)
@@ -366,10 +373,11 @@ func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
 	directed.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
 	directed.Objections = []types.Objection{{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
 	directed.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: "beta", ObjectionID: "obj-1"}
-	if _, err := ProcessContribution(directed, "alpha", 0, openingOutput); err == nil || !strings.Contains(err.Error(), "directed to agent") {
+	directedOutput := contributionJSON(t, nil)
+	if _, err := ProcessContribution(directed, "alpha", 0, directedOutput); err == nil || !strings.Contains(err.Error(), "directed to agent") {
 		t.Fatalf("wrong directed agent error: %v", err)
 	}
-	if _, err := ProcessContribution(directed, "beta", 0, openingOutput); err != nil {
+	if _, err := ProcessContribution(directed, "beta", 0, directedOutput); err != nil {
 		t.Fatalf("directed agent contribution: %v", err)
 	}
 
@@ -387,5 +395,88 @@ func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
 	}
 	if next.CurrentProposalVersion != 2 || next.Directive.Kind != types.DirectiveNone {
 		t.Fatalf("revision directive was not consumed: proposal=%d directive=%#v", next.CurrentProposalVersion, next.Directive)
+	}
+}
+
+func TestProcessContributionOpeningRetainsOnlyPosition(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+	}{
+		{
+			name:   "pass: position only",
+			output: `{"position":"independent opening"}`,
+		},
+		{
+			name: "fail: create action is inert",
+			output: contributionJSON(t, map[string]any{
+				"position": "opening proposal position",
+				"proposal_action": map[string]any{
+					"kind": "create", "content": "canonical proposal must wait",
+				},
+				"objections": []any{map[string]any{
+					"id": "opening-objection", "proposal_version": 1, "summary": "must wait",
+				}},
+				"vote": map[string]any{"proposal_version": 1, "choice": "endorse"},
+				"claims": []any{map[string]any{
+					"id": "opening-claim", "proposal_version": 1, "kind": "fact", "decisive": true, "source_refs": []int{},
+				}},
+			}),
+		},
+		{
+			name: "fail: revise action is inert",
+			output: contributionJSON(t, map[string]any{
+				"position": "opening revision position",
+				"proposal_action": map[string]any{
+					"kind": "revise", "content": "revision must wait", "supersedes": 1,
+				},
+			}),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+			next, err := ProcessContribution(state, "alpha", 0, tt.output)
+			if err != nil {
+				t.Fatalf("opening contribution: %v", err)
+			}
+			if next.Phase != types.PhaseOpening || next.CurrentProposalVersion != 0 ||
+				len(next.Proposals) != 0 || len(next.Objections) != 0 || len(next.Votes) != 0 || len(next.Claims) != 0 {
+				t.Fatalf("opening canonical state changed: %#v", next)
+			}
+			if len(next.Contributions) != 1 {
+				t.Fatalf("opening contribution count: got %d, want 1", len(next.Contributions))
+			}
+			contribution := next.Contributions[0]
+			if contribution.ProposalAction.Kind != types.ProposalActionNone || len(contribution.Responses) != 0 ||
+				len(contribution.Concessions) != 0 || len(contribution.Objections) != 0 || contribution.Vote != nil || len(contribution.Claims) != 0 {
+				t.Fatalf("opening retained non-position work: %#v", contribution)
+			}
+		})
+	}
+}
+
+func TestOpeningContributionContractIsPositionOnly(t *testing.T) {
+	contract := ContributionContractForPhase(types.PhaseOpening)
+	if contract["mode"] != "position_only" {
+		t.Fatalf("opening mode: got %#v", contract["mode"])
+	}
+	if required, ok := contract["required"].([]string); !ok || !reflect.DeepEqual(required, []string{"position"}) {
+		t.Fatalf("opening required fields: %#v", contract["required"])
+	}
+	shape, ok := contract["shape"].(map[string]any)
+	if !ok || !reflect.DeepEqual(shape, map[string]any{"position": "non-empty string"}) {
+		t.Fatalf("opening shape: %#v", contract["shape"])
+	}
+	for _, field := range []string{"proposal_action_kinds", "vote_choices", "verification_outcomes"} {
+		if _, present := contract[field]; present {
+			t.Fatalf("opening contract advertises %q: %#v", field, contract)
+		}
+	}
+
+	postOpening := ContributionContractForPhase(types.PhaseRebuttal)
+	kinds, ok := postOpening["proposal_action_kinds"].([]string)
+	if !ok || !reflect.DeepEqual(kinds, []string{"none", "create", "revise"}) {
+		t.Fatalf("post-opening proposal actions: %#v", postOpening["proposal_action_kinds"])
 	}
 }

@@ -161,6 +161,84 @@ func TestResumePreservesSourceMetadata(t *testing.T) {
 	}
 }
 
+func TestResumeContinuesPartialPositionOnlyOpening(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/partial-opening-resume.jsonl"
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents: []types.AgentConfig{
+			{ID: "alpha", Model: model},
+			{ID: "beta", Model: model},
+			{ID: "gamma", Model: model},
+		},
+	}
+	control := types.NewDeliberationControlState([]string{"alpha", "beta", "gamma"}, 0)
+	control.Contributions = []types.AgentContribution{{
+		AgentID: "alpha", Turn: 0, Position: "alpha independent opening",
+		ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+	}}
+	if err := control.Validate(); err != nil {
+		t.Fatalf("partial opening control: %v", err)
+	}
+	beforeJSON, err := json.Marshal(control)
+	if err != nil {
+		t.Fatalf("marshal partial opening control: %v", err)
+	}
+	var before types.DeliberationControlState
+	if err := json.Unmarshal(beforeJSON, &before); err != nil {
+		t.Fatalf("unmarshal partial opening control: %v", err)
+	}
+	source := []types.TurnRecord{{
+		Turn: 0, AgentID: "alpha", Model: &model, Content: "alpha independent opening", Control: control,
+	}}
+
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic: "resume partial opening", Config: cfg, OutputPath: outputPath,
+			MaxTurns: 2, TimeLimit: 60, DryRun: true,
+		},
+		SourceRecords: source,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if result.Failure != nil {
+		t.Fatalf("resume failure: %v", result.Failure)
+	}
+	if !reflect.DeepEqual(source[0].Control, &before) {
+		t.Fatalf("resume mutated partial source control: got %#v, want %#v", source[0].Control, before)
+	}
+
+	gotAgents := make([]string, 0, 3)
+	var betaControl, gammaControl *types.DeliberationControlState
+	for i := range result.Records {
+		record := result.Records[i]
+		if record.Turn < 0 {
+			continue
+		}
+		gotAgents = append(gotAgents, record.AgentID)
+		switch record.AgentID {
+		case "beta":
+			betaControl = record.Control
+		case "gamma":
+			gammaControl = record.Control
+		}
+	}
+	if want := []string{"alpha", "beta", "gamma"}; !reflect.DeepEqual(gotAgents, want) {
+		t.Fatalf("resumed opening schedule: got %v, want %v", gotAgents, want)
+	}
+	if betaControl == nil || betaControl.Phase != types.PhaseOpening {
+		t.Fatalf("beta did not remain in opening: %#v", betaControl)
+	}
+	if gammaControl == nil || gammaControl.Phase != types.PhaseRebuttal {
+		t.Fatalf("gamma did not complete opening into rebuttal: %#v", gammaControl)
+	}
+	if gammaControl.CurrentProposalVersion != 0 || len(gammaControl.Proposals) != 0 || len(gammaControl.Contributions) != 3 {
+		t.Fatalf("resumed opening canonical state: %#v", gammaControl)
+	}
+}
+
 func TestResumeHydratesPersistedEvidenceReferences(t *testing.T) {
 	model := "test/model"
 	cfg := &types.DeliberationConfig{

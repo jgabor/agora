@@ -533,7 +533,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		}
 		envelope["control_state"] = controlState
 		envelope["directive"] = o.state.Control.Directive
-		envelope["contribution_contract"] = ledger.ContributionContract
+		envelope["contribution_contract"] = ledger.ContributionContractForPhase(o.state.Control.Phase)
 	}
 	verifyTurn := o.state.Control != nil && o.state.Control.Directive.Kind == types.DirectiveVerify
 	if o.sharedEvidence != nil && (!o.evidenceSent[ag.ID] || verifyTurn) {

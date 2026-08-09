@@ -1,0 +1,16 @@
+id: ajdkdvribh
+artifact: progress
+record:
+  timestamp: 2026-08-09 16:38
+  type: fix
+  phase: build
+  what: Restored the independent opening contract by sending a position-only contribution schema during opening, retaining only each opening position at the contribution boundary, and leaving generic proposal creation available after opening.
+  context:
+    intent: Execute only successor-plan task tibgrkmilp, Restore the independent opening contract.
+    constraints: Preserve protocol-v2 evidence authority, typed-v1 compatibility, per-agent phase-work invariants, predecessor evidence, and all lifecycle state. No provider calls, task completion, commit, push, release work, or state reconciliation.
+    unknowns: Glossary advice for opening returned no_applicable_entry. Decision detail remains degraded with 10 omitted records, health remains incomplete, and prior personal-input-unavailable caveats remain historical rather than reconstructed.
+    scope: internal/ledger contribution contracts and parsing, opening envelope construction, dry-run structured output, and targeted ledger, agent, orchestrator, and session regressions.
+  discovered: The opening-safe control-state redaction still exposed the generic contribution schema, so independent openers could request canonical creation. The safe recovery is to make position the only authoritative opening field, discard unsupported generic work before applying canonical state, and preserve the ordinary schema after opening.
+  verified: "Observed feature behavior: TestOpeningEnvelopeHidesPriorModelWork marshaled later opening envelopes and found no prior opening text or ledger content; each envelope required only position and omitted proposal_action_kinds, vote_choices, and verification_outcomes. TestRunRecoversFromOpeningProposalActions supplied create actions from alpha, beta, and gamma; all three received one opening envelope in order, accepted contributions held proposal_action:none, canonical proposal history stayed empty, and the run reached only the expected max_turns (3) no_consensus outcome. TestRunAdvancesThroughPhasesWithStateDrivenWork created proposal one in rebuttal after both openings, then reached proposal v3 voting consensus. TestResumeContinuesPartialPositionOnlyOpening resumed alpha's persisted opening with beta still in opening and gamma completing the transition to rebuttal. Checkout-authoritative go run ./cmd/agora dry-run completed three turns; show and resume both read its typed transcript."
+  next: Keep tibgrkmilp in_progress pending independent audit PASS and evaluator provenance. Do not complete the task, reconcile state, commit, or push in this cycle.
+  publication_order: 13

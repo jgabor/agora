@@ -1,0 +1,17 @@
+id: nwjlrbybkn
+artifact: plan
+record:
+  name: Verify integrated release behavior
+  depends_on:
+    - tibgrkmilp
+    - ufcqaxphcx
+    - frlozgqbmw
+    - ajzcjfbzvv
+  status: pending
+  acceptance:
+    - GIVEN all behavior tasks are complete WHEN focused and repository-wide checks run THEN tests, restricted-path race and coverage, lint, vet, and build pass without weakened assertions.
+    - GIVEN a deterministic non-provider consensus input WHEN the newly built CLI runs THEN it persists one authenticated consensus terminal record naming the current proposal.
+    - GIVEN a deterministic non-provider cap or dissent input WHEN the newly built CLI runs THEN it persists explicit no-consensus with unresolved-state evidence.
+    - GIVEN both transcripts WHEN show and resume boundaries are exercised THEN typed terminal outcomes and compatibility behavior remain stable.
+    - "Test proportionality target: one built-artifact authenticated-consensus run and one explicit no-consensus run plus retained narrow regressions."
+  plan: ogdtuxdwhi

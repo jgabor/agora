@@ -1,0 +1,14 @@
+id: gxecbwghho
+artifact: plan
+record:
+  name: Synchronize release and project state
+  depends_on:
+    - nwjlrbybkn
+  status: pending
+  acceptance:
+    - GIVEN integrated evidence passes WHEN version and release notes are updated THEN the intended feature-minor version and changelog accurately describe authority, moderation, evidence, compatibility, and remaining caveats.
+    - GIVEN predecessor blockers are replaced WHEN TODO and plan lineage are reconciled THEN failed audits remain historical evidence and TODOs resolve only with verified replacement outcomes.
+    - GIVEN project state is synchronized WHEN docs, decisions, progress, TODO, and plan lifecycle are inspected THEN they agree on completed and remaining work.
+    - GIVEN synchronization changes are complete WHEN final checks run THEN no release or state update invalidates task 5 evidence.
+    - "Test proportionality target: one consistency pass and one deliberate mismatch rejection per synchronized state family."
+  plan: ogdtuxdwhi

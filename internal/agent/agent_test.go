@@ -302,6 +302,28 @@ func TestAgentRunnerDryRunNoTopic(t *testing.T) {
 	}
 }
 
+func TestAgentRunnerDryRunUsesPositionOnlyOpeningContract(t *testing.T) {
+	runner := NewAgentRunner(true)
+	content, _, err := runner.Run(types.AgentConfig{ID: "opening-agent", Model: "test-model"}, map[string]any{
+		"topic": "opening topic",
+		"contribution_contract": map[string]any{
+			"mode":     "position_only",
+			"required": []string{"position"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("opening dry run: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		t.Fatalf("opening payload: %v", err)
+	}
+	position, ok := payload["position"].(string)
+	if len(payload) != 1 || !ok || !strings.Contains(position, "opening-agent") {
+		t.Fatalf("opening payload: %#v", payload)
+	}
+}
+
 func TestAgentRunnerDryRunResearchAgentsReturnStructuredJSON(t *testing.T) {
 	runner := NewAgentRunner(true)
 

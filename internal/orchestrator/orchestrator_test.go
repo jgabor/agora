@@ -121,6 +121,7 @@ func TestExecuteTurnRejectsMalformedTypedContributionWithoutMutation(t *testing.
 	agents := newTestAgents(1)
 	state := newTestState(&types.DeliberationConfig{Agents: agents})
 	state.Control = types.NewDeliberationControlState([]string{agents[0].ID}, 0)
+	state.Control.Phase = types.PhaseRebuttal
 	tm := transcript.NewTranscriptManager(filepath.Join(t.TempDir(), "typed.jsonl"))
 	o := NewOrchestrator(state, tm, &mockRunner{content: `{"position":"incomplete"}`})
 
@@ -312,6 +313,7 @@ func TestEvidenceSourceReferencesAreBoundBeforeTypedContribution(t *testing.T) {
 	agents := newTestAgents(1)
 	state := newTestState(&types.DeliberationConfig{Agents: agents, Topology: types.TopologyRing})
 	state.Control = types.NewDeliberationControlState([]string{agents[0].ID}, 0)
+	state.Control.Phase = types.PhaseRebuttal
 	state.MaxTurns = 1
 	state.Evidence = types.EvidenceRequest{ResearchEnabled: true}
 	tm := transcript.NewTranscriptManager(t.TempDir() + "/transcript.jsonl")

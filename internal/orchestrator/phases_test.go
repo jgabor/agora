@@ -106,7 +106,7 @@ func TestRunGivesEveryAgentOneIndependentOpening(t *testing.T) {
 	state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents})
 	state.MaxTurns = 3
 	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta", "gamma"}, 0)
-	response := mockResponse{content: `{"position":"opening","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`}
+	response := mockResponse{content: `{"position":"opening"}`}
 	runner := &recordingRunner{responses: []mockResponse{response}}
 	tm := transcript.NewTranscriptManager(t.TempDir() + "/opening.jsonl")
 
@@ -136,8 +136,9 @@ func TestOpeningEnvelopeHidesPriorModelWork(t *testing.T) {
 	state.MaxTurns = 3
 	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta", "gamma"}, 0)
 	runner := &recordingRunner{responses: []mockResponse{
-		{content: `{"position":"opening proposal","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"proposal one"},"objections":[{"id":"obj-1","proposal_version":1,"summary":"prior objection"}],"vote":null,"claims":[]}`},
-		{content: `{"position":"independent opening","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"independent opening alpha"}`},
+		{content: `{"position":"independent opening beta"}`},
+		{content: `{"position":"independent opening gamma"}`},
 	}}
 	priorLedger := types.NewDebateLedger(1, 1)
 	priorLedger.Positions = []types.AgentPosition{{AgentID: "alpha", Text: "prior ledger position", Turn: 0}}
@@ -146,8 +147,8 @@ func TestOpeningEnvelopeHidesPriorModelWork(t *testing.T) {
 	o.SetCurrentLedger(priorLedger)
 	o.Run()
 
-	if len(state.Control.Proposals) != 1 || len(state.Control.Objections) != 1 || len(state.Control.Contributions) != 3 {
-		t.Fatalf("authoritative opening state was not retained: proposals=%d objections=%d contributions=%d", len(state.Control.Proposals), len(state.Control.Objections), len(state.Control.Contributions))
+	if state.Failure != nil || len(state.Control.Proposals) != 0 || len(state.Control.Objections) != 0 || len(state.Control.Contributions) != 3 {
+		t.Fatalf("opening state: failure=%v proposals=%d objections=%d contributions=%d", state.Failure, len(state.Control.Proposals), len(state.Control.Objections), len(state.Control.Contributions))
 	}
 	wantControl := map[string]any{
 		"protocol_version":       types.DeliberationProtocolVersion,
@@ -164,14 +165,78 @@ func TestOpeningEnvelopeHidesPriorModelWork(t *testing.T) {
 		if _, ok := envelope["ledger"]; ok {
 			t.Fatalf("opening %d received prior ledger: %#v", i, envelope["ledger"])
 		}
+		contract, ok := envelope["contribution_contract"].(map[string]any)
+		if !ok || contract["mode"] != "position_only" {
+			t.Fatalf("opening %d contribution contract: %#v", i, envelope["contribution_contract"])
+		}
+		if required, ok := contract["required"].([]string); !ok || !reflect.DeepEqual(required, []string{"position"}) {
+			t.Fatalf("opening %d required fields: %#v", i, contract["required"])
+		}
+		for _, field := range []string{"proposal_action_kinds", "vote_choices", "verification_outcomes"} {
+			if _, present := contract[field]; present {
+				t.Fatalf("opening %d contract advertises %q: %#v", i, field, contract)
+			}
+		}
 		payload, err := json.Marshal(envelope)
 		if err != nil {
 			t.Fatalf("marshal opening %d envelope: %v", i, err)
 		}
-		for _, priorWork := range []string{"opening proposal", "proposal one", "obj-1", "prior objection", "prior ledger position"} {
+		for _, priorWork := range []string{"independent opening alpha", "independent opening beta", "prior ledger position"} {
 			if strings.Contains(string(payload), priorWork) {
 				t.Fatalf("opening %d envelope contains prior model work %q: %s", i, priorWork, payload)
 			}
+		}
+		for _, forbidden := range []string{`"proposal_action"`, `"proposal_action_kinds"`, `"vote_choices"`, `"verification_outcomes"`} {
+			if strings.Contains(string(payload), forbidden) {
+				t.Fatalf("opening %d envelope contains non-opening action schema %q: %s", i, forbidden, payload)
+			}
+		}
+	}
+}
+
+func TestRunRecoversFromOpeningProposalActions(t *testing.T) {
+	agents := []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}, {ID: "gamma", Model: "test"}}
+	state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents})
+	state.MaxTurns = len(agents)
+	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta", "gamma"}, 0)
+	runner := &recordingRunner{responses: []mockResponse{
+		{content: `{"position":"alpha proposes immediately","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"alpha proposal"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"beta proposes immediately","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"beta proposal"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"gamma proposes immediately","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"gamma proposal"},"objections":[],"vote":null,"claims":[]}`},
+	}}
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/opening-recovery.jsonl")
+
+	NewOrchestrator(state, tm, runner).Run()
+
+	gotAgents := make([]string, len(runner.agents))
+	for i := range runner.agents {
+		gotAgents[i] = runner.agents[i].ID
+		if phase := envelopeControlPhase(t, runner.envelopes[i]); phase != types.PhaseOpening {
+			t.Fatalf("opening %d phase: got %s, want opening", i, phase)
+		}
+	}
+	if want := []string{"alpha", "beta", "gamma"}; !reflect.DeepEqual(gotAgents, want) {
+		t.Fatalf("opening schedule: got %v, want %v", gotAgents, want)
+	}
+	if state.Failure != nil || state.HaltedBy != "max_turns (3)" {
+		t.Fatalf("opening recovery halted incorrectly: failure=%v halted=%q", state.Failure, state.HaltedBy)
+	}
+	if state.Control.CurrentProposalVersion != 0 || len(state.Control.Proposals) != 0 || len(state.Control.Objections) != 0 || len(state.Control.Votes) != 0 || len(state.Control.Claims) != 0 {
+		t.Fatalf("opening proposal action mutated canonical state: %#v", state.Control)
+	}
+	if len(state.Control.Contributions) != len(agents) {
+		t.Fatalf("opening contributions: got %d, want %d", len(state.Control.Contributions), len(agents))
+	}
+	seen := map[string]int{}
+	for _, contribution := range state.Control.Contributions {
+		seen[contribution.AgentID]++
+		if contribution.ProposalAction.Kind != types.ProposalActionNone {
+			t.Fatalf("opening retained proposal action: %#v", contribution)
+		}
+	}
+	for _, agentID := range []string{"alpha", "beta", "gamma"} {
+		if seen[agentID] != 1 {
+			t.Fatalf("opening count for %s: got %d, want 1", agentID, seen[agentID])
 		}
 	}
 }
@@ -231,10 +296,10 @@ func TestRunAdvancesThroughPhasesWithStateDrivenWork(t *testing.T) {
 	state.MaxTurns = 8
 	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
 	responses := []mockResponse{
-		{content: `{"position":"opening proposal","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"proposal one"},"objections":[{"id":"obj-1","proposal_version":1,"summary":"challenge"}],"vote":null,"claims":[]}`},
-		{content: `{"position":"independent opening","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"independent opening alpha"}`},
+		{content: `{"position":"independent opening beta"}`},
+		{content: `{"position":"create proposal after opening","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"proposal one"},"objections":[{"id":"obj-1","proposal_version":1,"summary":"challenge"}],"vote":null,"claims":[]}`},
 		{content: `{"position":"answer objection","responses":[{"objection_id":"obj-1","response":"addressed","disposition":"resolved","rationale":"the proposal covers the challenge"}],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
-		{content: `{"position":"rebuttal follow-up","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
 		{content: `{"position":"draft revision one","responses":[],"concessions":[],"proposal_action":{"kind":"revise","content":"proposal two","supersedes":1},"objections":[],"vote":null,"claims":[]}`},
 		{content: `{"position":"draft revision two","responses":[],"concessions":[],"proposal_action":{"kind":"revise","content":"proposal three","supersedes":2},"objections":[],"vote":null,"claims":[]}`},
 		{content: `{"position":"vote one","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":{"proposal_version":3,"choice":"endorse"},"claims":[]}`},
@@ -254,8 +319,8 @@ func TestRunAdvancesThroughPhasesWithStateDrivenWork(t *testing.T) {
 	wantDirectives := []types.TurnDirective{
 		{Kind: types.DirectiveNone},
 		{Kind: types.DirectiveNone},
-		{Kind: types.DirectiveRespond, TargetAgentID: "alpha", ObjectionID: "obj-1"},
 		{Kind: types.DirectiveNone},
+		{Kind: types.DirectiveRespond, TargetAgentID: "beta", ObjectionID: "obj-1"},
 		{Kind: types.DirectiveReviseProposal, TargetAgentID: "alpha", ProposalVersion: 1},
 		{Kind: types.DirectiveReviseProposal, TargetAgentID: "beta", ProposalVersion: 2},
 		{Kind: types.DirectiveVote, TargetAgentID: "alpha", ProposalVersion: 3},
@@ -286,9 +351,9 @@ func TestRunAdvancesThroughPhasesWithStateDrivenWork(t *testing.T) {
 
 func typedProposalDeliverableResponses(finalContent string) []mockResponse {
 	return []mockResponse{
-		{content: `{"position":"opening proposal","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"proposal one"},"objections":[],"vote":null,"claims":[]}`},
-		{content: `{"position":"independent opening","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
-		{content: `{"position":"answer objection","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
+		{content: `{"position":"independent opening alpha"}`},
+		{content: `{"position":"independent opening beta"}`},
+		{content: `{"position":"create proposal after opening","responses":[],"concessions":[],"proposal_action":{"kind":"create","content":"proposal one"},"objections":[],"vote":null,"claims":[]}`},
 		{content: `{"position":"rebuttal follow-up","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`},
 		{content: `{"position":"draft revision one","responses":[],"concessions":[],"proposal_action":{"kind":"revise","content":"proposal two","supersedes":1},"objections":[],"vote":null,"claims":[]}`},
 		{content: fmt.Sprintf(`{"position":"draft revision two","responses":[],"concessions":[],"proposal_action":{"kind":"revise","content":%q,"supersedes":2},"objections":[],"vote":null,"claims":[]}`, finalContent)},

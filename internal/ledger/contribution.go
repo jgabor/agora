@@ -36,6 +36,26 @@ var ContributionContract = map[string]any{
 	"verification_outcomes": []string{"verified", "conflicting", "unsupported", "verification_failed"},
 }
 
+// OpeningContributionContract limits an independent opening to a position.
+// Proposal and other canonical work begins only after every active agent has
+// had that independent opportunity.
+var OpeningContributionContract = map[string]any{
+	"mode":        "position_only",
+	"instruction": "Return only one JSON object with your independent opening position.",
+	"required":    []string{"position"},
+	"shape": map[string]any{
+		"position": "non-empty string",
+	},
+}
+
+// ContributionContractForPhase returns the action schema applicable to phase.
+func ContributionContractForPhase(phase types.DeliberationPhase) map[string]any {
+	if phase == types.PhaseOpening {
+		return OpeningContributionContract
+	}
+	return ContributionContract
+}
+
 type contributionPayload struct {
 	Position       string                           `json:"position"`
 	Responses      []types.ContributionResponse     `json:"responses"`
@@ -67,12 +87,12 @@ type contributionClaim struct {
 	SourceRefs      []int                      `json:"source_refs"`
 }
 
-// ProcessContribution strictly parses one agent's structured output and
-// atomically advances a cloned control state. Any error returns nil and leaves
-// current untouched, so malformed output cannot endorse a proposal or dispose
-// an objection.
+// ProcessContribution parses the phase-appropriate authoritative portion of
+// one agent's structured output and atomically advances a cloned control
+// state. Any error returns nil and leaves current untouched, so malformed
+// output cannot endorse a proposal or dispose an objection.
 func ProcessContribution(current *types.DeliberationControlState, agentID string, turn int, output string) (*types.DeliberationControlState, error) {
-	payload, err := parseContribution(output)
+	payload, err := parseContribution(output, current != nil && current.Phase == types.PhaseOpening)
 	if err != nil {
 		return nil, fmt.Errorf("contribution from %q at turn %d: %w", agentID, turn, err)
 	}
@@ -83,7 +103,10 @@ func ProcessContribution(current *types.DeliberationControlState, agentID string
 	return next, nil
 }
 
-func parseContribution(output string) (contributionPayload, error) {
+func parseContribution(output string, opening bool) (contributionPayload, error) {
+	if opening {
+		return parseOpeningContribution(output)
+	}
 	cleaned := llmutil.StripCodeFences(output)
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(cleaned), &fields); err != nil {
@@ -110,6 +133,37 @@ func parseContribution(output string) (contributionPayload, error) {
 		return contributionPayload{}, err
 	}
 	return payload, nil
+}
+
+// parseOpeningContribution treats position as the sole authoritative opening
+// field. Older or nonconforming model output can include generic contribution
+// fields, but those fields are deliberately discarded so a proposal action
+// cannot mutate canonical state or interrupt the opening schedule.
+func parseOpeningContribution(output string) (contributionPayload, error) {
+	cleaned := llmutil.StripCodeFences(output)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(cleaned), &fields); err != nil {
+		return contributionPayload{}, fmt.Errorf("parsing JSON: %w", err)
+	}
+	position, ok := fields["position"]
+	if !ok {
+		return contributionPayload{}, fmt.Errorf("incomplete output: missing %q", "position")
+	}
+	if bytes.Equal(bytes.TrimSpace(position), []byte("null")) {
+		return contributionPayload{}, fmt.Errorf("incomplete output: %q must not be null", "position")
+	}
+	var value string
+	if err := json.Unmarshal(position, &value); err != nil {
+		return contributionPayload{}, fmt.Errorf("parsing JSON: %w", err)
+	}
+	return contributionPayload{
+		Position:       value,
+		Responses:      []types.ContributionResponse{},
+		Concessions:    []string{},
+		ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		Objections:     []contributionObjection{},
+		Claims:         []contributionClaim{},
+	}, nil
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

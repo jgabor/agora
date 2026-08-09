@@ -1,0 +1,24 @@
+id: tibgrkmilp
+artifact: plan
+record:
+  name: Restore the independent opening contract
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN multiple proposal-minded active agents WHEN opening runs THEN every agent receives exactly one independent opening without canonical proposal conflict.
+    - GIVEN an opening envelope WHEN its contract is inspected THEN only opening-valid actions are advertised and enforced.
+    - GIVEN an invalid proposal-creation opening action WHEN it is handled THEN canonical state is unchanged, opening neither advances nor terminates incorrectly, and remaining agents still receive openings.
+    - GIVEN opening completes WHEN later proposal work begins THEN canonical proposal creation is available.
+    - "Test proportionality target: one pass and one fail per opening action, invalid-action recovery, schedule continuity, and partial-resume boundary."
+  plan: ogdtuxdwhi
+  evaluation:
+    attempt_count: 1
+    failure_count: 0
+    last_verdict: pass
+    last_failure_evidence: null
+    provenance:
+      attempt_id: audit-1
+      source: Audit ses_019068f69ffeBa8jgUSa4yStTl
+      recorded_at: 2026-08-09 16:51
+      writer_command: agentera state plan record-evaluation
