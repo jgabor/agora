@@ -96,6 +96,23 @@ mage_is_repo_pinned() {
 	"$TEST_TMP/mage" --version | grep -Fq "Mage Build Tool $version"
 }
 
+contributor_metric_matches_analyzer() {
+	grep -Fq 'It assigns an ordinal to every first' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq "valid, unique OpenCode \`part.id\` tool call. The score is the ordinal at the" "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'first completed qualifying checkout-wrapper Agora run. Failed, denied, and' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'spoofing attempts before that run also receive ordinals. Exact duplicate' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'lifecycle snapshots add no ordinal; lifecycle updates retain their original' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'ordinal, and later calls cannot change the frozen score.' "$ROOT/CONTRIBUTING.md" \
+		&& ! grep -Fq 'Failed, denied, duplicate, spoofed, and later calls do not end or change that score.' "$ROOT/CONTRIBUTING.md"
+}
+
+contributor_prerequisites_delegate_to_help() {
+	grep -Fq "For a live trial, use \`mage eval:cliDiscoveryHelp\` for the current local-tool" "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'requirements and tested OpenCode boundary.' "$ROOT/CONTRIBUTING.md" \
+		&& ! grep -Fq 'The supported OpenCode boundary is behavior exercised at version 1.18.11.' "$ROOT/CONTRIBUTING.md" \
+		&& ! grep -Fq 'A live trial needs Go, Mage, Bash,' "$ROOT/CONTRIBUTING.md"
+}
+
 listing_and_help_are_safe() {
 	local stdout="$TEST_TMP/list.stdout"
 	local stderr="$TEST_TMP/list.stderr"
@@ -119,6 +136,18 @@ target_help_is_safe() {
 		&& test ! -e "$TEST_TMP/opencode-invoked" \
 		&& MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" eval:cliDiscoveryHelp >"$stdout" 2>"$stderr" \
 		&& grep -Fq 'scripts/eval-cli-discovery.sh --output DIR' "$stdout" \
+		&& grep -Fq 'DIR must be new and its parent must exist.' "$stdout" \
+		&& grep -Fq 'agora.cli-discovery.result v1' "$stdout" \
+		&& grep -Fq 'Every first valid, unique OpenCode part.id tool call gets an ordinal. Failed,' "$stdout" \
+		&& grep -Fq 'denied, and spoofing attempts before the first qualifying run also get one.' "$stdout" \
+		&& grep -Fq 'The first completed qualifying wrapper run freezes the score; later calls do' "$stdout" \
+		&& grep -Fq 'not change it.' "$stdout" \
+		&& grep -Fq 'Live trial prerequisites:' "$stdout" \
+		&& grep -Fq -- '--output requires go, jq, GNU timeout, grep, setsid, a resolvable OpenCode' "$stdout" \
+		&& grep -Fq 'OpenCode boundary is 1.18.11; validate other versions separately.' "$stdout" \
+		&& grep -Fq -- '--analyze and --analysis-self-test do not launch OpenCode or need provider' "$stdout" \
+		&& grep -Fq 'a local OpenCode 1.18.11 loopback; it does not need provider authentication.' "$stdout" \
+		&& grep -Fq 'AGORA_EVALUATOR_MODEL changes the default model.' "$stdout" \
 		&& test ! -e "$TEST_TMP/opencode-invoked"
 }
 
@@ -255,6 +284,8 @@ main() {
 	build_mage
 
 	check 'Mage binary matches the repository-pinned version' mage_is_repo_pinned
+	check 'Contributor metric matches analyzer ordinal semantics' contributor_metric_matches_analyzer
+	check 'Contributor prerequisites delegate exact details to help' contributor_prerequisites_delegate_to_help
 	check 'Mage listing exposes live, help, offline, and full evaluator targets without evaluation' listing_and_help_are_safe
 	check 'Mage evaluator help does not start evaluation' target_help_is_safe
 	check 'Mage rejects missing, invalid, and empty live target arguments before evaluation' invalid_arguments_are_safe

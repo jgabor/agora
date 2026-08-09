@@ -1,0 +1,14 @@
+id: ixzfzzihma
+artifact: progress
+record:
+  timestamp: 2026-08-09 21:51
+  type: docs
+  phase: build
+  what: "yqnkexwmdv: documented the CLI-discovery evaluator and retired experiment-only surfaces."
+  context:
+    intent: Give maintainers a concise, safe workflow for evaluating agent CLI discovery without changing Agora product behavior.
+    constraints: Keep exact evaluator flags and defaults in executable help, retain opt-in live evaluation, preserve product and release files, and commit no results or credentials.
+    scope: CONTRIBUTING.md, evaluator help and regression tests, prototype cleanup, local exclude cleanup, and progress only.
+  verified: CONTRIBUTING.md now explains the evaluator purpose, frozen first qualifying checkout-wrapper score, schema-versioned evidence, prerequisites and isolation, provider cost, commands, and sensitivity limits. It directs readers to mage eval:cliDiscoveryHelp as the sole exact flag, default, allowed-value, and usage contract. scripts/eval-cli-discovery.sh help now describes standalone modes, new-output requirements, result.json schema/output behavior, and model/executable environment controls; the Mage help regression proves those lines and no OpenCode launch. After confirming the maintained evaluator supersedes their purpose and evidence, deleted EXPERIMENT.md, scripts/experiment-agent-steps.sh, and the three generated .experiment/agent-steps prototype runs. Removed exactly /EXPERIMENT.md and /scripts/experiment-agent-steps.sh from the shared info/exclude; git check-ignore -v no longer attributes either path. Tracked-source searches, excluding historical Agentera plan and progress records, found no prototype filename, status, observation, marker, or local-exclude residue. A local Mage v1.17.2 binary listed targets, printed canonical help, ran offline and full provider-free self-tests, and its fake OpenCode forwarding coverage passed. scripts/check-eval-cli-discovery.sh passed Bash syntax, ShellCheck, ignored-root hygiene, Mage, and analysis checks. Restricted-PATH Go race tests and vet plus build with -buildvcs=false passed. README.md, CHANGELOG.md, cmd, internal, go.mod, magefile.go, CI, and scripts/e2e-termctrl.sh have no diff; the terminal E2E script hash matches HEAD. No live provider call, non-dry nested run, committed result, or credential artifact occurred.
+  next: Keep yqnkexwmdv in_progress pending independent task evaluation.
+  publication_order: 11

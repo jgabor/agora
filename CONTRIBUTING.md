@@ -6,6 +6,7 @@ Thanks for helping improve Agora. This project is a single Go binary with a focu
 
 - Go **1.26.2+** (see `go.mod`)
 - [OpenCode](https://opencode.ai) for live deliberation runs (not required for unit tests or `--dry-run`)
+- [Mage](https://magefile.org/) for Mage targets (the module pins its version)
 - Optional: [golangci-lint](https://golangci-lint.run/) and [lefthook](https://github.com/evilmartians/lefthook) for local hooks
 
 ## Quick start
@@ -25,8 +26,8 @@ go build ./...
 go install ./cmd/agora
 
 # Or via mage (outputs to build/agora)
-go run magefile.go build
-go run magefile.go install
+mage build
+mage install
 ```
 
 ### Test and lint
@@ -38,6 +39,51 @@ golangci-lint run ./...
 ```
 
 CI runs the same checks on every push and pull request to `main` (see `.github/workflows/ci.yml`).
+
+### CLI-discovery evaluator
+
+This opt-in maintainer tool evaluates whether a coding agent can discover and
+successfully invoke Agora from the CLI. It assigns an ordinal to every first
+valid, unique OpenCode `part.id` tool call. The score is the ordinal at the
+first completed qualifying checkout-wrapper Agora run. Failed, denied, and
+spoofing attempts before that run also receive ordinals. Exact duplicate
+lifecycle snapshots add no ordinal; lifecycle updates retain their original
+ordinal, and later calls cannot change the frozen score.
+
+Analysis writes a schema-versioned result with checkout and OpenCode provenance,
+a deterministic checklist and trace, known-versus-unknown usage fields, and
+relative references to raw evidence. Put trial output under the ignored
+`.agora-evaluator/cli-discovery/` root. Never commit results or credentials.
+
+For a live trial, use `mage eval:cliDiscoveryHelp` for the current local-tool
+requirements and tested OpenCode boundary. It needs a supported OpenCode
+executable and authentication for the selected outer provider. It isolates user
+state, keeps only that outer call live, and forces nested Agora runs to a dry
+run with fresh output.
+
+One live outer agent/model session can incur provider cost. The self-test and
+offline modes do not. Do not infer a dollar cost from this tool.
+
+Discover the targets and use the evaluator help before a live trial. The help
+surface is the sole contract for flags, defaults, allowed values, and detailed
+usage, so this guide does not repeat them.
+
+```bash
+mage -l
+mage eval:cliDiscoveryHelp
+
+# Provider-free checks
+./scripts/check-eval-cli-discovery.sh
+mage eval:cliDiscoveryOfflineSelfTest
+mage eval:cliDiscoverySelfTest
+
+# After reviewing the help, prerequisites, and cost
+mage eval:cliDiscovery <new-output-directory>
+```
+
+Treat a result as one sensitive scenario, not a general benchmark. Model,
+OpenCode version and behavior, prompt, and environment can change it. Live
+results are not fully reproducible, and CI never runs a provider-backed trial.
 
 ### Git hooks
 

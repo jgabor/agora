@@ -22,11 +22,37 @@ Usage:
 Run one isolated OpenCode evaluation trial against a freshly built Agora
 checkout. The outer OpenCode call can use the selected provider. Every nested
 Agora run is normalized to a dry run with a fresh transcript path.
-Store trial evidence beneath $EVALUATOR_RESULT_ROOT_RELATIVE/ (ignored); an
-explicit --output path is still required.
+
+Modes:
+  A trial requires --output DIR. DIR must be new and its parent must exist.
+  --analyze DIR reruns deterministic analysis without OpenCode or a provider;
+  it cannot be combined with trial options. Each self-test is standalone and
+  provider-free.
+
+Metric:
+  Every first valid, unique OpenCode part.id tool call gets an ordinal. Failed,
+  denied, and spoofing attempts before the first qualifying run also get one.
+  Exact duplicate lifecycle snapshots do not add an ordinal; updates retain it.
+  The first completed qualifying wrapper run freezes the score; later calls do
+  not change it.
+
+Results:
+  Analysis writes DIR/$RESULT_FILENAME, an $RESULT_SCHEMA v$RESULT_SCHEMA_VERSION
+  result with provenance, a deterministic checklist and trace, known-or-unknown
+  evidence fields, and relative raw-evidence references. For uncommitted trial
+  evidence, use a new child of $EVALUATOR_RESULT_ROOT_RELATIVE/ (ignored).
+
+Live trial prerequisites:
+  --output requires go, jq, GNU timeout, grep, setsid, a resolvable OpenCode
+  executable, and supported authentication for its selected provider. The tested
+  OpenCode boundary is 1.18.11; validate other versions separately.
+  --analyze and --analysis-self-test do not launch OpenCode or need provider
+  authentication. --self-test is provider-free but needs the runtime tools and
+  a local OpenCode 1.18.11 loopback; it does not need provider authentication.
 
 Options:
-  --output DIR       New directory for trial evidence (required for a trial).
+  --output DIR       New directory for trial evidence. It must not exist and
+                     its parent must exist (required for a trial).
   --analyze DIR      Analyze captured trial evidence without launching OpenCode
                      or a provider. Writes DIR/$RESULT_FILENAME.
   --model PROVIDER/MODEL
@@ -40,10 +66,11 @@ Options:
   --analysis-self-test
                      Run only offline deterministic analysis checks.
   --quiet            On successful trial or analysis, print only the result
-                     path.
+                     path. Not valid with a self-test.
   -h, --help         Show this help.
 
-Set AGORA_EVALUATOR_OPENCODE_BIN to select the OpenCode executable. The trial
+AGORA_EVALUATOR_MODEL changes the default model. Set
+AGORA_EVALUATOR_OPENCODE_BIN to select the OpenCode executable. The trial
 records executable paths and versions in DIR/boundary.json. It never copies
 credentials to disk.
 EOF
