@@ -1,0 +1,16 @@
+id: krzutjlaay
+artifact: progress
+record:
+  timestamp: 2026-08-10 08:01
+  type: fix
+  phase: build
+  what: "bjpfdqcalk: corrected evaluator authentication authority and ran the single newly authorized bounded evidence cycle without changing task lifecycle."
+  context:
+    intent: Resolve the provider-auth preflight defect, preserve the nested dry-run secret boundary, and restore final readiness evidence.
+    constraints: Use the current checkout and selected model; allow one live outer attempt only; retain no credentials, raw evidence, generated output, or remote action.
+    unknowns: The local main ref remains authoritative, but its separate checkout acquired unrelated uncommitted work during this cycle; ref-based integration is verified and that work was not touched.
+    scope: Provider-aware auth selection, in-memory forwarding and leak cleanup, provider-free regressions, one live aggregate, final gates, ref-based integration, and residue cleanup.
+  discovered: The prior preflight treated the selected auth-file entry as the only authority, while installed OpenCode prefers its environment credential for the opencode provider. The isolated launch then stripped that valid source. Failure output retention also conflicted with required closeout cleanup.
+  verified: For opencode, nonempty environment auth now precedes auth-file fallback; other providers retain selected auth-file behavior. A descriptor-fed bootstrap adds the secret only after env -i without command-argument or disk serialization. The shell gate and wrapper unset both auth routes before nested execution, and leak scanning includes the environment value. Clean failure, leak, INT, and TERM paths reap children before removing output and temporary state. The checker passed Bash, ShellCheck 0.11.0, ignored-root hygiene, Mage fake forwarding (8), and offline analysis (56). Full provider-free tests passed 81 boundary and 57 analysis checks. Restricted race tests, vet, build without VCS stamping, golangci-lint, workflow parsing, and the unchanged dry integration gate passed. Exactly one new live attempt used opencode/big-pickle with OpenCode 1.18.11 and the current checkout evaluator. Result v1 was complete with score 10 from 10 counted calls, one completed qualifying marker at ordinal 10, no post-score calls, and 9 outer model steps. Both outer and two nested agents used the selected model; nested Agora remained a fixed-output no-context dry run from a temporary checkout build. Reported outer usage was 42,138 total tokens and zero cost. Isolation, permissions, executable provenance, source-tree non-write, no installed-Agora use, no command bypass, no credential content or path, and child cleanup passed. Raw trial output, temporary state, generated artifacts, the exact diagnostic capture, and ignored parents were removed. The complete branch diff remains limited to planned Agentera state, TODO, docs, ignore, CI, Mage, and evaluator tooling/tests. Local main remains 14 commits ahead of origin/main; branch divergence is 6 main-side and 5 branch-side commits; a clean ref-based merge-tree simulation had no conflicts. Main and remote refs did not move, and no remote action occurred.
+  next: Keep the task lifecycle unchanged for independent Audit; preserve the dirty main checkout work as unrelated user state.
+  publication_order: 14

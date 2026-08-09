@@ -5,9 +5,13 @@ set -euo pipefail
 TEST_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$TEST_ROOT/scripts/eval-cli-discovery.sh"
 
+# Provider-free tests must never consume a maintainer's live credentials.
+unset OPENCODE_API_KEY OPENCODE_AUTH_CONTENT
+
 checks=0
 TEST_TMP=""
 HOST_OPENCODE=""
+ENV_AUTH_TOKEN=""
 QUALIFYING_COMMAND='agora run --auto quick --research --yes --topic "a quick debate between grumpy old people on the latest weather report"'
 
 pass() {
@@ -45,6 +49,15 @@ assert_equal() {
 	local got="$2"
 	[[ "$want" == "$got" ]]
 }
+
+environment_auth_precedes_file() (
+	local key="$1"
+	local auth_file="$2"
+
+	OPENCODE_API_KEY="$key" select_auth_for_model "$auth_file" 'opencode/test-model' \
+		&& [[ "$SELECTED_AUTH_SOURCE" == environment ]] \
+		&& [[ "$SELECTED_AUTH_SECRET" == "$key" ]]
+)
 
 file_does_not_contain() {
 	local value="$1"
@@ -118,8 +131,15 @@ wait_for_file() {
 
 write_fake_opencode() {
 	local path="$1"
-	cat >"$path" <<'FAKE_OPENCODE'
+	local expected_key_hash="${2:-}"
+	local expected_key_hash_q
+
+	printf -v expected_key_hash_q '%q' "$expected_key_hash"
+	cat >"$path" <<FAKE_HEADER
 #!/usr/bin/env bash
+EXPECTED_KEY_HASH=$expected_key_hash_q
+FAKE_HEADER
+	cat >>"$path" <<'FAKE_OPENCODE'
 set -euo pipefail
 
 if [[ "${1:-}" == "--version" ]]; then
@@ -131,13 +151,28 @@ real="${AGORA_EVALUATOR_REAL:?}"
 [[ -x "$real" ]]
 wrapper="$(command -v agora)"
 real_version="$("$real" --version)"
+api_key_present=false
+[[ -v OPENCODE_API_KEY ]] && api_key_present=true
 auth_present=false
-[[ -n "${OPENCODE_AUTH_CONTENT:-}" ]] && auth_present=true
-auth_provider=""
-auth_provider_count=0
-if [[ "$auth_present" == true ]]; then
-	auth_provider="$(jq -r 'keys | if length == 1 then .[0] else "" end' <<<"$OPENCODE_AUTH_CONTENT")"
-	auth_provider_count="$(jq -r 'keys | length' <<<"$OPENCODE_AUTH_CONTENT")"
+[[ -v OPENCODE_AUTH_CONTENT ]] && auth_present=true
+auth_store="$XDG_DATA_HOME/opencode/auth.json"
+auth_store_present=false
+auth_store_regular=false
+auth_store_mode=""
+auth_store_provider=""
+auth_store_provider_count=0
+auth_store_key_exact=false
+if [[ -e "$auth_store" ]]; then
+	auth_store_present=true
+	[[ -f "$auth_store" && ! -L "$auth_store" ]] && auth_store_regular=true
+	auth_store_mode="$(stat -c '%a' "$auth_store")"
+	auth_store_provider="$(jq -r 'keys | if length == 1 then .[0] else "" end' "$auth_store")"
+	auth_store_provider_count="$(jq -r 'keys | length' "$auth_store")"
+	if [[ -n "$EXPECTED_KEY_HASH" ]]; then
+		auth_store_key_hash="$(jq -j 'to_entries[0].value.key' "$auth_store" | sha256sum)"
+		auth_store_key_hash="${auth_store_key_hash%% *}"
+		[[ "$auth_store_key_hash" == "$EXPECTED_KEY_HASH" ]] && auth_store_key_exact=true
+	fi
 fi
 
 agora --help >/dev/null
@@ -156,10 +191,42 @@ jq -nc \
 	--arg real_version "$real_version" \
 	--arg config "$OPENCODE_CONFIG_CONTENT" \
 	--arg args "$*" \
-	--arg auth_provider "$auth_provider" \
+	--arg auth_store_mode "$auth_store_mode" \
+	--arg auth_store_provider "$auth_store_provider" \
+	--arg command 'agora run --auto quick --research --yes --topic "a quick debate between grumpy old people on the latest weather report"' \
+	--argjson api_key_present "$api_key_present" \
 	--argjson auth_present "$auth_present" \
-	--argjson auth_provider_count "$auth_provider_count" \
-	'{home: $home, config_home: $config_home, data_home: $data_home, state_home: $state_home, cache_home: $cache_home, config_dir: $config_dir, path: $path, wrapper: $wrapper, real: $real, real_version: $real_version, config: $config, args: $args, auth_present: $auth_present, auth_provider: $auth_provider, auth_provider_count: $auth_provider_count}'
+	--argjson auth_store_present "$auth_store_present" \
+	--argjson auth_store_regular "$auth_store_regular" \
+	--argjson auth_store_provider_count "$auth_store_provider_count" \
+	--argjson auth_store_key_exact "$auth_store_key_exact" \
+	'{
+		type: "tool_use",
+		timestamp: 1,
+		part: {id: "fake-outer-call", callID: "fake-outer-call", tool: "bash", state: {status: "completed", input: {command: $command}, metadata: {exit: 0}, output: "completed"}},
+		probe: {home: $home, config_home: $config_home, data_home: $data_home, state_home: $state_home, cache_home: $cache_home, config_dir: $config_dir, path: $path, wrapper: $wrapper, real: $real, real_version: $real_version, config: $config, args: $args, api_key_present: $api_key_present, auth_present: $auth_present, auth_store_present: $auth_store_present, auth_store_regular: $auth_store_regular, auth_store_mode: $auth_store_mode, auth_store_provider: $auth_store_provider, auth_store_provider_count: $auth_store_provider_count, auth_store_key_exact: $auth_store_key_exact}
+	}'
+FAKE_OPENCODE
+	chmod 700 "$path"
+}
+
+write_launch_marking_opencode() {
+	local path="$1"
+	local marker="$2"
+	local marker_q
+
+	printf -v marker_q '%q' "$marker"
+	cat >"$path" <<FAKE_OPENCODE
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "\${1:-}" == "--version" ]]; then
+	printf 'fake-opencode 1.0\\n'
+	exit 0
+fi
+
+: >$marker_q
+exit 0
 FAKE_OPENCODE
 	chmod 700 "$path"
 }
@@ -175,7 +242,7 @@ if [[ "${1:-}" == "--version" ]]; then
 	exit 0
 fi
 
-jq -r 'to_entries[0].value.key' <<<"${OPENCODE_AUTH_CONTENT:?}"
+jq -r 'to_entries[0].value.key' "$XDG_DATA_HOME/opencode/auth.json"
 FAKE_OPENCODE
 	chmod 700 "$path"
 }
@@ -183,6 +250,10 @@ FAKE_OPENCODE
 write_failing_opencode() {
 	local path="$1"
 	local status="$2"
+	local record_dir="$3"
+	local record_dir_q
+
+	printf -v record_dir_q '%q' "$record_dir"
 	cat >"$path" <<FAKE_OPENCODE
 #!/usr/bin/env bash
 set -euo pipefail
@@ -192,7 +263,15 @@ if [[ "\${1:-}" == "--version" ]]; then
 	exit 0
 fi
 
-printf 'fake outer failure\\n'
+record_dir=$record_dir_q
+tmp_root="\$(dirname -- "\$(dirname -- "\$AGORA_EVALUATOR_REAL")")"
+(
+	trap '' HUP INT TERM
+	while :; do sleep 0.05; done
+) &
+child_pid=\$!
+printf '%s\\n' "\$child_pid" >"\$record_dir/child.pid"
+printf '%s\\n' "\$tmp_root" >"\$record_dir/temp-root"
 exit $status
 FAKE_OPENCODE
 	chmod 700 "$path"
@@ -215,7 +294,7 @@ fi
 
 record_dir=$record_dir_q
 tmp_root="\$(dirname -- "\$(dirname -- "\$AGORA_EVALUATOR_REAL")")"
-secret="\$(jq -r 'to_entries[0].value.key' <<<"\${OPENCODE_AUTH_CONTENT:?}")"
+secret="\$(jq -r 'to_entries[0].value.key' "\$XDG_DATA_HOME/opencode/auth.json")"
 printf '%s\\n' "\$tmp_root" >"\$record_dir/temp-root"
 (
 	trap '' HUP INT TERM
@@ -241,9 +320,14 @@ write_recording_real() {
 set -euo pipefail
 : "${REAL_ARGS_LOG:?}"
 if [[ -n "${OPENCODE_AUTH_CONTENT:-}" ]]; then
-	printf 'auth=present\n' >>"$REAL_ARGS_LOG"
+	printf 'auth_content=present\n' >>"$REAL_ARGS_LOG"
 else
-	printf 'auth=absent\n' >>"$REAL_ARGS_LOG"
+	printf 'auth_content=absent\n' >>"$REAL_ARGS_LOG"
+fi
+if [[ -n "${OPENCODE_API_KEY:-}" ]]; then
+	printf 'api_key=present\n' >>"$REAL_ARGS_LOG"
+else
+	printf 'api_key=absent\n' >>"$REAL_ARGS_LOG"
 fi
 printf '%q ' "$@" >>"$REAL_ARGS_LOG"
 printf '\n' >>"$REAL_ARGS_LOG"
@@ -328,6 +412,117 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "object": "chat.completion.chunk",
                     "created": 1,
                     "model": "mock",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                },
+            ]
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for chunk in chunks:
+            self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
+            self.wfile.flush()
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+with open(port_file, "w", encoding="utf-8") as handle:
+    handle.write(str(server.server_port))
+server.serve_forever()
+PYTHON
+	chmod 700 "$path"
+}
+
+write_auth_store_provider() {
+	local path="$1"
+
+	cat >"$path" <<'PYTHON'
+import hashlib
+import http.server
+import json
+import sys
+
+port_file, auth_record, expected_auth_hash, command = sys.argv[1:]
+request_count = 0
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+    def do_POST(self):
+        global request_count
+        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        request_count += 1
+        authorization = self.headers.get("Authorization")
+        observed_hash = hashlib.sha256((authorization or "").encode()).hexdigest()
+        with open(auth_record, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "authorization_present": authorization is not None,
+                    "authorization_exact": observed_hash == expected_auth_hash,
+                    "request_count": request_count,
+                },
+                handle,
+            )
+
+        if request_count == 1:
+            chunks = [
+                {
+                    "id": "auth-store-probe-1",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "big-pickle",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "role": "assistant",
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_auth_store",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "bash",
+                                            "arguments": json.dumps({"command": command}),
+                                        },
+                                    }
+                                ],
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                },
+                {
+                    "id": "auth-store-probe-1",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "big-pickle",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+                },
+            ]
+        else:
+            chunks = [
+                {
+                    "id": "auth-store-probe-2",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "big-pickle",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": "done"},
+                            "finish_reason": None,
+                        }
+                    ],
+                },
+                {
+                    "id": "auth-store-probe-2",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "big-pickle",
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                 },
             ]
@@ -532,7 +727,7 @@ FAKE_CURL
 	' <<<"$config")"
 
 	set +e
-	run_isolated_opencode "$probe" "$probe/bin" "$config" '{}' "$probe/bin/agora-real" "$probe/invocations" "$probe/transcript" 'local/mock' "$probe/work" \
+	run_isolated_opencode "$probe" "$probe/bin" "$config" none '' "$probe/bin/agora-real" "$probe/invocations" "$probe/transcript" 'local/mock' "$probe/work" \
 		"$HOST_OPENCODE" run \
 			--pure \
 			--format json \
@@ -567,6 +762,77 @@ FAKE_CURL
 		&& [[ ! -e "$probe/redirection" ]] \
 		&& [[ ! -e "$probe/arbitrary-write" ]] \
 		&& [[ ! -e "$probe/work/arbitrary-write" ]]
+}
+
+run_auth_store_probe() {
+	local probe="$TEST_TMP/auth-store-loopback"
+	local port_file="$probe/port"
+	local auth_record="$probe/auth-record.json"
+	local auth_store="$probe/data/opencode/auth.json"
+	local credentials
+	local expected_auth_hash
+	local server
+	local port
+	local config
+	local status
+	local wrapper="$probe/bin/agora"
+	local shell_gate="$probe/shell/bash"
+
+	mkdir -p -- "$probe/bin" "$probe/shell" "$probe/work" "$probe/home" "$probe/config/opencode" "$probe/data" "$probe/state" "$probe/cache" "$probe/tmp"
+	cat >"$probe/bin/agora-real" <<FAKE_AGORA
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -v OPENCODE_API_KEY ]]; then printf 'OPENCODE_API_KEY=present\\n'; else printf 'OPENCODE_API_KEY=absent\\n'; fi
+if [[ -v OPENCODE_AUTH_CONTENT ]]; then printf 'OPENCODE_AUTH_CONTENT=present\\n'; else printf 'OPENCODE_AUTH_CONTENT=absent\\n'; fi
+FAKE_AGORA
+	chmod 700 "$probe/bin/agora-real"
+	write_agora_wrapper "$wrapper"
+	write_shell_gate "$shell_gate"
+	expected_auth_hash="$(printf 'Bearer %s' "$ENV_AUTH_TOKEN" | sha256sum)"
+	expected_auth_hash="${expected_auth_hash%% *}"
+	write_auth_store_provider "$probe/provider.py"
+	python3 "$probe/provider.py" "$port_file" "$auth_record" "$expected_auth_hash" 'agora --help' >"$probe/provider.log" 2>&1 &
+	server=$!
+	if ! wait_for_file "$port_file"; then
+		kill "$server" 2>/dev/null || true
+		wait "$server" 2>/dev/null || true
+		return 1
+	fi
+	port="$(<"$port_file")"
+	config="$(opencode_permission_config "$shell_gate")"
+	config="$(jq -c --arg base_url "http://127.0.0.1:$port/v1" '.provider.opencode.options.baseURL = $base_url' <<<"$config")"
+
+	set +e
+	run_isolated_opencode "$probe" "$probe/bin" "$config" environment "$ENV_AUTH_TOKEN" "$probe/bin/agora-real" "$probe/agora-invocations.log" "$probe/agora-transcript.jsonl" 'opencode/big-pickle' "$probe/work" \
+		"$HOST_OPENCODE" run \
+			--pure \
+			--format json \
+			--model opencode/big-pickle \
+			--agent "$EVALUATOR_AGENT" \
+			--title "Auth store probe" \
+			--dir "$probe/work" \
+			"auth store probe" >"$probe/events.jsonl" 2>"$probe/opencode.stderr"
+	status=$?
+	set -e
+	kill "$server" 2>/dev/null || true
+	wait "$server" 2>/dev/null || true
+	[[ "$status" -eq 0 ]] || return 1
+
+	jq -e '.authorization_present == true and .authorization_exact == true and .request_count >= 1' "$auth_record" >/dev/null || return 1
+	[[ -f "$auth_store" && ! -L "$auth_store" ]] || return 1
+	[[ "$(stat -c '%a:%F' "$auth_store")" == '600:regular file' ]] || return 1
+	jq -e 'keys == ["opencode"] and .opencode.type == "api" and (.opencode.key | type == "string" and length > 0)' "$auth_store" >/dev/null || return 1
+	[[ -f "$probe/shell-environment.log" ]] || return 1
+	grep -Fq 'OPENCODE_API_KEY=absent' "$probe/shell-environment.log" || return 1
+	grep -Fq 'OPENCODE_AUTH_CONTENT=absent' "$probe/shell-environment.log" || return 1
+	! grep -Fq '=present' "$probe/shell-environment.log" || return 1
+	grep -Fq 'OPENCODE_API_KEY=absent' "$probe/events.jsonl" || return 1
+	grep -Fq 'OPENCODE_AUTH_CONTENT=absent' "$probe/events.jsonl" || return 1
+	! grep -Fq '=present' "$probe/events.jsonl" || return 1
+	credentials="$(credential_values_for_environment_key "$ENV_AUTH_TOKEN")"
+	rm -f -- "$auth_store"
+	[[ ! -e "$auth_store" ]] || return 1
+	assert_no_credential_copy "$probe" "$credentials"
 }
 
 run_reused_call_id_probe() {
@@ -608,7 +874,7 @@ FAKE_AGORA
 	' <<<"$config")"
 
 	set +e
-	run_isolated_opencode "$probe" "$probe/bin" "$config" '{}' "$probe/bin/agora-real" "$probe/agora-invocations.log" "$probe/agora-transcript.jsonl" 'local/mock' "$probe/work" \
+	run_isolated_opencode "$probe" "$probe/bin" "$config" none '' "$probe/bin/agora-real" "$probe/agora-invocations.log" "$probe/agora-transcript.jsonl" 'local/mock' "$probe/work" \
 		"$HOST_OPENCODE" run \
 			--pure \
 			--format json \
@@ -685,13 +951,13 @@ run_public_interruption_probe() {
 
 	mkdir -p -- "$record_dir/tmp"
 	write_interrupting_opencode "$fake" "$record_dir"
-	credential_values="$(credential_values_for_auth "$(auth_content_for_model "$TEST_TMP/auth.json" 'opencode/test-model')")"
-	AGORA_EVALUATOR_OPENCODE_BIN="$fake" TMPDIR="$record_dir/tmp" \
+	credential_values="$(credential_values_for_environment_key "$ENV_AUTH_TOKEN")"
+	BASH_ENV=/dev/null OPENCODE_API_KEY="$ENV_AUTH_TOKEN" AGORA_EVALUATOR_OPENCODE_BIN="$fake" TMPDIR="$record_dir/tmp" \
 		python3 "$TEST_TMP/process-supervisor.py" "$record_dir/script.pid" "$record_dir/status" \
 			"$TEST_ROOT/scripts/eval-cli-discovery.sh" \
 			--output "$output" \
 			--model 'opencode/test-model' \
-			--auth-file "$TEST_TMP/auth.json" \
+			--auth-file "$TEST_TMP/missing-auth.json" \
 			--timeout '30s' &
 	supervisor_pid=$!
 	if ! wait_for_file "$record_dir/script.pid"; then
@@ -730,7 +996,7 @@ write_analysis_boundary_fixture() {
 				opencode: {path: "/usr/bin/opencode", version: "1.18.11"}
 			},
 			model: "opencode/test-model",
-			authentication: {provider: "opencode", transport: "OPENCODE_AUTH_CONTENT", persisted: false},
+			authentication: {provider: "opencode", source: "auth_file", persisted: false},
 			permissions: {"*": "deny", bash: "allow"},
 			nested_agora: {
 				wrapper: "/tmp/agora-wrapper",
@@ -1083,6 +1349,7 @@ main() {
 	local probe_gate
 	local probe_config
 	local fake
+	local fake_key_hash
 	local auth_file
 	local selected_auth
 	local credential_values
@@ -1109,6 +1376,21 @@ main() {
 	local failure_status
 	local leak_status
 	local policy_gate
+	local env_fake
+	local env_output
+	local env_boundary
+	local env_events
+	local env_credentials
+	local other_output
+	local other_auth
+	local other_credentials
+	local missing_fake
+	local missing_marker
+	local missing_output
+	local missing_status
+	local failure_record
+	local failure_child
+	local failure_temp_root
 
 	if (($# > 0)); then
 		if (($# == 1)) && [[ "$1" == "--analysis-only" ]]; then
@@ -1170,11 +1452,35 @@ main() {
 	probe_gate="$probe/shell/bash"
 	write_shell_gate "$probe_gate"
 	probe_config="$(opencode_permission_config "$probe_gate")"
-	run_isolated_opencode "$probe" "$probe/bin" "$probe_config" "$probe_auth" /bin/true "$probe/invocations" "$probe/transcript" 'opencode/test-model' "$probe/work" "$HOST_OPENCODE" debug config >"$probe/config.json"
+	run_isolated_opencode "$probe" "$probe/bin" "$probe_config" auth_file "$probe_auth" /bin/true "$probe/invocations" "$probe/transcript" 'opencode/test-model' "$probe/work" "$HOST_OPENCODE" debug config >"$probe/config.json"
 	check 'isolation config omits inherited plugins' json_assert '.plugin == []' "$probe/config.json"
 	check 'isolation config resolves the exact production gate' permission_config_is_exact "$probe/config.json" "$probe_gate"
-	check 'OpenCode config probe does not persist temporary auth' test ! -e "$probe/data/opencode/auth.json"
-	check 'OpenCode config probe leaves no temporary auth copy' assert_no_credential_copy "$probe/data" "$probe_credentials"
+	check 'auth-file selection creates one mode-restricted temporary store' test "$(stat -c '%a:%F' "$probe/data/opencode/auth.json")" = '600:regular file'
+	check 'temporary auth store contains only the selected provider' json_assert 'keys == ["opencode"] and .opencode.type == "api"' "$probe/data/opencode/auth.json"
+	rm -f -- "$probe/data/opencode/auth.json"
+	check 'provider-free probe removes its temporary auth store' test ! -e "$probe/data/opencode/auth.json"
+	check 'provider-free probe leaves no temporary auth copy' assert_no_credential_copy "$probe/data" "$probe_credentials"
+
+	ENV_AUTH_TOKEN="environment-credential-${RANDOM}-${RANDOM}"
+	check 'OpenCode 1.18.11 resolves environment-origin auth from temporary state with credential-free shell entry' run_auth_store_probe
+	fake_key_hash="$(printf '%s' "$ENV_AUTH_TOKEN" | sha256sum)"
+	fake_key_hash="${fake_key_hash%% *}"
+	env_fake="$tmp/environment-opencode"
+	env_output="$tmp/environment-output"
+	write_fake_opencode "$env_fake" "$fake_key_hash"
+	(
+		OPENCODE_API_KEY="$ENV_AUTH_TOKEN" run_trial "$env_output" 'opencode/test-model' '30s' "$env_fake" "$tmp/missing-auth.json"
+	) || fail 'provider-free environment-only outer trial'
+	analyze_trial_output "$env_output" || fail 'provider-free environment-only trial analysis'
+	env_boundary="$env_output/boundary.json"
+	env_events="$env_output/events.jsonl"
+	env_credentials="$(credential_values_for_environment_key "$ENV_AUTH_TOKEN")"
+	check 'environment-only opencode auth passes preflight' json_assert '.authentication == {provider: "opencode", source: "environment", persisted: false}' "$env_boundary"
+	check 'isolated outer starts without credential environment variables' json_assert '.probe.api_key_present == false and .probe.auth_present == false' "$env_events"
+	check 'isolated outer resolves the exact environment key from temporary auth state' json_assert '.probe.auth_store_present == true and .probe.auth_store_regular == true and .probe.auth_store_mode == "600" and .probe.auth_store_provider == "opencode" and .probe.auth_store_provider_count == 1 and .probe.auth_store_key_exact == true' "$env_events"
+	check 'environment-auth trial produces a schema-valid qualifying result' json_assert '.schema == "agora.cli-discovery.result" and .schema_version == 1 and .summary.score == 1 and .summary.counted_tool_calls == 1' "$env_output/result.json"
+	check 'environment key is absent from result and raw output' assert_no_credential_copy "$env_output" "$env_credentials"
+	check 'environment-auth normal cleanup removes temporary state' test ! -e "$(jq -r '.state.temporary_root' "$env_boundary")"
 
 	fake="$tmp/fake-opencode"
 	write_fake_opencode "$fake"
@@ -1185,6 +1491,7 @@ main() {
 	unrelated="unselected-credential-${RANDOM}-${RANDOM}"
 	auth_file="$tmp/auth.json"
 	jq -n --arg token "$token" --arg unrelated "$unrelated" '{opencode: {type: "api", key: $token}, unrelated: {type: "api", key: $unrelated}}' >"$auth_file"
+	check 'opencode environment auth takes precedence over auth-file fallback' environment_auth_precedes_file "$ENV_AUTH_TOKEN" "$auth_file"
 	selected_auth="$(auth_content_for_model "$auth_file" 'opencode/test-model')"
 	credential_values="$(credential_values_for_auth "$selected_auth")"
 
@@ -1203,18 +1510,39 @@ main() {
 	events="$output/events.jsonl"
 
 	check 'checkout-root build ignores the caller Go module' boundary_belongs_to_checkout "$boundary" "$revision" "$expected_version"
-	check 'isolation passes the fresh home to OpenCode' assert_equal "$(jq -r '.state.home' "$boundary")" "$(jq -r '.home' "$events")"
-	check 'isolation passes the fresh data home to OpenCode' assert_equal "$(jq -r '.state.data_home' "$boundary")" "$(jq -r '.data_home' "$events")"
-	check 'isolation passes the fresh OpenCode config directory' assert_equal "$(jq -r '.state.opencode_config_dir' "$boundary")" "$(jq -r '.config_dir' "$events")"
-	check 'selected model reaches the outer OpenCode invocation' json_assert '.args | contains("--model opencode/test-model")' "$events"
+	check 'isolation passes the fresh home to OpenCode' assert_equal "$(jq -r '.state.home' "$boundary")" "$(jq -r '.probe.home' "$events")"
+	check 'isolation passes the fresh data home to OpenCode' assert_equal "$(jq -r '.state.data_home' "$boundary")" "$(jq -r '.probe.data_home' "$events")"
+	check 'isolation passes the fresh OpenCode config directory' assert_equal "$(jq -r '.state.opencode_config_dir' "$boundary")" "$(jq -r '.probe.config_dir' "$events")"
+	check 'selected model reaches the outer OpenCode invocation' json_assert '.probe.args | contains("--model opencode/test-model")' "$events"
 	check 'selected model reaches nested Agora metadata' transcript_uses_model 'opencode/test-model' "$output/agora-transcript.jsonl"
-	check 'fresh checkout artifact reaches the wrapper' assert_equal "$(jq -r '.executables.agora.path' "$boundary")" "$(jq -r '.real' "$events")"
-	check 'fresh checkout artifact version is recorded from that binary' assert_equal "$(jq -r '.executables.agora.version' "$boundary")" "$(jq -r '.real_version' "$events")"
-	check 'outer shell resolves agora to the temporary wrapper' assert_equal "$(jq -r '.nested_agora.wrapper' "$boundary")" "$(jq -r '.wrapper' "$events")"
-	check 'outer OpenCode receives the recorded production shell gate' permission_config_is_exact <(jq -r '.config' "$events") "$(jq -r '.nested_agora.command_gate' "$boundary")"
-	check 'temporary auth is present only for the isolated child' json_assert '.auth_present == true' "$events"
-	check 'temporary auth contains only the selected provider' json_assert '.auth_provider == "opencode" and .auth_provider_count == 1' "$events"
+	check 'fresh checkout artifact reaches the wrapper' assert_equal "$(jq -r '.executables.agora.path' "$boundary")" "$(jq -r '.probe.real' "$events")"
+	check 'fresh checkout artifact version is recorded from that binary' assert_equal "$(jq -r '.executables.agora.version' "$boundary")" "$(jq -r '.probe.real_version' "$events")"
+	check 'outer shell resolves agora to the temporary wrapper' assert_equal "$(jq -r '.nested_agora.wrapper' "$boundary")" "$(jq -r '.probe.wrapper' "$events")"
+	check 'outer OpenCode receives the recorded production shell gate' permission_config_is_exact <(jq -r '.probe.config' "$events") "$(jq -r '.nested_agora.command_gate' "$boundary")"
+	check 'auth-file fallback is recorded without a path' json_assert '.authentication == {provider: "opencode", source: "auth_file", persisted: false}' "$boundary"
+	check 'auth-file outer starts without credential environment variables' json_assert '.probe.auth_present == false and .probe.api_key_present == false' "$events"
+	check 'auth-file fallback creates one mode-restricted selected-provider store' json_assert '.probe.auth_store_present == true and .probe.auth_store_regular == true and .probe.auth_store_mode == "600" and .probe.auth_store_provider == "opencode" and .probe.auth_store_provider_count == 1' "$events"
 	check 'nested execution produced dry-run content' grep -Fq -- '[DRY RUN]' "$output/agora-transcript.jsonl"
+
+	other_output="$tmp/other-provider-output"
+	(run_trial "$other_output" 'unrelated/test-model' '30s' "$fake" "$auth_file") || fail 'provider-free other-provider auth-file trial'
+	other_auth="$(auth_content_for_model "$auth_file" 'unrelated/test-model')"
+	other_credentials="$(credential_values_for_auth "$other_auth")"
+	check 'other providers retain auth-file selection' json_assert '.authentication == {provider: "unrelated", source: "auth_file", persisted: false}' "$other_output/boundary.json"
+	check 'other-provider outer auth remains selected and environment-free' json_assert '.probe.api_key_present == false and .probe.auth_present == false and .probe.auth_store_provider == "unrelated" and .probe.auth_store_provider_count == 1 and .probe.auth_store_mode == "600"' "$other_output/events.jsonl"
+	check 'other-provider output contains no selected credential leaf' assert_no_credential_copy "$other_output" "$other_credentials"
+
+	missing_fake="$tmp/missing-auth-opencode"
+	missing_marker="$tmp/missing-auth-launched"
+	missing_output="$tmp/missing-auth-output"
+	write_launch_marking_opencode "$missing_fake" "$missing_marker"
+	set +e
+	(run_trial "$missing_output" 'opencode/test-model' '30s' "$missing_fake" "$tmp/missing-auth.json") >/dev/null 2>"$tmp/missing-auth.stderr"
+	missing_status=$?
+	set -e
+	check 'missing environment and auth-file entry fails preflight' assert_equal 2 "$missing_status"
+	check 'missing selected auth stops before the outer launch' test ! -e "$missing_marker"
+	check 'missing selected auth creates no output' test ! -e "$missing_output"
 
 	wrapper="$tmp/direct-wrapper"
 	recording_real="$tmp/recording-real"
@@ -1222,7 +1550,8 @@ main() {
 	transcript="$tmp/direct-transcript.jsonl"
 	write_agora_wrapper "$wrapper"
 	write_recording_real "$recording_real"
-	REAL_ARGS_LOG="$recording_log" \
+	BASH_ENV=/dev/null REAL_ARGS_LOG="$recording_log" \
+		OPENCODE_API_KEY="$ENV_AUTH_TOKEN" \
 		OPENCODE_AUTH_CONTENT="$selected_auth" \
 		AGORA_EVALUATOR_REAL="$recording_real" \
 		AGORA_EVALUATOR_INVOCATIONS="$tmp/direct-invocations.log" \
@@ -1230,10 +1559,21 @@ main() {
 		AGORA_EVALUATOR_MODEL='opencode/test-model' \
 		AGORA_EVALUATOR_WORKDIR="$tmp/work" \
 		"$wrapper" run --auto quick --research --yes --topic weather
-	check 'nested Agora receives no temporary OpenCode auth' grep -Fq -- 'auth=absent' "$recording_log"
+	check 'nested Agora receives no environment key' grep -Fq -- 'api_key=absent' "$recording_log"
+	check 'nested Agora receives no temporary auth content' grep -Fq -- 'auth_content=absent' "$recording_log"
 	check 'nested model rule injects the selected model' grep -Fq -- '--model opencode/test-model' "$recording_log"
 	check 'nested dry-run rule injects --dry-run' grep -Fq -- '--dry-run' "$recording_log"
 	check 'nested output rule injects the fresh transcript path' grep -Fq -- "--output $transcript" "$recording_log"
+	: >"$recording_log"
+	BASH_ENV=/dev/null REAL_ARGS_LOG="$recording_log" \
+		AGORA_EVALUATOR_WRAPPER="$recording_real" \
+		AGORA_EVALUATOR_SHELL_ENV_LOG="$tmp/direct-shell-environment.log" \
+		OPENCODE_API_KEY="$ENV_AUTH_TOKEN" \
+		OPENCODE_AUTH_CONTENT="$selected_auth" \
+		"$policy_gate" -c 'agora --help'
+	check 'shell-entry instrumentation observes direct environment injection' grep -Fq -- 'OPENCODE_API_KEY=present' "$tmp/direct-shell-environment.log"
+	check 'gate defense strips an injected environment key before its wrapper' grep -Fq -- 'api_key=absent' "$recording_log"
+	check 'gate defense strips injected auth content before its wrapper' grep -Fq -- 'auth_content=absent' "$recording_log"
 	: >"$recording_log"
 	expect_rejected 'nested dry-run rule rejects a caller dry-run override' env \
 		REAL_ARGS_LOG="$recording_log" \
@@ -1249,7 +1589,9 @@ main() {
 	leaking_output="$tmp/leaking-output"
 	write_leaf_leaking_opencode "$leaking_fake"
 	set +e
-	(run_trial "$leaking_output" 'opencode/test-model' '30s' "$leaking_fake" "$auth_file")
+	(
+		OPENCODE_API_KEY="$ENV_AUTH_TOKEN" run_trial "$leaking_output" 'opencode/test-model' '30s' "$leaking_fake" "$tmp/missing-auth.json"
+	)
 	leak_status=$?
 	set -e
 	check 'credential leaf leak changes a successful outer status to failure' assert_equal 2 "$leak_status"
@@ -1257,14 +1599,21 @@ main() {
 
 	failing_fake="$tmp/failing-opencode"
 	failing_output="$tmp/failing-output"
-	write_failing_opencode "$failing_fake" 23
+	failure_record="$tmp/failing-record"
+	mkdir -- "$failure_record"
+	write_failing_opencode "$failing_fake" 23 "$failure_record"
 	set +e
-	(run_trial "$failing_output" 'opencode/test-model' '30s' "$failing_fake" "$auth_file")
+	(
+		OPENCODE_API_KEY="$ENV_AUTH_TOKEN" run_trial "$failing_output" 'opencode/test-model' '30s' "$failing_fake" "$tmp/missing-auth.json"
+	)
 	failure_status=$?
 	set -e
 	check 'clean failure preserves the outer exit status' assert_equal 23 "$failure_status"
-	check 'clean failure retains credential-free output' test -d "$failing_output"
-	check 'clean failure output contains no selected credential leaf' assert_no_credential_copy "$failing_output" "$credential_values"
+	check 'clean failure removes its output' test ! -e "$failing_output"
+	failure_child="$(<"$failure_record/child.pid")"
+	failure_temp_root="$(<"$failure_record/temp-root")"
+	check 'clean failure reaps the outer child group' test ! -e "/proc/$failure_child"
+	check 'clean failure removes temporary state' test ! -e "$failure_temp_root"
 
 	check 'public-PID TERM preserves 143, reaps the child group, and removes secret state' run_public_interruption_probe TERM 143
 	check 'public-PID INT preserves 130, reaps the child group, and removes secret state' run_public_interruption_probe INT 130
@@ -1277,8 +1626,8 @@ main() {
 	check 'normal cleanup retains credential-free output' remove_output_on_credential_copy "$output" "$credential_values"
 	planted_output="$tmp/planted-credential-output"
 	mkdir -- "$planted_output"
-	printf '%s\n' "$token" >"$planted_output/credential-copy"
-	expect_rejected 'cleanup rejects a planted credential leaf' remove_output_on_credential_copy "$planted_output" "$credential_values"
+	printf '%s\n' "$ENV_AUTH_TOKEN" >"$planted_output/credential-copy"
+	expect_rejected 'cleanup rejects a planted environment-key leaf' remove_output_on_credential_copy "$planted_output" "$env_credentials"
 	check 'cleanup removes a planted credential leaf' test ! -e "$planted_output"
 
 	boundary_checks=$checks

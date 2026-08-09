@@ -58,9 +58,11 @@ Options:
   --model PROVIDER/MODEL
                      Model for the outer OpenCode call and nested Agora run
                      (default: $DEFAULT_MODEL).
-  --auth-file PATH   OpenCode auth.json source. Defaults to the current user's
-                     XDG data auth file; only the selected provider is passed
-                     to the trial in memory.
+  --auth-file PATH   OpenCode auth.json fallback. Defaults to the current
+                     user's XDG data auth file. For provider opencode, a
+                     nonempty inherited OPENCODE_API_KEY takes precedence.
+                     The selected credential is staged only in isolated
+                     temporary auth state and removed after the outer process.
   --timeout DURATION Per-trial timeout accepted by GNU timeout (default: 5m).
   --self-test        Run provider-free boundary and analysis checks.
   --analysis-self-test
@@ -121,6 +123,39 @@ auth_content_for_model() {
 			error("no auth entry for provider " + $provider)
 		end
 	' "$auth_file"
+}
+
+SELECTED_AUTH_SOURCE=""
+SELECTED_AUTH_SECRET=""
+SELECTED_CREDENTIAL_VALUES=""
+
+credential_values_for_environment_key() {
+	local key="$1"
+
+	printf '%s' "$key" | jq -Rsc '[.]'
+}
+
+select_auth_for_model() {
+	local auth_file="$1"
+	local model="$2"
+	local provider
+	local auth_content
+
+	SELECTED_AUTH_SOURCE=""
+	SELECTED_AUTH_SECRET=""
+	SELECTED_CREDENTIAL_VALUES=""
+	provider="$(provider_for_model "$model")" || return 1
+	if [[ "$provider" == "opencode" && -n "${OPENCODE_API_KEY:-}" ]]; then
+		SELECTED_AUTH_SOURCE="environment"
+		SELECTED_AUTH_SECRET="$OPENCODE_API_KEY"
+		SELECTED_CREDENTIAL_VALUES="$(credential_values_for_environment_key "$OPENCODE_API_KEY")" || return 1
+		return 0
+	fi
+
+	auth_content="$(auth_content_for_model "$auth_file" "$model")" || return 1
+	SELECTED_CREDENTIAL_VALUES="$(credential_values_for_auth "$auth_content")" || return 1
+	SELECTED_AUTH_SOURCE="auth_file"
+	SELECTED_AUTH_SECRET="$auth_content"
 }
 
 path_is_within() {
@@ -338,6 +373,24 @@ write_shell_gate() {
 #!/bin/bash
 set -euo pipefail
 
+# Record presence only, before any credential cleanup or command handling.
+: "${AGORA_EVALUATOR_SHELL_ENV_LOG:?}"
+{
+	if [[ -v OPENCODE_API_KEY ]]; then
+		printf 'OPENCODE_API_KEY=present\n'
+	else
+		printf 'OPENCODE_API_KEY=absent\n'
+	fi
+	if [[ -v OPENCODE_AUTH_CONTENT ]]; then
+		printf 'OPENCODE_AUTH_CONTENT=present\n'
+	else
+		printf 'OPENCODE_AUTH_CONTENT=absent\n'
+	fi
+} >>"$AGORA_EVALUATOR_SHELL_ENV_LOG"
+
+# Defense in depth. The isolated OpenCode process should start without either
+# variable, so its shell child must already report both as absent above.
+unset OPENCODE_API_KEY OPENCODE_AUTH_CONTENT
 : "${AGORA_EVALUATOR_WRAPPER:?}"
 
 reject() {
@@ -475,17 +528,81 @@ credential_values_for_auth() {
 	' <<<"$auth_content"
 }
 
+write_auth_bootstrap() {
+	local path="$1"
+
+	cat >"$path" <<'BOOTSTRAP'
+#!/usr/bin/env bash
+set -euo pipefail
+
+auth_source="${1:?}"
+shift
+unset OPENCODE_API_KEY OPENCODE_AUTH_CONTENT
+auth_dir="${XDG_DATA_HOME:?}/opencode"
+auth_store="$auth_dir/auth.json"
+auth_payload=""
+case "$auth_source" in
+environment)
+	IFS= read -r -d '' auth_payload <&3 || {
+		printf 'error: could not read isolated environment authentication\n' >&2
+		exit 2
+	}
+	[[ -n "$auth_payload" ]] || {
+		printf 'error: isolated environment authentication is empty\n' >&2
+		exit 2
+	}
+	;;
+auth_file)
+	IFS= read -r -d '' auth_payload <&3 || {
+		printf 'error: could not read isolated file authentication\n' >&2
+		exit 2
+	}
+	[[ -n "$auth_payload" ]] || {
+		printf 'error: isolated file authentication is empty\n' >&2
+		exit 2
+	}
+	;;
+none)
+	;;
+*)
+	printf 'error: unsupported isolated authentication source\n' >&2
+	exit 2
+	;;
+esac
+exec 3<&-
+if [[ "$auth_source" != none ]]; then
+	umask 077
+	mkdir -p -- "$auth_dir"
+	chmod 700 -- "$auth_dir"
+	if [[ "$auth_source" == environment ]]; then
+		printf '%s' "$auth_payload" | jq -Rsc '{opencode: {type: "api", key: .}}' >"$auth_store"
+	else
+		printf '%s' "$auth_payload" >"$auth_store"
+	fi
+	chmod 600 -- "$auth_store"
+fi
+auth_payload=""
+unset auth_payload OPENCODE_API_KEY OPENCODE_AUTH_CONTENT
+exec "$@"
+BOOTSTRAP
+	chmod 700 "$path"
+}
+
 run_isolated_opencode() (
 	local tmp_root="$1"
 	local wrapper_dir="$2"
 	local config_json="$3"
-	local auth_content="$4"
-	local agora_real="$5"
-	local invocations="$6"
-	local transcript="$7"
-	local model="$8"
-	local workdir="$9"
-	shift 9
+	local auth_source="$4"
+	local auth_secret="$5"
+	local agora_real="$6"
+	local invocations="$7"
+	local transcript="$8"
+	local model="$9"
+	local workdir="${10}"
+	local auth_bootstrap="$tmp_root/auth-bootstrap"
+	shift 10
+
+	write_auth_bootstrap "$auth_bootstrap"
 
 	exec env -i \
 		PATH="$wrapper_dir:$PATH" \
@@ -503,15 +620,16 @@ run_isolated_opencode() (
 		OPENCODE_DISABLE_AUTOUPDATE=1 \
 		OPENCODE_DISABLE_AUTOCOMPACT=1 \
 		OPENCODE_DISABLE_MODELS_FETCH=1 \
-		OPENCODE_AUTH_CONTENT="$auth_content" \
 		NO_COLOR=1 \
 		AGORA_EVALUATOR_REAL="$agora_real" \
 		AGORA_EVALUATOR_WRAPPER="$wrapper_dir/agora" \
 		AGORA_EVALUATOR_INVOCATIONS="$invocations" \
+		AGORA_EVALUATOR_SHELL_ENV_LOG="$tmp_root/shell-environment.log" \
 		AGORA_EVALUATOR_TRANSCRIPT="$transcript" \
 		AGORA_EVALUATOR_MODEL="$model" \
 		AGORA_EVALUATOR_WORKDIR="$workdir" \
-		"$@"
+		"$auth_bootstrap" "$auth_source" "$@" \
+		3< <(printf '%s\0' "$auth_secret")
 )
 
 write_boundary() {
@@ -526,6 +644,7 @@ write_boundary() {
 	local wrapper="$9"
 	local workdir="${10}"
 	local shell_gate="${11}"
+	local auth_source="${12}"
 	local provider
 	local config_json
 	local revision
@@ -540,6 +659,7 @@ write_boundary() {
 		--arg tmp_root "$tmp_root" \
 		--arg model "$model" \
 		--arg provider "$provider" \
+		--arg auth_source "$auth_source" \
 		--arg opencode_bin "$opencode_bin" \
 		--arg opencode_version "$opencode_version" \
 		--arg agora_bin "$agora_bin" \
@@ -558,7 +678,7 @@ write_boundary() {
 			model: $model,
 			authentication: {
 				provider: $provider,
-				transport: "OPENCODE_AUTH_CONTENT",
+				source: $auth_source,
 				persisted: false
 			},
 			state: {
@@ -576,6 +696,7 @@ write_boundary() {
 				events: ($output + "/events.jsonl"),
 				stderr: ($output + "/opencode.stderr"),
 				invocations: ($output + "/agora-invocations.log"),
+				shell_environment: ($output + "/shell-environment.log"),
 				transcript: ($output + "/agora-transcript.jsonl")
 			},
 			permissions: $config.permission,
@@ -612,7 +733,7 @@ write_analysis_boundary() {
 				if ((.executables | type) == "object" and (.executables.agora | type) == "object" and (.executables.agora.path | nonempty_string) and (.executables.agora.version | nonempty_string)) then empty else "agora_build" end,
 				if ((.executables | type) == "object" and (.executables.opencode | type) == "object" and (.executables.opencode.path | nonempty_string) and (.executables.opencode.version | nonempty_string)) then empty else "opencode_build" end,
 				if (.model | nonempty_string) then empty else "model" end,
-				if ((.authentication | type) == "object" and (.authentication.provider | nonempty_string) and .authentication.transport == "OPENCODE_AUTH_CONTENT" and .authentication.persisted == false) then empty else "authentication_boundary" end,
+				if ((.authentication | type) == "object" and (.authentication.provider | nonempty_string) and (.authentication.source == "environment" or .authentication.source == "auth_file") and .authentication.persisted == false) then empty else "authentication_boundary" end,
 				if ((.permissions | type) == "object" and .permissions["*"] == "deny" and .permissions.bash == "allow") then empty else "permissions" end,
 				if ((.nested_agora | type) == "object" and (.nested_agora.wrapper | nonempty_string) and (.nested_agora.command_gate | nonempty_string) and .nested_agora.dry_run == true and .nested_agora.context_enabled == false and .nested_agora.fixed_output == true and .nested_agora.fixed_model == true) then empty else "nested_wrapper" end
 			],
@@ -1092,13 +1213,15 @@ run_trial() {
 	local parent
 	local opencode_bin
 	local opencode_version
-	local auth_content=""
+	local auth_source=""
+	local auth_secret=""
 	local credential_values=""
 	local tmp_root=""
 	local agora_bin
 	local agora_version
 	local wrapper
 	local shell_gate
+	local auth_bootstrap
 	local workdir
 	local config_json
 	local outer_status
@@ -1134,6 +1257,9 @@ run_trial() {
 
 		trap - EXIT HUP INT TERM
 		terminate_outer_process_group
+		if ((status != 0)); then
+			remove_output=1
+		fi
 		if ((remove_output && output_created)); then
 			if ! rm -rf -- "$output"; then
 				if ((status == 0)); then
@@ -1148,11 +1274,16 @@ run_trial() {
 				fi
 			fi
 		fi
-		auth_content=''
+		auth_secret=''
 		credential_values=''
-		unset auth_content credential_values
-		if [[ -n "$tmp_root" ]]; then
-			rm -rf -- "$tmp_root" || true
+		SELECTED_AUTH_SECRET=''
+		SELECTED_CREDENTIAL_VALUES=''
+		unset auth_secret credential_values SELECTED_AUTH_SECRET SELECTED_CREDENTIAL_VALUES
+		if [[ -n "$tmp_root" ]] && ! rm -rf -- "$tmp_root"; then
+			printf 'error: could not remove temporary evaluator state\n' >&2
+			if ((status == 0)); then
+				status=2
+			fi
 		fi
 		cleanup_status="$status"
 	}
@@ -1188,8 +1319,10 @@ run_trial() {
 
 	opencode_bin="$(resolve_executable "$opencode_request")" || die "opencode executable is required: $opencode_request"
 	opencode_version="$("$opencode_bin" --version)"
-	auth_content="$(auth_content_for_model "$auth_file" "$model")" || die "auth file has no readable entry for $(provider_for_model "$model" 2>/dev/null || printf 'the selected') provider"
-	credential_values="$(credential_values_for_auth "$auth_content")" || die "selected provider auth has no supported credential leaves"
+	select_auth_for_model "$auth_file" "$model" || die "no supported authentication is available for $(provider_for_model "$model" 2>/dev/null || printf 'the selected') provider"
+	auth_source="$SELECTED_AUTH_SOURCE"
+	auth_secret="$SELECTED_AUTH_SECRET"
+	credential_values="$SELECTED_CREDENTIAL_VALUES"
 
 	if [[ "$output" != /* ]]; then
 		output="$ROOT/$output"
@@ -1213,16 +1346,19 @@ run_trial() {
 	write_agora_wrapper "$wrapper"
 	shell_gate="$tmp_root/shell/bash"
 	write_shell_gate "$shell_gate"
+	auth_bootstrap="$tmp_root/bin/opencode-auth-bootstrap"
+	write_auth_bootstrap "$auth_bootstrap"
 	workdir="$tmp_root/work"
 	config_json="$(opencode_permission_config "$shell_gate")"
 
-	write_boundary "$output/boundary.json" "$tmp_root" "$output" "$model" "$opencode_bin" "$opencode_version" "$agora_bin" "$agora_version" "$wrapper" "$workdir" "$shell_gate"
+	write_boundary "$output/boundary.json" "$tmp_root" "$output" "$model" "$opencode_bin" "$opencode_version" "$agora_bin" "$agora_version" "$wrapper" "$workdir" "$shell_gate" "$auth_source"
 	: >"$output/agora-invocations.log"
 
 	set +e
 	# Start setsid here so outer_pid is the child process-group leader.
 	setsid --wait \
-		env -i \
+		timeout "$timeout_duration" \
+			env -i \
 			PATH="$tmp_root/bin:$PATH" \
 			HOME="$tmp_root/home" \
 			TMPDIR="$tmp_root/tmp" \
@@ -1238,15 +1374,15 @@ run_trial() {
 			OPENCODE_DISABLE_AUTOUPDATE=1 \
 			OPENCODE_DISABLE_AUTOCOMPACT=1 \
 			OPENCODE_DISABLE_MODELS_FETCH=1 \
-			OPENCODE_AUTH_CONTENT="$auth_content" \
 			NO_COLOR=1 \
 			AGORA_EVALUATOR_REAL="$agora_bin" \
 			AGORA_EVALUATOR_WRAPPER="$wrapper" \
 			AGORA_EVALUATOR_INVOCATIONS="$output/agora-invocations.log" \
+			AGORA_EVALUATOR_SHELL_ENV_LOG="$output/shell-environment.log" \
 			AGORA_EVALUATOR_TRANSCRIPT="$output/agora-transcript.jsonl" \
 			AGORA_EVALUATOR_MODEL="$model" \
 			AGORA_EVALUATOR_WORKDIR="$workdir" \
-		timeout "$timeout_duration" "$opencode_bin" run \
+			"$auth_bootstrap" "$auth_source" "$opencode_bin" run \
 			--pure \
 			--format json \
 			--model "$model" \
@@ -1254,6 +1390,7 @@ run_trial() {
 			--title "Agora CLI discovery evaluation" \
 			--dir "$workdir" \
 			"$PROMPT" \
+			3< <(printf '%s\0' "$auth_secret") \
 			>"$output/events.jsonl" 2>"$output/opencode.stderr" &
 	outer_pid=$!
 	wait "$outer_pid"

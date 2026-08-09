@@ -59,7 +59,12 @@ For a live trial, use `mage eval:cliDiscoveryHelp` for the current local-tool
 requirements and tested OpenCode boundary. It needs a supported OpenCode
 executable and authentication for the selected outer provider. It isolates user
 state, keeps only that outer call live, and forces nested Agora runs to a dry
-run with fresh output.
+run with fresh output. For the `opencode` provider, an inherited nonempty
+`OPENCODE_API_KEY` takes precedence over the selected `auth.json` entry. The
+evaluator stages only the selected credential in mode-restricted temporary
+OpenCode auth state. The outer process and every shell or nested child start
+without credential environment variables, and the temporary state is removed
+after child reaping.
 
 One live outer agent/model session can incur provider cost. The self-test and
 offline modes do not. Do not infer a dollar cost from this tool.

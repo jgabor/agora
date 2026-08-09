@@ -51,3 +51,7 @@ _None._
 - [ ] [id:oowkozctdp] Add defined output themes and named cast color palettes; default remains terminal theme-adaptive ANSI slots
 - [ ] [id:bcimzeorwv] Evaluate named profiles after `prime` exists; current `config.yaml` covers defaults but not reusable identities
 - [ ] [id:fbjyuemzvg] Tune auto mode level caps based on usage — Decision 4 caps are provisional
+
+## → Degraded
+- [ ] [id:dynufsdiqr] [fix] Align opening proposal contract with independent opening envelopes
+- [ ] [id:eprrpqhkrb] [fix] Bind terminal consensus gates to the established run contract

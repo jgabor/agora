@@ -6,6 +6,9 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/eval-cli-discovery.sh
 source "$ROOT/scripts/eval-cli-discovery.sh"
 
+# Mage forwarding checks use only their synthetic auth-file fixtures.
+unset OPENCODE_API_KEY OPENCODE_AUTH_CONTENT
+
 checks=0
 TEST_TMP=""
 
@@ -52,9 +55,11 @@ if [[ "\${1:-}" == "--version" ]]; then
 fi
 
 : >$invoked_file_q
+[[ ! -v OPENCODE_API_KEY && ! -v OPENCODE_AUTH_CONTENT ]]
 printf '%s\\0' "\$@" >$args_file_q
 jq -e 'keys == ["opencode"] and .opencode == {type: "api", key: "mage-forward-token"}' \\
-	<<<"\${OPENCODE_AUTH_CONTENT:?}" >/dev/null
+	"\$XDG_DATA_HOME/opencode/auth.json" >/dev/null
+[[ "\$(stat -c '%a:%F' "\$XDG_DATA_HOME/opencode/auth.json")" == '600:regular file' ]]
 : >$auth_file_q
 cat >"\$AGORA_EVALUATOR_TRANSCRIPT" <<'TRANSCRIPT'
 {"turn":-2,"agent_id":"moderator","transcript":{"cast":[],"config":{"research":false,"agents":[]}},"evidence":{"source_references":[]}}
@@ -147,6 +152,8 @@ target_help_is_safe() {
 		&& grep -Fq 'OpenCode boundary is 1.18.11; validate other versions separately.' "$stdout" \
 		&& grep -Fq -- '--analyze and --analysis-self-test do not launch OpenCode or need provider' "$stdout" \
 		&& grep -Fq 'a local OpenCode 1.18.11 loopback; it does not need provider authentication.' "$stdout" \
+		&& grep -Fq 'nonempty inherited OPENCODE_API_KEY takes precedence.' "$stdout" \
+		&& grep -Fq 'temporary auth state and removed after the outer process.' "$stdout" \
 		&& grep -Fq 'AGORA_EVALUATOR_MODEL changes the default model.' "$stdout" \
 		&& test ! -e "$TEST_TMP/opencode-invoked"
 }
@@ -236,10 +243,16 @@ forwarded_trial_is_exact() {
 		|| return 1
 
 	mapfile -d '' -t timeout_args <"$TEST_TMP/timeout.args"
-	((${#timeout_args[@]} == 15)) \
+	((${#timeout_args[@]} == 42)) \
 		&& [[ "${timeout_args[0]}" == "$timeout_value" ]] \
-		&& [[ "${timeout_args[1]}" == "$TEST_TMP/fake-opencode" ]] \
-		&& ! grep -aFq -- "$expanded_sentinel" "$TEST_TMP/timeout.args"
+		&& [[ "${timeout_args[1]}" == env ]] \
+		&& [[ "${timeout_args[2]}" == -i ]] \
+		&& [[ "${timeout_args[26]}" == */opencode-auth-bootstrap ]] \
+		&& [[ "${timeout_args[27]}" == auth_file ]] \
+		&& [[ "${timeout_args[28]}" == "$TEST_TMP/fake-opencode" ]] \
+		&& ! grep -aFq -- "$expanded_sentinel" "$TEST_TMP/timeout.args" \
+		&& ! grep -aFq -- 'mage-forward-token' "$TEST_TMP/timeout.args" \
+		&& ! grep -aFq -- "$auth" "$TEST_TMP/timeout.args"
 }
 
 failed_trial_redacts_mage_error() {
@@ -266,10 +279,10 @@ failed_trial_redacts_mage_error() {
 	[[ "$status" == 125 ]] \
 		&& test ! -s "$stdout" \
 		&& test ! -e "$TEST_TMP/opencode-invoked" \
-		&& grep -Fq 'invalid time interval' "$output/opencode.stderr" \
+		&& test ! -e "$output" \
 		&& grep -Fq 'evaluator failed with exit code 125' "$stderr" \
-		&& ! grep -RFq -- "$auth" "$stdout" "$stderr" "$output" \
-		&& ! grep -RFq -- 'mage-failure-token' "$stdout" "$stderr" "$output" \
+		&& ! grep -Fq -- "$auth" "$stdout" "$stderr" \
+		&& ! grep -Fq -- 'mage-failure-token' "$stdout" "$stderr" \
 		&& ! grep -Fq -- "$model" "$stdout" "$stderr" \
 		&& ! grep -Fq -- "$output" "$stdout" "$stderr" \
 		&& ! grep -Fq -- '--auth-file' "$stdout" "$stderr"

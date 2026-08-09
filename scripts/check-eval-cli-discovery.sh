@@ -47,6 +47,7 @@ result_root_is_ignored() (
 	: >"$output/agora-transcript.jsonl"
 	: >"$output/opencode.stderr"
 	: >"$output/agora-invocations.log"
+	: >"$output/shell-environment.log"
 	: >"$output/boundary.json"
 	: >"$output/temporary-state/config.yaml"
 	: >"$output/temporary-state/opencode/auth.json"
