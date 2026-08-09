@@ -465,6 +465,32 @@ func TestPrepareNextTurnDirectsResponseToLedgerCrux(t *testing.T) {
 	}
 }
 
+func TestPrepareNextTurnUsesLeadingCruxForFairSpeakerSelection(t *testing.T) {
+	state := types.NewDeliberationControlState([]string{"alpha", "beta", "gamma"}, 0)
+	state.Phase = types.PhaseRebuttal
+	for _, agentID := range state.AgentIDs {
+		state.Contributions = append(state.Contributions, types.AgentContribution{
+			AgentID: agentID, Turn: len(state.Contributions), Position: agentID + " opening",
+			ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		})
+	}
+	debate := types.NewDebateLedger(1, 1)
+	debate.Cruxes = []types.OpenCrux{{
+		Topic: "rollback threshold",
+		Views: []types.PositionalView{
+			{AgentID: "beta", Stance: "strict"},
+			{AgentID: "gamma", Stance: "flexible"},
+		},
+		RaisedAt: 1,
+	}}
+
+	prepareNextTurn(state, debate, false)
+
+	if state.Directive.Kind != types.DirectiveRespond || state.Directive.Crux != "rollback threshold" || state.Directive.TargetAgentID != "beta" {
+		t.Fatalf("state-derived crux directive: %#v", state.Directive)
+	}
+}
+
 func TestVerificationDirectiveNeedsAnOutcome(t *testing.T) {
 	for _, status := range []types.ClaimEvidenceStatus{
 		types.EvidenceUnverified,

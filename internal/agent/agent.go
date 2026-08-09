@@ -137,7 +137,7 @@ const ReadOnlyHint = "You are operating in a read-only sandbox. Your tools are l
 
 const ConsensusHint = "Only include [CONSENSUS: your statement] when you fully endorse the proposed final answer or deliverable as written—not merely the discussion process, your own critique, or a recommendation to refine later."
 
-const ModeratorPrompt = "You are a discussion moderator. Your role is to keep deliberation productive by asking clarifying questions when agents are unclear, redirecting agents that go off-topic, and introducing new angles or perspectives when the conversation reaches a stalemate. Only interject when necessary — when agents are repeating themselves, stuck, or drifting off course. Your goal is to move the group toward consensus without dominating the discussion."
+const ModeratorPrompt = "You are a discussion moderator. Select exactly one action from the supplied moderation contract. The contract derives targets and references from accepted debate state. Return only that complete JSON action object. Do not add fields, write a terminal outcome, or claim consensus."
 
 func ModeratorConfig(model string) types.AgentConfig {
 	return types.AgentConfig{
@@ -337,6 +337,11 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 	if agent.ID == "web-research-collector" {
 		return dryRunWebResearch(envelope)
 	}
+	if agent.ID == "moderator" {
+		if _, moderated := envelope["moderation_contract"]; moderated {
+			return dryRunModeratorAction(envelope)
+		}
+	}
 
 	topic := "unknown topic"
 	if t, ok := envelope["topic"]; ok {
@@ -357,6 +362,7 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 				"vote":            nil,
 				"claims":          []any{},
 			}
+			applyDryRunDirective(payload, envelope)
 		}
 		content, err := json.Marshal(payload)
 		if err != nil {
@@ -379,6 +385,43 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 			},
 			Cost: &cost,
 		}, nil
+}
+
+func dryRunModeratorAction(envelope map[string]any) (string, *types.RunMetadata, error) {
+	contract, ok := envelope["moderation_contract"].(map[string]any)
+	if !ok {
+		return "", nil, fmt.Errorf("dry-run moderator contract is invalid")
+	}
+	actions, ok := contract["actions"].([]map[string]any)
+	if !ok || len(actions) == 0 {
+		return "", nil, fmt.Errorf("dry-run moderator contract has no actions")
+	}
+	content, err := json.Marshal(actions[0])
+	if err != nil {
+		return "", nil, err
+	}
+	return string(content), dryRunMetadata(), nil
+}
+
+func applyDryRunDirective(payload map[string]any, envelope map[string]any) {
+	directive, ok := envelope["directive"].(types.TurnDirective)
+	if !ok {
+		return
+	}
+	switch directive.Kind {
+	case types.DirectiveVerify:
+		payload["claims"] = []any{map[string]any{
+			"id": directive.ClaimID, "status": "unsupported", "source_refs": []int{},
+		}}
+	case types.DirectiveReviseProposal:
+		payload["proposal_action"] = map[string]any{
+			"kind": "revise", "content": "[DRY RUN] revised proposal", "supersedes": directive.ProposalVersion,
+		}
+	case types.DirectiveVote:
+		payload["vote"] = map[string]any{
+			"proposal_version": directive.ProposalVersion, "choice": "endorse",
+		}
+	}
 }
 
 func positionOnlyContributionContract(envelope map[string]any) bool {

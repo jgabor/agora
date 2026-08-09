@@ -340,6 +340,21 @@ satisfy the current vote, objection, evidence, and deliverable gates.
 Pre-contract normalization is an active boundary only. A later boundary cannot
 retroactively authenticate an existing terminal consensus.
 
+### Moderation
+
+After a complete post-opening round, Agora moderates only when it has a fresh
+typed ledger and a validated next action exists. The moderator selects exactly
+one state-derived action: direct a response to the leading crux, request claim
+verification or proposal revision, call a vote, or request no consensus. Its
+targets use current contribution counts, preferring leading-crux participants
+only while they are tied for the least work, so active agents are not starved.
+
+Repeated full rounds without a typed proposal, response, verification, or vote
+progress increment the persisted stagnation count. The second such round marks
+the moderator call as stagnation-driven. A `request_no_consensus` action is not
+a terminal outcome. Only the authenticated terminal evaluator can write
+`consensus` or `no_consensus` to control state.
+
 ## Synthesis
 
 When `--synthesize` is enabled, a final agent call produces a structured JSON summary:

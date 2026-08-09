@@ -1,0 +1,16 @@
+id: ivbdhaobzt
+artifact: progress
+record:
+  timestamp: 2026-08-09 20:00
+  type: feat
+  phase: build
+  what: Activated state-driven moderation and stagnation control for plan task frlozgqbmw without changing task lifecycle.
+  context:
+    intent: Execute only frlozgqbmw, Activate moderation and stagnation control.
+    constraints: Preserve protocol-v2 evidence authority, v1/pre-contract migration, authenticated terminal evaluation, position-only openings, claim evidence lifecycle, and typed no-consensus. No provider calls, task completion, commit, push, release work, vision changes, or state reconciliation.
+    unknowns: Decision detail remains deferred; health is incomplete; vision and profile detail remain deferred. Independent evaluation owns task closure.
+    scope: Typed moderation actions and convergence state, fair post-opening scheduling, dry-run support, regression tests, resume persistence, and README moderation contract.
+  discovered: A fresh completed-round ledger is required before moderation may select a crux. The no-ledger path retains the fair deterministic scheduler and makes no moderator model call.
+  verified: '`TestModerationAppliesEachValidatedAction` passed direct response, verification, revision, vote, and no-consensus request outputs. `TestModerationRejectsIllegalActionsAtomically` rejected one invalid action from every family, including a premature no-consensus request, without mutating prior state. Trigger, non-trigger, leading-crux, fairness, malformed-output, call-failure, terminal-field rejection, no-terminal-request, transcript-load, and resume persistence cases passed in `internal/orchestrator`, `internal/types`, and `internal/session`. The local checkout binary at `/tmp/opencode/agora-frlozgqbmw/agora` built with Go 1.26.5 validated the quick config and completed dry-run, show, and terminal resume without provider calls. `env PATH="$(go env GOROOT)/bin:/usr/bin:/bin" go test ./... -race -coverprofile=/tmp/opencode/agora-frlozgqbmw/coverage.out -count=1`, `go vet ./...`, `go build ./...`, `golangci-lint run ./...`, and `git diff --check` passed.'
+  next: Keep frlozgqbmw in_progress for independent evaluation. Do not change task lifecycle, commit, or push this work.
+  publication_order: 17

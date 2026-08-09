@@ -653,6 +653,169 @@ func TestResumePreservesPhaseAndOutstandingDirective(t *testing.T) {
 	}
 }
 
+func TestResumePreservesModeratorActionAndStagnationState(t *testing.T) {
+	model := "test/model"
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: model}, {ID: "beta", Model: model}},
+	}
+	control := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	control.Phase = types.PhaseRebuttal
+	control.Convergence.RunContractVersion = types.RunContractVersion
+	control.Convergence.MinimumRounds = 1
+	control.Convergence.StagnantRounds = 1
+	control.Convergence.LastModeratedRound = 1
+	control.Contributions = []types.AgentContribution{
+		{AgentID: "alpha", Turn: 0, Position: "alpha opening", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
+		{AgentID: "beta", Turn: 1, Position: "beta opening", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
+	}
+	baseline := *control
+	baseline.Convergence.LastModeratedRound = 0
+	control.ModeratorAction = types.ModeratorAction{
+		Kind:          types.ModeratorActionDirectResponse,
+		Phase:         types.PhaseRebuttal,
+		Trigger:       types.ModerationTriggerRoundBoundary,
+		TargetAgentID: "beta",
+		Crux:          "rollback threshold",
+		ObjectionIDs:  []string{},
+		ClaimIDs:      []string{},
+	}
+	control.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: "beta", Crux: "rollback threshold"}
+	if err := control.Validate(); err != nil {
+		t.Fatalf("source moderation control: %v", err)
+	}
+	source := []types.TurnRecord{
+		{Turn: 0, AgentID: "alpha", Model: &model, Content: "alpha opening"},
+		{Turn: 1, AgentID: "beta", Model: &model, Content: "beta opening"},
+		{Turn: -1, AgentID: "moderator", Control: &baseline},
+		{Turn: -1, AgentID: "moderator", Control: control},
+	}
+
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic: "resume moderation state", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl",
+			MaxTurns: 1, TimeLimit: 60, DryRun: true,
+		},
+		SourceRecords: source,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if len(result.Records) < 5 || result.Records[3].Control == nil || result.Records[3].Control.Directive != control.Directive || result.Records[4].AgentID != "beta" {
+		t.Fatalf("resumed moderation directive: %#v", result.Records)
+	}
+	if result.State.Control.ModeratorAction.Kind != types.ModeratorActionDirectResponse ||
+		result.State.Control.ModeratorAction.Trigger != types.ModerationTriggerRoundBoundary ||
+		result.State.Control.Convergence.StagnantRounds != 1 || result.State.Control.Convergence.LastModeratedRound != 1 {
+		t.Fatalf("resumed moderation state: %#v", result.State.Control)
+	}
+	if source[3].Control.ModeratorAction.Kind != types.ModeratorActionDirectResponse || source[3].Control.Directive != control.Directive {
+		t.Fatalf("resume mutated source moderation state: %#v", source[3].Control)
+	}
+}
+
+func TestResumeRejectsForgedPersistedModerationState(t *testing.T) {
+	model := "test/model"
+	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: "alpha", Model: model}, {ID: "beta", Model: model}}}
+	tests := []struct {
+		name   string
+		source func() []types.TurnRecord
+	}{
+		{
+			name: "future last moderated round",
+			source: func() []types.TurnRecord {
+				control := resumeDirectModerationControl()
+				control.Convergence.LastModeratedRound = 2
+				return []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}}
+			},
+		},
+		{
+			name: "round boundary no consensus request",
+			source: func() []types.TurnRecord {
+				control := resumeNoConsensusRequestControl()
+				control.ModeratorAction.Trigger = types.ModerationTriggerRoundBoundary
+				return []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}}
+			},
+		},
+		{
+			name: "rebuttal call vote",
+			source: func() []types.TurnRecord {
+				control := resumeDirectModerationControl()
+				control.CurrentProposalVersion = 1
+				control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+				control.ModeratorAction = types.ModeratorAction{
+					Kind: types.ModeratorActionCallVote, Phase: types.PhaseRebuttal, Trigger: types.ModerationTriggerRoundBoundary,
+					TargetAgentID: "beta", ProposalVersion: 1, ObjectionIDs: []string{}, ClaimIDs: []string{},
+				}
+				control.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+				return []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}}
+			},
+		},
+		{
+			name: "agent record claims a moderator snapshot",
+			source: func() []types.TurnRecord {
+				baseline := resumeModerationBaselineControl()
+				return []types.TurnRecord{
+					{Turn: -1, AgentID: "moderator", Control: baseline},
+					{Turn: 2, AgentID: "alpha", Control: resumeDirectModerationControl()},
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := session.Resume(session.ResumeRequest{
+				RunRequest:    session.RunRequest{Topic: "reject forged moderation", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl", MaxTurns: 1, TimeLimit: 60, DryRun: true},
+				SourceRecords: tt.source(),
+			}, session.Hooks{})
+			if err == nil {
+				t.Fatal("Resume accepted forged moderation state")
+			}
+		})
+	}
+}
+
+func resumeModerationBaselineControl() *types.DeliberationControlState {
+	control := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	control.Phase = types.PhaseRebuttal
+	for _, agentID := range control.AgentIDs {
+		control.Contributions = append(control.Contributions, types.AgentContribution{
+			AgentID: agentID, Turn: len(control.Contributions), Position: agentID + " opening",
+			ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		})
+	}
+	return control
+}
+
+func resumeDirectModerationControl() *types.DeliberationControlState {
+	control := resumeModerationBaselineControl()
+	control.ModeratorAction = types.ModeratorAction{
+		Kind: types.ModeratorActionDirectResponse, Phase: types.PhaseRebuttal, Trigger: types.ModerationTriggerRoundBoundary,
+		TargetAgentID: "beta", Crux: "rollback threshold", ObjectionIDs: []string{}, ClaimIDs: []string{},
+	}
+	control.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: "beta", Crux: "rollback threshold"}
+	control.Convergence.LastModeratedRound = 1
+	return control
+}
+
+func resumeNoConsensusRequestControl() *types.DeliberationControlState {
+	control := resumeModerationBaselineControl()
+	for _, agentID := range control.AgentIDs {
+		control.Contributions = append(control.Contributions, types.AgentContribution{
+			AgentID: agentID, Turn: len(control.Contributions), Position: agentID + " repeated",
+			ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		})
+	}
+	control.ModeratorAction = types.ModeratorAction{
+		Kind: types.ModeratorActionRequestNoConsensus, Phase: types.PhaseRebuttal, Trigger: types.ModerationTriggerStagnation,
+		ObjectionIDs: []string{}, ClaimIDs: []string{},
+	}
+	control.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	control.Convergence.StagnantRounds = types.StagnationRoundsForNoConsensus
+	control.Convergence.LastModeratedRound = 2
+	return control
+}
+
 func TestResumePreservesTypedTerminalOutcome(t *testing.T) {
 	model := "test/model"
 	cfg := &types.DeliberationConfig{

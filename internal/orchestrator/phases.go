@@ -34,6 +34,8 @@ func prepareNextTurn(state *types.DeliberationControlState, debate *types.Debate
 		if objections := state.UnresolvedObjections(); len(objections) > 0 {
 			state.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: target, ObjectionID: objections[0].ID}
 		} else if debate != nil && len(debate.Cruxes) > 0 {
+			_, preferred := leadingCrux(state, debate)
+			target = fairModeratorTarget(state, preferred)
 			state.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: target, Crux: debate.Cruxes[0].Topic}
 		}
 	case types.PhaseDrafting:
@@ -45,7 +47,7 @@ func prepareNextTurn(state *types.DeliberationControlState, debate *types.Debate
 			state.Directive = types.TurnDirective{Kind: types.DirectiveReviseProposal, TargetAgentID: target, ProposalVersion: state.CurrentProposalVersion}
 		}
 	case types.PhaseVoting:
-		if target = firstAgentWithoutCurrentVote(state); target != "" {
+		if target = fairVoteTarget(state); target != "" {
 			state.Directive = types.TurnDirective{Kind: types.DirectiveVote, TargetAgentID: target, ProposalVersion: state.CurrentProposalVersion}
 		}
 	}
@@ -106,26 +108,13 @@ func nextScheduledAgent(state *types.DeliberationControlState) string {
 			}
 		}
 	}
-	return state.AgentIDs[len(state.Contributions)%len(state.AgentIDs)]
+	return fairModeratorTarget(state, nil)
 }
 
 func firstEvidenceGap(state *types.DeliberationControlState) string {
 	for _, claim := range state.Claims {
 		if claim.Decisive && claim.Status == types.EvidenceUnverified {
 			return claim.ID
-		}
-	}
-	return ""
-}
-
-func firstAgentWithoutCurrentVote(state *types.DeliberationControlState) string {
-	voted := make(map[string]bool)
-	for _, vote := range state.CurrentVotes() {
-		voted[vote.AgentID] = true
-	}
-	for _, id := range state.AgentIDs {
-		if !voted[id] {
-			return id
 		}
 	}
 	return ""

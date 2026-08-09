@@ -95,6 +95,188 @@ func TestNewDeliberationControlState(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsMalformedStructuredModeratorActions(t *testing.T) {
+	state := protocolStateWithProposal()
+	state.Phase = PhaseDrafting
+	state.Claims = []ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Decisive: true, Status: EvidenceUnverified}}
+	state.Objections = []Objection{{ID: "obj-1", AgentID: "beta", ProposalVersion: 1, Summary: "challenge"}}
+
+	tests := []struct {
+		name   string
+		action ModeratorAction
+	}{
+		{
+			name:   "direct response needs a trigger",
+			action: ModeratorAction{Kind: ModeratorActionDirectResponse, TargetAgentID: "beta", Crux: "rollback threshold", ObjectionIDs: []string{}, ClaimIDs: []string{}},
+		},
+		{
+			name:   "verification needs one claim",
+			action: ModeratorAction{Kind: ModeratorActionRequestEvidence, Trigger: ModerationTriggerRoundBoundary, TargetAgentID: "beta", ObjectionIDs: []string{}, ClaimIDs: []string{}},
+		},
+		{
+			name:   "revision needs one objection",
+			action: ModeratorAction{Kind: ModeratorActionRequestRevision, Trigger: ModerationTriggerRoundBoundary, TargetAgentID: "beta", ProposalVersion: 1, ObjectionIDs: []string{}, ClaimIDs: []string{}},
+		},
+		{
+			name:   "vote needs a proposal",
+			action: ModeratorAction{Kind: ModeratorActionCallVote, Trigger: ModerationTriggerRoundBoundary, TargetAgentID: "beta", ObjectionIDs: []string{}, ClaimIDs: []string{}},
+		},
+		{
+			name:   "no consensus cannot direct a speaker",
+			action: ModeratorAction{Kind: ModeratorActionRequestNoConsensus, Trigger: ModerationTriggerStagnation, TargetAgentID: "beta", ObjectionIDs: []string{}, ClaimIDs: []string{}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			next := cloneControlState(t, state)
+			next.ModeratorAction = tt.action
+			if err := next.Validate(); err == nil {
+				t.Fatalf("malformed moderator action accepted: %#v", tt.action)
+			}
+		})
+	}
+}
+
+func TestValidateModerationStateTrustBoundaries(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *DeliberationControlState
+		valid bool
+	}{
+		{
+			name:  "valid direct response at completed round",
+			state: persistedDirectModerationState(1),
+			valid: true,
+		},
+		{
+			name: "future last moderated round",
+			state: func() *DeliberationControlState {
+				state := persistedDirectModerationState(1)
+				state.Convergence.LastModeratedRound = 2
+				return state
+			}(),
+		},
+		{
+			name: "round boundary no consensus request",
+			state: func() *DeliberationControlState {
+				state := persistedNoConsensusRequestState()
+				state.ModeratorAction.Trigger = ModerationTriggerRoundBoundary
+				return state
+			}(),
+		},
+		{
+			name: "rebuttal call vote",
+			state: func() *DeliberationControlState {
+				state := persistedDirectModerationState(1)
+				state.CurrentProposalVersion = 1
+				state.Proposals = []CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+				state.ModeratorAction = ModeratorAction{
+					Kind: ModeratorActionCallVote, Phase: PhaseRebuttal, Trigger: ModerationTriggerRoundBoundary,
+					TargetAgentID: "beta", ProposalVersion: 1, ObjectionIDs: []string{}, ClaimIDs: []string{},
+				}
+				state.Directive = TurnDirective{Kind: DirectiveNone}
+				return state
+			}(),
+		},
+		{
+			name:  "valid stagnation no consensus request",
+			state: persistedNoConsensusRequestState(),
+			valid: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.state.Validate()
+			if tt.valid && err != nil {
+				t.Fatalf("valid moderation state: %v", err)
+			}
+			if !tt.valid && err == nil {
+				t.Fatalf("invalid moderation state accepted: %#v", tt.state)
+			}
+		})
+	}
+}
+
+func TestValidateDeliberationTransitionAuthenticatesModeratorSnapshots(t *testing.T) {
+	t.Run("valid moderator snapshot", func(t *testing.T) {
+		previous := moderationBaselineState(1)
+		next := persistedDirectModerationState(1)
+		if err := ValidateDeliberationTransition(previous, next); err != nil {
+			t.Fatalf("moderator snapshot transition: %v", err)
+		}
+	})
+
+	t.Run("last moderated round is monotonic", func(t *testing.T) {
+		previous := persistedDirectModerationState(3)
+		previous.Convergence.LastModeratedRound = 2
+		next := cloneControlState(t, previous)
+		next.Convergence.LastModeratedRound = 1
+		if err := previous.Validate(); err != nil {
+			t.Fatalf("previous state: %v", err)
+		}
+		if err := next.Validate(); err != nil {
+			t.Fatalf("next state: %v", err)
+		}
+		if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "last_moderated_round") {
+			t.Fatalf("last moderated round regression: %v", err)
+		}
+	})
+
+	t.Run("ordinary agent transition cannot alter moderator action", func(t *testing.T) {
+		previous := persistedDirectModerationState(1)
+		next := cloneControlState(t, previous)
+		next.Contributions = append(next.Contributions, AgentContribution{
+			AgentID: "alpha", Turn: 2, Position: "alpha follow-up",
+			ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+		})
+		next.ModeratorAction.TargetAgentID = "alpha"
+		next.Directive = TurnDirective{Kind: DirectiveRespond, TargetAgentID: "alpha", Crux: "rollback threshold"}
+		if err := next.Validate(); err != nil {
+			t.Fatalf("individually valid agent state: %v", err)
+		}
+		if err := ValidateDeliberationTransition(previous, next); err == nil || !strings.Contains(err.Error(), "moderator") {
+			t.Fatalf("agent action mutation accepted: %v", err)
+		}
+	})
+}
+
+func moderationBaselineState(rounds int) *DeliberationControlState {
+	state := NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	state.Phase = PhaseRebuttal
+	for round := 0; round < rounds; round++ {
+		for _, agentID := range state.AgentIDs {
+			state.Contributions = append(state.Contributions, AgentContribution{
+				AgentID: agentID, Turn: len(state.Contributions), Position: agentID + " position",
+				ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+			})
+		}
+	}
+	return state
+}
+
+func persistedDirectModerationState(rounds int) *DeliberationControlState {
+	state := moderationBaselineState(rounds)
+	state.ModeratorAction = ModeratorAction{
+		Kind: ModeratorActionDirectResponse, Phase: PhaseRebuttal, Trigger: ModerationTriggerRoundBoundary,
+		TargetAgentID: "beta", Crux: "rollback threshold", ObjectionIDs: []string{}, ClaimIDs: []string{},
+	}
+	state.Directive = TurnDirective{Kind: DirectiveRespond, TargetAgentID: "beta", Crux: "rollback threshold"}
+	state.Convergence.LastModeratedRound = 1
+	return state
+}
+
+func persistedNoConsensusRequestState() *DeliberationControlState {
+	state := moderationBaselineState(2)
+	state.ModeratorAction = ModeratorAction{
+		Kind: ModeratorActionRequestNoConsensus, Phase: PhaseRebuttal, Trigger: ModerationTriggerStagnation,
+		ObjectionIDs: []string{}, ClaimIDs: []string{},
+	}
+	state.Directive = TurnDirective{Kind: DirectiveNone}
+	state.Convergence.StagnantRounds = StagnationRoundsForNoConsensus
+	state.Convergence.LastModeratedRound = 2
+	return state
+}
+
 func TestEvaluateConsensusRequiresTypedHaltGates(t *testing.T) {
 	tests := []struct {
 		name        string

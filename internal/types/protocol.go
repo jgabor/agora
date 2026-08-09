@@ -194,17 +194,35 @@ type TurnDirective struct {
 type ModeratorActionKind string
 
 const (
-	ModeratorActionNone            ModeratorActionKind = "none"
-	ModeratorActionContinue        ModeratorActionKind = "continue"
-	ModeratorActionRequestRevision ModeratorActionKind = "request_revision"
-	ModeratorActionRequestEvidence ModeratorActionKind = "request_evidence"
-	ModeratorActionCallVote        ModeratorActionKind = "call_vote"
+	ModeratorActionNone               ModeratorActionKind = "none"
+	ModeratorActionContinue           ModeratorActionKind = "continue"
+	ModeratorActionDirectResponse     ModeratorActionKind = "direct_response"
+	ModeratorActionRequestRevision    ModeratorActionKind = "request_revision"
+	ModeratorActionRequestEvidence    ModeratorActionKind = "request_evidence"
+	ModeratorActionCallVote           ModeratorActionKind = "call_vote"
+	ModeratorActionRequestNoConsensus ModeratorActionKind = "request_no_consensus"
 )
+
+// ModerationTrigger identifies why the moderator was invoked. It is bound by
+// the orchestrator rather than accepted from model output.
+type ModerationTrigger string
+
+const (
+	ModerationTriggerRoundBoundary ModerationTrigger = "round_boundary"
+	ModerationTriggerStagnation    ModerationTrigger = "stagnation"
+)
+
+// StagnationRoundsForNoConsensus is the minimum repeated-round observation
+// required before moderation may request no consensus.
+const StagnationRoundsForNoConsensus = 2
 
 // ModeratorAction records the latest moderator decision and its references.
 type ModeratorAction struct {
 	Kind            ModeratorActionKind `yaml:"kind" json:"kind"`
+	Phase           DeliberationPhase   `yaml:"phase,omitempty" json:"phase,omitempty"`
+	Trigger         ModerationTrigger   `yaml:"trigger,omitempty" json:"trigger,omitempty"`
 	TargetAgentID   string              `yaml:"target_agent_id,omitempty" json:"target_agent_id,omitempty"`
+	Crux            string              `yaml:"crux,omitempty" json:"crux,omitempty"`
 	ProposalVersion int                 `yaml:"proposal_version,omitempty" json:"proposal_version,omitempty"`
 	ObjectionIDs    []string            `yaml:"objection_ids" json:"objection_ids"`
 	ClaimIDs        []string            `yaml:"claim_ids" json:"claim_ids"`
@@ -225,6 +243,7 @@ type ConvergenceSignals struct {
 	EvidenceGaps             int  `yaml:"evidence_gaps" json:"evidence_gaps"`
 	StagnantRounds           int  `yaml:"stagnant_rounds" json:"stagnant_rounds"`
 	ReadyToVote              bool `yaml:"ready_to_vote" json:"ready_to_vote"`
+	LastModeratedRound       int  `yaml:"last_moderated_round" json:"last_moderated_round"`
 }
 
 // TerminalOutcomeKind distinguishes an active deliberation from its two typed
@@ -682,8 +701,18 @@ func (s *DeliberationControlState) Validate() error {
 	if s.Convergence.RunContractVersion < 0 || s.Convergence.RunContractVersion > RunContractVersion {
 		return fmt.Errorf("unsupported run_contract_version %d", s.Convergence.RunContractVersion)
 	}
-	if s.Convergence.CurrentEndorsements < 0 || s.Convergence.RequiredEndorsements < 0 || s.Convergence.MinimumRounds < 0 || s.Convergence.RequiredDeliverableItems < 0 || s.Convergence.UnresolvedObjections < 0 || s.Convergence.EvidenceGaps < 0 || s.Convergence.StagnantRounds < 0 {
+	if s.Convergence.CurrentEndorsements < 0 || s.Convergence.RequiredEndorsements < 0 || s.Convergence.MinimumRounds < 0 || s.Convergence.RequiredDeliverableItems < 0 || s.Convergence.UnresolvedObjections < 0 || s.Convergence.EvidenceGaps < 0 || s.Convergence.StagnantRounds < 0 || s.Convergence.LastModeratedRound < 0 {
 		return fmt.Errorf("convergence signal counts must be >= 0")
+	}
+	if s.Convergence.LastModeratedRound > s.completedContributionRounds() {
+		return fmt.Errorf("last_moderated_round %d exceeds completed contribution rounds %d", s.Convergence.LastModeratedRound, s.completedContributionRounds())
+	}
+	if structuredModeratorAction(s.ModeratorAction.Kind) {
+		if s.Convergence.LastModeratedRound == 0 {
+			return fmt.Errorf("structured moderator action requires a completed moderation round")
+		}
+	} else if s.Convergence.LastModeratedRound != 0 {
+		return fmt.Errorf("last_moderated_round requires a structured moderator action")
 	}
 	if s.Convergence.RunContractVersion == RunContractVersion && s.Convergence.MinimumRounds == 0 {
 		return fmt.Errorf("versioned run contract requires minimum_rounds")
@@ -837,10 +866,68 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 	if err := validateClaimHistory(previous.Claims, next.Claims); err != nil {
 		return err
 	}
+	if err := validateModerationTransition(previous, next); err != nil {
+		return err
+	}
 	if previous.Outcome.Kind != OutcomePending && !reflect.DeepEqual(previous.Outcome, next.Outcome) {
 		return fmt.Errorf("terminal outcome is immutable")
 	}
 	return nil
+}
+
+func validateModerationTransition(previous, next *DeliberationControlState) error {
+	if next.Convergence.LastModeratedRound < previous.Convergence.LastModeratedRound {
+		return fmt.Errorf("last_moderated_round must be monotonic")
+	}
+	if !moderationFieldsChanged(previous, next) {
+		return nil
+	}
+	if next.Phase == PhaseTerminal {
+		return fmt.Errorf("terminal evaluation cannot change moderator state")
+	}
+	if len(next.Contributions) != len(previous.Contributions) {
+		return fmt.Errorf("ordinary agent transition cannot change moderator state")
+	}
+	if !reflect.DeepEqual(previous.Proposals, next.Proposals) || !reflect.DeepEqual(previous.Objections, next.Objections) ||
+		!reflect.DeepEqual(previous.Dispositions, next.Dispositions) || !reflect.DeepEqual(previous.Votes, next.Votes) ||
+		!reflect.DeepEqual(previous.Claims, next.Claims) {
+		return fmt.Errorf("moderator snapshot cannot change debate history")
+	}
+	if next.Convergence.LastModeratedRound <= previous.Convergence.LastModeratedRound ||
+		next.Convergence.LastModeratedRound != next.completedContributionRounds() {
+		return fmt.Errorf("moderator snapshot requires the current completed contribution round")
+	}
+	if !structuredModeratorAction(next.ModeratorAction.Kind) || !moderatorActionMatchesDirective(next) {
+		return fmt.Errorf("moderator snapshot requires one compatible action and directive")
+	}
+	return nil
+}
+
+func moderationFieldsChanged(previous, next *DeliberationControlState) bool {
+	return !reflect.DeepEqual(previous.ModeratorAction, next.ModeratorAction) ||
+		previous.Convergence.StagnantRounds != next.Convergence.StagnantRounds ||
+		previous.Convergence.ReadyToVote != next.Convergence.ReadyToVote ||
+		previous.Convergence.LastModeratedRound != next.Convergence.LastModeratedRound
+}
+
+func moderatorActionMatchesDirective(state *DeliberationControlState) bool {
+	action := state.ModeratorAction
+	var directive TurnDirective
+	switch action.Kind {
+	case ModeratorActionDirectResponse:
+		directive = TurnDirective{Kind: DirectiveRespond, TargetAgentID: action.TargetAgentID, Crux: action.Crux}
+	case ModeratorActionRequestEvidence:
+		directive = TurnDirective{Kind: DirectiveVerify, TargetAgentID: action.TargetAgentID, ClaimID: action.ClaimIDs[0]}
+	case ModeratorActionRequestRevision:
+		directive = TurnDirective{Kind: DirectiveReviseProposal, TargetAgentID: action.TargetAgentID, ProposalVersion: action.ProposalVersion}
+	case ModeratorActionCallVote:
+		directive = TurnDirective{Kind: DirectiveVote, TargetAgentID: action.TargetAgentID, ProposalVersion: action.ProposalVersion}
+	case ModeratorActionRequestNoConsensus:
+		directive = TurnDirective{Kind: DirectiveNone}
+	default:
+		return false
+	}
+	return reflect.DeepEqual(state.Directive, directive)
 }
 
 func validateRunConsensusRequirements(previous, next *DeliberationControlState) error {
@@ -950,6 +1037,9 @@ func (s *DeliberationControlState) validateAction(agents map[string]bool, propos
 	if !validModeratorAction(action.Kind) {
 		return fmt.Errorf("invalid moderator action %q", action.Kind)
 	}
+	if !validModerationTrigger(action.Trigger) {
+		return fmt.Errorf("invalid moderation trigger %q", action.Trigger)
+	}
 	if action.TargetAgentID != "" && !agents[action.TargetAgentID] {
 		return fmt.Errorf("moderator action references unknown agent %q", action.TargetAgentID)
 	}
@@ -968,7 +1058,90 @@ func (s *DeliberationControlState) validateAction(agents map[string]bool, propos
 			return fmt.Errorf("moderator action references unknown claim %q", id)
 		}
 	}
+	// Continue predates the structured moderator contract. Keep its historical
+	// shape readable, while requiring every new action family to carry the
+	// references that make a persisted request meaningful.
+	switch action.Kind {
+	case ModeratorActionDirectResponse:
+		if action.Trigger == "" || action.TargetAgentID == "" || action.Crux == "" || action.ProposalVersion != 0 || len(action.ObjectionIDs) != 0 || len(action.ClaimIDs) != 0 {
+			return fmt.Errorf("direct_response moderator action requires a trigger, target, and crux only")
+		}
+	case ModeratorActionRequestEvidence:
+		if action.Trigger == "" || action.TargetAgentID == "" || action.ProposalVersion != 0 || len(action.ObjectionIDs) != 0 || len(action.ClaimIDs) != 1 {
+			return fmt.Errorf("request_evidence moderator action requires a trigger, target, and one claim")
+		}
+	case ModeratorActionRequestRevision:
+		if action.Trigger == "" || action.TargetAgentID == "" || action.ProposalVersion == 0 || len(action.ObjectionIDs) != 1 || len(action.ClaimIDs) != 0 {
+			return fmt.Errorf("request_revision moderator action requires a trigger, target, proposal, and one objection")
+		}
+	case ModeratorActionCallVote:
+		if action.Trigger == "" || action.TargetAgentID == "" || action.ProposalVersion == 0 || len(action.ObjectionIDs) != 0 || len(action.ClaimIDs) != 0 {
+			return fmt.Errorf("call_vote moderator action requires a trigger, target, and proposal only")
+		}
+	case ModeratorActionRequestNoConsensus:
+		if action.Trigger != ModerationTriggerStagnation || action.TargetAgentID != "" || s.Directive.Kind != DirectiveNone || s.Convergence.StagnantRounds < StagnationRoundsForNoConsensus {
+			return fmt.Errorf("request_no_consensus moderator action requires stagnation, no target, and no directive")
+		}
+	}
+	if err := validateModeratorActionPhase(action, s.Phase); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *DeliberationControlState) completedContributionRounds() int {
+	if s == nil || len(s.AgentIDs) == 0 {
+		return 0
+	}
+	return len(s.Contributions) / len(s.AgentIDs)
+}
+
+func validateModeratorActionPhase(action ModeratorAction, current DeliberationPhase) error {
+	if !structuredModeratorAction(action.Kind) {
+		if action.Phase != "" {
+			return fmt.Errorf("legacy moderator action %q cannot declare a phase", action.Kind)
+		}
+		return nil
+	}
+	if action.Phase == "" || !validModeratorActionRequestPhase(action.Kind, action.Phase) {
+		return fmt.Errorf("moderator action %q is not compatible with phase %q", action.Kind, action.Phase)
+	}
+	if current != PhaseTerminal && phaseOrder(action.Phase) > phaseOrder(current) {
+		return fmt.Errorf("moderator action phase %q is later than current phase %q", action.Phase, current)
+	}
+	return nil
+}
+
+func validModeratorActionRequestPhase(kind ModeratorActionKind, phase DeliberationPhase) bool {
+	switch kind {
+	case ModeratorActionDirectResponse:
+		return phase == PhaseRebuttal || phase == PhaseDrafting
+	case ModeratorActionRequestEvidence, ModeratorActionRequestRevision:
+		return phase == PhaseDrafting
+	case ModeratorActionCallVote:
+		return phase == PhaseVoting
+	case ModeratorActionRequestNoConsensus:
+		return phase == PhaseRebuttal || phase == PhaseDrafting || phase == PhaseVoting
+	default:
+		return false
+	}
+}
+
+func phaseOrder(phase DeliberationPhase) int {
+	switch phase {
+	case PhaseOpening:
+		return 0
+	case PhaseRebuttal:
+		return 1
+	case PhaseDrafting:
+		return 2
+	case PhaseVoting:
+		return 3
+	case PhaseTerminal:
+		return 4
+	default:
+		return -1
+	}
 }
 
 func (s *DeliberationControlState) validateOutcome(agents map[string]bool, proposals map[int]CanonicalProposal, objections, claims map[string]bool) error {
@@ -1169,7 +1342,15 @@ func validProposalAction(v ProposalActionKind) bool {
 }
 
 func validModeratorAction(v ModeratorActionKind) bool {
-	return v == ModeratorActionNone || v == ModeratorActionContinue || v == ModeratorActionRequestRevision || v == ModeratorActionRequestEvidence || v == ModeratorActionCallVote
+	return v == ModeratorActionNone || v == ModeratorActionContinue || v == ModeratorActionDirectResponse || v == ModeratorActionRequestRevision || v == ModeratorActionRequestEvidence || v == ModeratorActionCallVote || v == ModeratorActionRequestNoConsensus
+}
+
+func structuredModeratorAction(v ModeratorActionKind) bool {
+	return v == ModeratorActionDirectResponse || v == ModeratorActionRequestRevision || v == ModeratorActionRequestEvidence || v == ModeratorActionCallVote || v == ModeratorActionRequestNoConsensus
+}
+
+func validModerationTrigger(v ModerationTrigger) bool {
+	return v == "" || v == ModerationTriggerRoundBoundary || v == ModerationTriggerStagnation
 }
 
 func equalStrings(a, b []string) bool {

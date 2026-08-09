@@ -807,6 +807,134 @@ func TestLoadFileStrictValidatesTypedProtocol(t *testing.T) {
 	}
 }
 
+func TestLoadersRejectPersistedModerationTrustViolations(t *testing.T) {
+	tests := []struct {
+		name    string
+		control func() *types.DeliberationControlState
+	}{
+		{
+			name: "future last moderated round",
+			control: func() *types.DeliberationControlState {
+				state := transcriptDirectModerationState()
+				state.Convergence.LastModeratedRound = 2
+				return state
+			},
+		},
+		{
+			name: "round boundary no consensus request",
+			control: func() *types.DeliberationControlState {
+				state := transcriptNoConsensusRequestState()
+				state.ModeratorAction.Trigger = types.ModerationTriggerRoundBoundary
+				return state
+			},
+		},
+		{
+			name: "rebuttal call vote",
+			control: func() *types.DeliberationControlState {
+				state := transcriptDirectModerationState()
+				state.CurrentProposalVersion = 1
+				state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
+				state.ModeratorAction = types.ModeratorAction{
+					Kind: types.ModeratorActionCallVote, Phase: types.PhaseRebuttal, Trigger: types.ModerationTriggerRoundBoundary,
+					TargetAgentID: "beta", ProposalVersion: 1, ObjectionIDs: []string{}, ClaimIDs: []string{},
+				}
+				state.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+				return state
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			record := mkRecord(-1, "moderator", "", false, "")
+			record.Control = tt.control()
+			path := filepath.Join(t.TempDir(), "forged-moderation.jsonl")
+			if err := os.WriteFile(path, []byte(marshalLine(t, record)+"\n"), 0o644); err != nil {
+				t.Fatalf("write forged moderation transcript: %v", err)
+			}
+			if _, err := LoadFileStrict(path); err == nil {
+				t.Fatal("strict loader accepted forged moderation state")
+			}
+			if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil {
+				t.Fatal("lenient loader accepted forged moderation state")
+			}
+		})
+	}
+}
+
+func TestLoadersRequireModeratorRecordForModerationSnapshot(t *testing.T) {
+	baseline := transcriptModerationBaselineState()
+	action := transcriptDirectModerationState()
+	first := mkRecord(-1, "moderator", "", false, "")
+	first.Control = baseline
+	forged := mkRecord(2, "alpha", "forged state", false, "")
+	forged.Control = action
+	path := filepath.Join(t.TempDir(), "forged-moderator-snapshot.jsonl")
+	content := marshalLine(t, first) + "\n" + marshalLine(t, forged) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write forged moderation snapshot: %v", err)
+	}
+	if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), "moderator snapshot") {
+		t.Fatalf("strict moderator snapshot error: %v", err)
+	}
+	if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "moderator snapshot") {
+		t.Fatalf("lenient moderator snapshot error: %v", err)
+	}
+
+	valid := mkRecord(-1, "moderator", "", false, "")
+	valid.Control = action
+	content = marshalLine(t, first) + "\n" + marshalLine(t, valid) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write valid moderation snapshot: %v", err)
+	}
+	if _, err := LoadFileStrict(path); err != nil {
+		t.Fatalf("strict valid moderation snapshot: %v", err)
+	}
+	if _, err := LoadFileLenient(path, &bytes.Buffer{}); err != nil {
+		t.Fatalf("lenient valid moderation snapshot: %v", err)
+	}
+}
+
+func transcriptModerationBaselineState() *types.DeliberationControlState {
+	state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	state.Phase = types.PhaseRebuttal
+	for _, agentID := range state.AgentIDs {
+		state.Contributions = append(state.Contributions, types.AgentContribution{
+			AgentID: agentID, Turn: len(state.Contributions), Position: agentID + " opening",
+			ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		})
+	}
+	return state
+}
+
+func transcriptDirectModerationState() *types.DeliberationControlState {
+	state := transcriptModerationBaselineState()
+	state.ModeratorAction = types.ModeratorAction{
+		Kind: types.ModeratorActionDirectResponse, Phase: types.PhaseRebuttal, Trigger: types.ModerationTriggerRoundBoundary,
+		TargetAgentID: "beta", Crux: "rollback threshold", ObjectionIDs: []string{}, ClaimIDs: []string{},
+	}
+	state.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: "beta", Crux: "rollback threshold"}
+	state.Convergence.LastModeratedRound = 1
+	return state
+}
+
+func transcriptNoConsensusRequestState() *types.DeliberationControlState {
+	state := transcriptModerationBaselineState()
+	for _, agentID := range state.AgentIDs {
+		state.Contributions = append(state.Contributions, types.AgentContribution{
+			AgentID: agentID, Turn: len(state.Contributions), Position: agentID + " repeated",
+			ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone},
+		})
+	}
+	state.ModeratorAction = types.ModeratorAction{
+		Kind: types.ModeratorActionRequestNoConsensus, Phase: types.PhaseRebuttal, Trigger: types.ModerationTriggerStagnation,
+		ObjectionIDs: []string{}, ClaimIDs: []string{},
+	}
+	state.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	state.Convergence.StagnantRounds = types.StagnationRoundsForNoConsensus
+	state.Convergence.LastModeratedRound = 2
+	return state
+}
+
 func TestHistoricalPreContractActiveSnapshotsRemainReadable(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -324,6 +324,53 @@ func TestAgentRunnerDryRunUsesPositionOnlyOpeningContract(t *testing.T) {
 	}
 }
 
+func TestAgentRunnerDryRunModeratorReturnsOneContractAction(t *testing.T) {
+	runner := NewAgentRunner(true)
+	action := map[string]any{
+		"kind": "direct_response", "target_agent_id": "alpha", "crux": "rollback threshold",
+		"proposal_version": 0, "objection_ids": []string{}, "claim_ids": []string{},
+	}
+	content, _, err := runner.Run(ModeratorConfig("test-model"), map[string]any{
+		"moderation_contract": map[string]any{"actions": []map[string]any{action}},
+	})
+	if err != nil {
+		t.Fatalf("moderator dry run: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(content), &got); err != nil {
+		t.Fatalf("moderator JSON: %v", err)
+	}
+	if got["kind"] != "direct_response" || got["target_agent_id"] != "alpha" || got["crux"] != "rollback threshold" {
+		t.Fatalf("moderator action: %#v", got)
+	}
+}
+
+func TestAgentRunnerDryRunHonorsVerificationDirective(t *testing.T) {
+	runner := NewAgentRunner(true)
+	content, _, err := runner.Run(types.AgentConfig{ID: "beta", Model: "test-model"}, map[string]any{
+		"topic":     "verification topic",
+		"directive": types.TurnDirective{Kind: types.DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"},
+		"contribution_contract": map[string]any{
+			"required": []string{"position", "responses", "concessions", "proposal_action", "objections", "vote", "claims"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("verification dry run: %v", err)
+	}
+	var payload struct {
+		Claims []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"claims"`
+	}
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		t.Fatalf("verification JSON: %v", err)
+	}
+	if len(payload.Claims) != 1 || payload.Claims[0].ID != "claim-1" || payload.Claims[0].Status != "unsupported" {
+		t.Fatalf("verification payload: %#v", payload)
+	}
+}
+
 func TestAgentRunnerDryRunResearchAgentsReturnStructuredJSON(t *testing.T) {
 	runner := NewAgentRunner(true)
 

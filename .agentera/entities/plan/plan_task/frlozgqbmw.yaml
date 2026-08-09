@@ -5,7 +5,7 @@ record:
   depends_on:
     - tibgrkmilp
     - ufcqaxphcx
-  status: pending
+  status: complete
   acceptance:
     - GIVEN a round ends or stagnation is detected WHEN moderation runs THEN one validated action selects the leading unresolved crux and directs work, requests verification or revision, calls a vote, or requests no consensus.
     - GIVEN moderation requests no consensus WHEN terminal evaluation runs THEN only the authenticated terminal evaluator may record the outcome.
@@ -13,3 +13,13 @@ record:
     - GIVEN moderation fails or is invalid WHEN execution continues or stops THEN prior valid state remains intact and no false terminal outcome is created.
     - "Test proportionality target: one pass and one fail per moderator action, stagnation trigger, fairness boundary, invalid output, and premature terminal request."
   plan: ogdtuxdwhi
+  evaluation:
+    attempt_count: 2
+    failure_count: 1
+    last_verdict: pass
+    last_failure_evidence: Persisted moderation state lacks completed-round, phase-action, trigger, and transition authentication. Future LastModeratedRound can suppress moderation indefinitely; request_no_consensus can use a non-stagnation trigger; call_vote can appear during rebuttal; load/resume accepts all three.
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_0184fbd00ffeU3i49mTFt24Zqi
+      recorded_at: 2026-08-09 20:38
+      writer_command: agentera state plan record-evaluation

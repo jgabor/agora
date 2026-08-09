@@ -131,9 +131,19 @@ func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
 		} else if err := types.ValidateDeliberationTransition(previous, control); err != nil {
 			return ProtocolInfo{}, fmt.Errorf("invalid control state at record %d: %w", i, err)
 		}
+		if moderatorSnapshotRecordRequired(previous, control) && (records[i].AgentID != "moderator" || records[i].Turn != -1) {
+			return ProtocolInfo{}, fmt.Errorf("invalid moderator snapshot at record %d: moderator state requires agent_id %q and turn -1", i, "moderator")
+		}
 		previous = control
 	}
 	return ProtocolInfo{Version: version, MigratedFrom: migratedFrom, PreContractActive: previous.IsPreContractActive()}, nil
+}
+
+func moderatorSnapshotRecordRequired(previous, current *types.DeliberationControlState) bool {
+	if current == nil || current.Convergence.LastModeratedRound == 0 {
+		return false
+	}
+	return previous == nil || current.Convergence.LastModeratedRound > previous.Convergence.LastModeratedRound
 }
 
 // EvidenceFromRecords returns the persisted, references-only evidence bundle

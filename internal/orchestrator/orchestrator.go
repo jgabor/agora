@@ -178,6 +178,10 @@ func (o *Orchestrator) Run() types.DeliberationStats {
 		}
 
 		o.updateLedgerIfRoundComplete()
+		o.moderateAfterRound()
+		if !o.state.Running {
+			break
+		}
 
 		o.state.Turn++
 		o.checkConsensusCondition()
