@@ -89,7 +89,7 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 	if len(req.SourceRecords) == 0 {
 		return Result{}, fmt.Errorf("no existing transcript found — use 'agora run' to start")
 	}
-	normalizedRecords, err := normalizeResumeRecords(req.SourceRecords)
+	normalizedRecords, protocol, err := normalizeResumeRecords(req.SourceRecords)
 	if err != nil {
 		return Result{}, err
 	}
@@ -97,10 +97,20 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 
 	existingTurns := countAgentTurns(req.SourceRecords)
 	state := buildState(req.RunRequest, existingTurns)
+	var contractBoundary *types.DeliberationControlState
 	if control, err := lastControlFromRecords(req.SourceRecords); err != nil {
 		return Result{}, err
 	} else if control != nil {
 		state.Control = control
+		if protocol.PreContractActive {
+			contractBoundary, err = establishResumedRunContract(control, state)
+			if err != nil {
+				return Result{}, err
+			}
+			state.Control = contractBoundary
+		}
+	} else if protocol.PreContractActive {
+		return Result{}, fmt.Errorf("loading source transcript: pre-contract active state is missing its control snapshot")
 	}
 	state.Evidence = types.EvidenceRequest{}
 	if req.Auto != nil {
@@ -110,6 +120,11 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 	tm, err := prepareResumeTranscript(req)
 	if err != nil {
 		return Result{}, err
+	}
+	if contractBoundary != nil {
+		if err := appendResumedRunContractBoundary(tm, contractBoundary); err != nil {
+			return Result{}, err
+		}
 	}
 
 	return execute(state, tm, req.Workdir, req.OutputPath, req.DryRun, req.Synthesize, types.EvidenceRequest{}, hooks)
@@ -268,33 +283,82 @@ func lastLedgerFromRecords(records []types.TurnRecord) *types.DebateLedger {
 func lastControlFromRecords(records []types.TurnRecord) (*types.DeliberationControlState, error) {
 	for i := len(records) - 1; i >= 0; i-- {
 		if records[i].Control != nil {
-			data, err := json.Marshal(records[i].Control)
-			if err != nil {
-				return nil, fmt.Errorf("cloning resumed control state: %w", err)
-			}
-			var clone types.DeliberationControlState
-			if err := json.Unmarshal(data, &clone); err != nil {
-				return nil, fmt.Errorf("cloning resumed control state: %w", err)
-			}
-			return &clone, nil
+			return cloneControlState(records[i].Control)
 		}
 	}
 	return nil, nil
 }
 
-func normalizeResumeRecords(records []types.TurnRecord) ([]types.TurnRecord, error) {
+func cloneControlState(control *types.DeliberationControlState) (*types.DeliberationControlState, error) {
+	data, err := json.Marshal(control)
+	if err != nil {
+		return nil, fmt.Errorf("cloning resumed control state: %w", err)
+	}
+	var clone types.DeliberationControlState
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return nil, fmt.Errorf("cloning resumed control state: %w", err)
+	}
+	return &clone, nil
+}
+
+func establishResumedRunContract(previous *types.DeliberationControlState, state *types.DeliberationState) (*types.DeliberationControlState, error) {
+	if previous == nil || !previous.IsPreContractActive() || state == nil || state.Config == nil {
+		return nil, fmt.Errorf("pre-contract run contract requires an active control state and resume configuration")
+	}
+	boundary, err := cloneControlState(previous)
+	if err != nil {
+		return nil, err
+	}
+	if boundary.Contributions == nil {
+		boundary.Contributions = []types.AgentContribution{}
+	}
+	if boundary.Directive.Kind == "" {
+		boundary.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	}
+	boundary.Convergence.RunContractVersion = types.RunContractVersion
+	boundary.Convergence.RequiredEndorsements = state.Config.ConsensusThreshold
+	boundary.Convergence.MinimumRounds = state.Config.EffectiveMinRounds()
+	if state.DeliverableGate != nil {
+		boundary.Convergence.RequiredDeliverableItems = state.DeliverableGate.MinItems
+	} else {
+		boundary.Convergence.RequiredDeliverableItems = 0
+	}
+	if err := types.ValidateDeliberationTransition(previous, boundary); err != nil {
+		return nil, fmt.Errorf("establishing pre-contract run contract: %w", err)
+	}
+	return boundary, nil
+}
+
+func appendResumedRunContractBoundary(tm *transcript.TranscriptManager, control *types.DeliberationControlState) error {
+	snapshot, err := cloneControlState(control)
+	if err != nil {
+		return err
+	}
+	if err := tm.Append(types.TurnRecord{
+		Turn:      -1,
+		AgentID:   "moderator",
+		Timestamp: float64(time.Now().UnixNano()) / 1e9,
+		Control:   snapshot,
+	}); err != nil {
+		return fmt.Errorf("persisting pre-contract run contract boundary: %w", err)
+	}
+	return nil
+}
+
+func normalizeResumeRecords(records []types.TurnRecord) ([]types.TurnRecord, transcript.ProtocolInfo, error) {
 	data, err := json.Marshal(records)
 	if err != nil {
-		return nil, fmt.Errorf("cloning resume records: %w", err)
+		return nil, transcript.ProtocolInfo{}, fmt.Errorf("cloning resume records: %w", err)
 	}
 	var clone []types.TurnRecord
 	if err := json.Unmarshal(data, &clone); err != nil {
-		return nil, fmt.Errorf("cloning resume records: %w", err)
+		return nil, transcript.ProtocolInfo{}, fmt.Errorf("cloning resume records: %w", err)
 	}
-	if _, err := transcript.ProtocolFromRecords(clone); err != nil {
-		return nil, fmt.Errorf("loading source transcript: %w", err)
+	info, err := transcript.ProtocolFromRecords(clone)
+	if err != nil {
+		return nil, transcript.ProtocolInfo{}, fmt.Errorf("loading source transcript: %w", err)
 	}
-	return clone, nil
+	return clone, info, nil
 }
 
 func countAgentTurns(records []types.TurnRecord) int {

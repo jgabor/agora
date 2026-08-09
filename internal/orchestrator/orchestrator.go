@@ -45,12 +45,13 @@ type Orchestrator struct {
 
 // NewOrchestrator creates a new Orchestrator.
 func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptManager, runner agent.Runner) *Orchestrator {
-	if state != nil && state.Control != nil && state.Config != nil && state.Control.Phase != types.PhaseTerminal {
-		// Keep the configured threshold in the typed control plane. This also
-		// hydrates older typed snapshots on resume without changing their
-		// protocol version or evidence authority.
+	if state != nil && state.Control != nil && state.Config != nil && state.Control.Phase != types.PhaseTerminal && !hasPersistedControlState(tm.Records()) {
+		// A fresh run establishes its requirements before writing the first
+		// typed control snapshot. Resumed controls already carry the persisted
+		// run contract and must not be rehydrated from mutable resume inputs.
 		state.Control.Convergence.RequiredEndorsements = state.Config.ConsensusThreshold
 		state.Control.Convergence.MinimumRounds = state.Config.EffectiveMinRounds()
+		state.Control.Convergence.RunContractVersion = types.RunContractVersion
 		if state.DeliverableGate != nil {
 			state.Control.Convergence.RequiredDeliverableItems = state.DeliverableGate.MinItems
 		} else {
@@ -65,6 +66,15 @@ func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptMa
 		evidenceSent:   make(map[string]bool),
 		sharedEvidence: state.SharedEvidence,
 	}
+}
+
+func hasPersistedControlState(records []types.TurnRecord) bool {
+	for _, record := range records {
+		if record.Control != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // SetEvidenceCollector registers a pre-deliberation evidence collector.
@@ -394,8 +404,8 @@ func (o *Orchestrator) checkConsensusCondition() bool {
 		return false
 	}
 	evaluation := o.state.Control.EvaluateConsensus(
-		o.state.Config.EffectiveMinRounds(),
-		DeliverablePresentForState(o.transcript.Records(), o.state.Control, o.state.DeliverableGate),
+		o.state.Control.Convergence.MinimumRounds,
+		DeliverablePresentForState(o.transcript.Records(), o.state.Control, &types.DeliverableGate{MinItems: o.state.Control.Convergence.RequiredDeliverableItems}),
 	)
 	if !evaluation.Ready {
 		return false
@@ -414,8 +424,8 @@ func (o *Orchestrator) haltNoConsensus(reason string) {
 	evaluation := types.ConsensusEvaluation{}
 	if o.state.Control != nil {
 		evaluation = o.state.Control.EvaluateConsensus(
-			o.state.Config.EffectiveMinRounds(),
-			DeliverablePresentForState(o.transcript.Records(), o.state.Control, o.state.DeliverableGate),
+			o.state.Control.Convergence.MinimumRounds,
+			DeliverablePresentForState(o.transcript.Records(), o.state.Control, &types.DeliverableGate{MinItems: o.state.Control.Convergence.RequiredDeliverableItems}),
 		)
 	}
 	o.recordTerminal(types.OutcomeNoConsensus, evaluation.ProposalVersion, reason, evaluation)
@@ -435,13 +445,8 @@ func (o *Orchestrator) recordTerminal(kind types.TerminalOutcomeKind, proposalVe
 	}
 	terminal.Phase = types.PhaseTerminal
 	terminal.Directive = types.TurnDirective{Kind: types.DirectiveNone}
-	terminal.Convergence.RequiredEndorsements = o.state.Control.Convergence.RequiredEndorsements
-	terminal.Convergence.MinimumRounds = o.state.Config.EffectiveMinRounds()
-	if o.state.DeliverableGate != nil {
-		terminal.Convergence.RequiredDeliverableItems = o.state.DeliverableGate.MinItems
-	} else {
-		terminal.Convergence.RequiredDeliverableItems = 0
-	}
+	// The cloned control state carries the established run requirements. Do not
+	// replace them with config or topic values while making the terminal record.
 	terminal.Convergence.CurrentEndorsements = len(evaluation.EndorsementAgentIDs)
 	terminal.Convergence.UnresolvedObjections = len(evaluation.UnresolvedObjectionIDs)
 	terminal.Convergence.EvidenceGaps = len(evaluation.EvidenceGapClaimIDs)

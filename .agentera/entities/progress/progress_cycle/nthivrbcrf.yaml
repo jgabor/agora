@@ -1,0 +1,16 @@
+id: nthivrbcrf
+artifact: progress
+record:
+  timestamp: 2026-08-09 18:12
+  type: fix
+  phase: build
+  what: "Retried ufcqaxphcx after audit-1: historical typed-v1 and early-v2 active transcripts now establish a versioned active run contract from current resume inputs before consensus can terminate."
+  context:
+    intent: Repair audit-1 historical active-resume behavior without weakening terminal-consensus provenance.
+    constraints: Preserve current-contract behavior, typed-v1 migration, terminal rejection, and existing task evidence. No provider calls, task completion, commit, push, or release work.
+    unknowns: Decision detail remains degraded and health remains incomplete; independent evaluation owns lifecycle closure.
+    scope: Run-contract transition validation, resume normalization, historical CLI fixtures, and compatibility wording.
+  discovered: The initial boundary validator allowed unrelated directive and moderator-action changes. The boundary now accepts only contract fields plus documented legacy normalization.
+  verified: Focused types, session, CLI, and package tests passed. Restricted-PATH go test ./... -race with coverage, go vet ./..., go build ./..., golangci-lint run ./..., and git diff --check passed. A locally built checkout showed a raw v1 active fixture, resumed it to a v2 boundary before consensus, and rejected the forged historical terminal in show and resume.
+  next: Keep ufcqaxphcx in_progress for independent audit. Do not close lifecycle state or commit this retry.
+  publication_order: 15

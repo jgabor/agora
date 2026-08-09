@@ -35,14 +35,13 @@ func mkRecord(turn int, agentID, content string, consensus bool, consensusStmt s
 	}
 }
 
-func authenticatedTerminalConsensus() *types.DeliberationControlState {
+func authenticatedActiveConsensus() *types.DeliberationControlState {
 	state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
-	state.Phase = types.PhaseTerminal
+	state.Phase = types.PhaseVoting
 	state.CurrentProposalVersion = 1
 	state.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal"}}
 	state.Convergence.RequiredEndorsements = 2
 	state.Convergence.MinimumRounds = 1
-	state.Convergence.CurrentEndorsements = 2
 	state.Contributions = []types.AgentContribution{
 		{AgentID: "alpha", Turn: 0, Position: "alpha position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
 		{AgentID: "beta", Turn: 1, Position: "beta position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
@@ -51,8 +50,130 @@ func authenticatedTerminalConsensus() *types.DeliberationControlState {
 		{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
 		{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteEndorse},
 	}
+	return state
+}
+
+func authenticatedTerminalConsensus() *types.DeliberationControlState {
+	state := authenticatedActiveConsensus()
+	state.Phase = types.PhaseTerminal
+	state.Convergence.CurrentEndorsements = 2
 	state.Outcome = types.TerminalOutcome{Kind: types.OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
 	return state
+}
+
+func terminalConsensusFromActive(t *testing.T, active *types.DeliberationControlState) *types.DeliberationControlState {
+	t.Helper()
+	data, err := json.Marshal(active)
+	if err != nil {
+		t.Fatalf("marshal active control: %v", err)
+	}
+	var terminal types.DeliberationControlState
+	if err := json.Unmarshal(data, &terminal); err != nil {
+		t.Fatalf("unmarshal terminal control: %v", err)
+	}
+	terminal.Phase = types.PhaseTerminal
+	terminal.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	terminal.Convergence.CurrentEndorsements = len(terminal.AgentIDs)
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeConsensus,
+		ProposalVersion:        terminal.CurrentProposalVersion,
+		DissentingAgentIDs:     []string{},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	return &terminal
+}
+
+type historicalControlOptions struct {
+	protocolVersion      string
+	includeContributions bool
+	terminal             bool
+	terminalRequirements bool
+}
+
+func historicalControlLine(t *testing.T, options historicalControlOptions) string {
+	t.Helper()
+	proposal := "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+	convergence := map[string]any{
+		"current_endorsements": 0, "required_endorsements": 1,
+		"unresolved_objections": 0, "evidence_gaps": 0, "stagnant_rounds": 0, "ready_to_vote": false,
+	}
+	control := map[string]any{
+		"protocol_version":         options.protocolVersion,
+		"phase":                    "voting",
+		"agent_ids":                []string{"alpha"},
+		"source_reference_count":   0,
+		"current_proposal_version": 1,
+		"proposals": []any{map[string]any{
+			"version": 1, "author_id": "alpha", "content": proposal, "supersedes": 0,
+		}},
+		"objections":   []any{},
+		"dispositions": []any{},
+		"votes": []any{map[string]any{
+			"agent_id": "alpha", "proposal_version": 1, "choice": "endorse",
+		}},
+		"claims": []any{},
+		"moderator_action": map[string]any{
+			"kind": "none", "objection_ids": []any{}, "claim_ids": []any{},
+		},
+		"convergence": convergence,
+		"outcome": map[string]any{
+			"kind": "pending", "dissenting_agent_ids": []any{}, "unresolved_objection_ids": []any{}, "evidence_gap_claim_ids": []any{},
+		},
+	}
+	if options.protocolVersion == types.DeliberationProtocolVersion {
+		control["directive"] = map[string]any{"kind": "none"}
+		control["contributions"] = []any{}
+		if options.includeContributions {
+			control["contributions"] = []any{map[string]any{
+				"agent_id": "alpha", "turn": 0, "position": "historical position",
+				"responses": []any{}, "concessions": []any{}, "proposal_action": map[string]any{"kind": "none"}, "objections": []any{}, "claims": []any{},
+			}}
+		}
+	}
+	if options.terminal {
+		control["phase"] = "terminal"
+		convergence["current_endorsements"] = 1
+		control["outcome"] = map[string]any{
+			"kind": "consensus", "proposal_version": 1, "dissenting_agent_ids": []any{}, "unresolved_objection_ids": []any{}, "evidence_gap_claim_ids": []any{},
+		}
+		if options.terminalRequirements {
+			convergence["minimum_rounds"] = 1
+			convergence["required_deliverable_items"] = 3
+		}
+	}
+	record := map[string]any{
+		"turn": 0, "agent_id": "alpha", "model": "test/model", "timestamp": 1, "content": "historical typed control", "tokens": map[string]any{},
+		"consensus": false, "consensus_statement": "", "elapsed": 0, "control": control,
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal historical control: %v", err)
+	}
+	if !options.terminalRequirements && (strings.Contains(string(data), "minimum_rounds") || strings.Contains(string(data), "required_deliverable_items")) {
+		t.Fatalf("historical control unexpectedly contains current requirements: %s", data)
+	}
+	return string(data)
+}
+
+func normalizedHistoricalBoundaryLine(t *testing.T) string {
+	t.Helper()
+	var record map[string]any
+	if err := json.Unmarshal([]byte(historicalControlLine(t, historicalControlOptions{
+		protocolVersion: types.DeliberationProtocolVersion, includeContributions: true,
+	})), &record); err != nil {
+		t.Fatalf("decode historical boundary: %v", err)
+	}
+	control := record["control"].(map[string]any)
+	convergence := control["convergence"].(map[string]any)
+	convergence["run_contract_version"] = types.RunContractVersion
+	convergence["minimum_rounds"] = 1
+	convergence["required_deliverable_items"] = 3
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal normalized boundary: %v", err)
+	}
+	return string(data)
 }
 
 // mkRecordWithCost creates a types.TurnRecord with cost and tokens.
@@ -686,6 +807,123 @@ func TestLoadFileStrictValidatesTypedProtocol(t *testing.T) {
 	}
 }
 
+func TestHistoricalPreContractActiveSnapshotsRemainReadable(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  string
+		withWork bool
+	}{
+		{name: "typed v1", version: types.LegacyDeliberationProtocolVersion},
+		{name: "early typed v2", version: types.DeliberationProtocolVersion, withWork: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "historical-active.jsonl")
+			line := historicalControlLine(t, historicalControlOptions{
+				protocolVersion: tt.version, includeContributions: tt.withWork,
+			})
+			if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
+				t.Fatalf("write historical active transcript: %v", err)
+			}
+			loaded, err := LoadFileStrict(path)
+			if err != nil {
+				t.Fatalf("strict load historical active transcript: %v", err)
+			}
+			info, err := ProtocolFromRecords(loaded)
+			if err != nil || !info.PreContractActive || info.Legacy || info.Version != types.DeliberationProtocolVersion {
+				t.Fatalf("historical active protocol info: info=%#v err=%v", info, err)
+			}
+			if loaded[0].Control.Convergence.MinimumRounds != 0 || loaded[0].Control.Convergence.RequiredDeliverableItems != 0 {
+				t.Fatalf("historical requirements were fabricated during load: %#v", loaded[0].Control.Convergence)
+			}
+		})
+	}
+}
+
+func TestHistoricalPreContractTerminalConsensusRejects(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  string
+		withWork bool
+	}{
+		{name: "typed v1", version: types.LegacyDeliberationProtocolVersion},
+		{name: "early typed v2", version: types.DeliberationProtocolVersion, withWork: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "historical-terminal.jsonl")
+			active := historicalControlLine(t, historicalControlOptions{
+				protocolVersion: tt.version, includeContributions: tt.withWork,
+			})
+			terminal := historicalControlLine(t, historicalControlOptions{
+				protocolVersion: tt.version, includeContributions: tt.withWork, terminal: true, terminalRequirements: tt.version == types.DeliberationProtocolVersion,
+			})
+			if err := os.WriteFile(path, []byte(active+"\n"+terminal+"\n"), 0o644); err != nil {
+				t.Fatalf("write historical terminal transcript: %v", err)
+			}
+			if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+				t.Fatalf("strict historical terminal error: got %v", err)
+			}
+			if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+				t.Fatalf("lenient historical terminal error: got %v", err)
+			}
+		})
+	}
+}
+
+func TestTerminalFirstHistoricalAndCurrentConsensusRejects(t *testing.T) {
+	tests := []struct {
+		name    string
+		options historicalControlOptions
+	}{
+		{
+			name:    "typed v1 pre-contract",
+			options: historicalControlOptions{protocolVersion: types.LegacyDeliberationProtocolVersion, terminal: true},
+		},
+		{
+			name:    "early typed v2 pre-contract",
+			options: historicalControlOptions{protocolVersion: types.DeliberationProtocolVersion, includeContributions: true, terminal: true},
+		},
+		{
+			name:    "current typed v2",
+			options: historicalControlOptions{protocolVersion: types.DeliberationProtocolVersion, includeContributions: true, terminal: true, terminalRequirements: true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "terminal-first.jsonl")
+			if err := os.WriteFile(path, []byte(historicalControlLine(t, tt.options)+"\n"), 0o644); err != nil {
+				t.Fatalf("write terminal-first transcript: %v", err)
+			}
+			if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+				t.Fatalf("strict terminal-first error: got %v", err)
+			}
+			if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+				t.Fatalf("lenient terminal-first error: got %v", err)
+			}
+		})
+	}
+}
+
+func TestPreContractBoundaryAfterTerminalCannotAuthenticateConsensus(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "retroactive-boundary.jsonl")
+	active := historicalControlLine(t, historicalControlOptions{
+		protocolVersion: types.DeliberationProtocolVersion, includeContributions: true,
+	})
+	terminal := historicalControlLine(t, historicalControlOptions{
+		protocolVersion: types.DeliberationProtocolVersion, includeContributions: true, terminal: true, terminalRequirements: true,
+	})
+	if err := os.WriteFile(path, []byte(active+"\n"+terminal+"\n"+normalizedHistoricalBoundaryLine(t)+"\n"), 0o644); err != nil {
+		t.Fatalf("write retroactive boundary transcript: %v", err)
+	}
+	if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) || !strings.Contains(err.Error(), "record 1") {
+		t.Fatalf("retroactive boundary strict error: got %v", err)
+	}
+	if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) || !strings.Contains(err.Error(), "record 1") {
+		t.Fatalf("retroactive boundary lenient error: got %v", err)
+	}
+}
+
 func TestTypedSourceBoundsRequirePersistedEvidence(t *testing.T) {
 	phantomPath := filepath.Join(t.TempDir(), "phantom.jsonl")
 	phantom := types.NewDeliberationControlState([]string{"alpha"}, 1)
@@ -760,29 +998,50 @@ func TestLegacyTypedV1IsExplicitlyMigratedWithoutPhantomSources(t *testing.T) {
 	}
 }
 
+func TestTypedV1TerminalConsensusUsesMigratedActiveRunContract(t *testing.T) {
+	active := authenticatedActiveConsensus()
+	active.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	terminal := terminalConsensusFromActive(t, active)
+	terminal.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	path := filepath.Join(t.TempDir(), "typed-v1-terminal.jsonl")
+	content := marshalLine(t, mkControlRecord(active)) + "\n" + marshalLine(t, mkControlRecord(terminal)) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write typed v1 transcript: %v", err)
+	}
+
+	loaded, err := LoadFileStrict(path)
+	if err != nil {
+		t.Fatalf("typed v1 terminal load: %v", err)
+	}
+	if len(loaded) != 2 || loaded[0].Control.ProtocolVersion != types.DeliberationProtocolVersion || loaded[1].Control.Outcome.Kind != types.OutcomeConsensus {
+		t.Fatalf("migrated typed v1 terminal: %#v", loaded)
+	}
+}
+
 func TestTranscriptLoadersRejectMutationAfterTerminalState(t *testing.T) {
-	terminal := types.NewDeliberationControlState([]string{"alpha"}, 0)
-	terminal.CurrentProposalVersion = 1
-	terminal.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "final proposal"}}
-	terminal.Convergence.RequiredEndorsements = 1
-	terminal.Convergence.MinimumRounds = 1
-	terminal.Convergence.CurrentEndorsements = 1
-	terminal.Contributions = []types.AgentContribution{{AgentID: "alpha", Turn: 0, Position: "terminal", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}}}
-	terminal.Votes = []types.ProposalVote{{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse}}
-	terminal.Phase = types.PhaseTerminal
-	terminal.Outcome = types.TerminalOutcome{Kind: types.OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	active := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	active.Phase = types.PhaseVoting
+	active.CurrentProposalVersion = 1
+	active.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "final proposal"}}
+	active.Convergence.RequiredEndorsements = 1
+	active.Convergence.MinimumRounds = 1
+	active.Contributions = []types.AgentContribution{{AgentID: "alpha", Turn: 0, Position: "terminal", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}}}
+	active.Votes = []types.ProposalVote{{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse}}
+	terminal := terminalConsensusFromActive(t, active)
 	if err := terminal.Validate(); err != nil {
 		t.Fatalf("terminal state: %v", err)
 	}
 
 	mutated := *terminal
 	mutated.Outcome.Reason = "post-terminal mutation"
-	first := mkRecord(0, "alpha", "terminal", false, "")
-	first.Control = terminal
-	second := mkRecord(1, "alpha", "post-terminal vote", false, "")
-	second.Control = &mutated
+	first := mkRecord(0, "alpha", "active", false, "")
+	first.Control = active
+	second := mkRecord(1, "alpha", "terminal", false, "")
+	second.Control = terminal
+	third := mkRecord(2, "alpha", "post-terminal vote", false, "")
+	third.Control = &mutated
 	path := filepath.Join(t.TempDir(), "post-terminal-mutation.jsonl")
-	content := marshalLine(t, first) + "\n" + marshalLine(t, second) + "\n"
+	content := marshalLine(t, first) + "\n" + marshalLine(t, second) + "\n" + marshalLine(t, third) + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
 	}
@@ -798,11 +1057,11 @@ func TestTranscriptLoadersRejectMutationAfterTerminalState(t *testing.T) {
 func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*types.DeliberationControlState)
+		mutate func(*types.DeliberationControlState, *types.DeliberationControlState)
 	}{
 		{
 			name: "absent votes",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(_ *types.DeliberationControlState, state *types.DeliberationControlState) {
 				state.Votes = nil
 				state.Convergence.CurrentEndorsements = 0
 				state.Outcome.DissentingAgentIDs = []string{"alpha", "beta"}
@@ -810,7 +1069,7 @@ func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 		},
 		{
 			name: "stale votes",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(_ *types.DeliberationControlState, state *types.DeliberationControlState) {
 				state.Proposals = append(state.Proposals, types.CanonicalProposal{Version: 2, AuthorID: "beta", Content: "proposal two", Supersedes: 1})
 				state.CurrentProposalVersion = 2
 				state.Convergence.CurrentEndorsements = 0
@@ -820,7 +1079,7 @@ func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 		},
 		{
 			name: "split current versions",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(_ *types.DeliberationControlState, state *types.DeliberationControlState) {
 				state.Proposals = append(state.Proposals, types.CanonicalProposal{Version: 2, AuthorID: "beta", Content: "proposal two", Supersedes: 1})
 				state.CurrentProposalVersion = 2
 				state.Votes[1].ProposalVersion = 2
@@ -831,19 +1090,21 @@ func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 		},
 		{
 			name: "minimum rounds unmet",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(active, state *types.DeliberationControlState) {
+				active.Convergence.MinimumRounds = 2
 				state.Convergence.MinimumRounds = 2
 			},
 		},
 		{
 			name: "deliverable unmet",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(active, state *types.DeliberationControlState) {
+				active.Convergence.RequiredDeliverableItems = 3
 				state.Convergence.RequiredDeliverableItems = 3
 			},
 		},
 		{
 			name: "objection unresolved",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(_ *types.DeliberationControlState, state *types.DeliberationControlState) {
 				state.Objections = append(state.Objections, types.Objection{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"})
 				state.Convergence.UnresolvedObjections = 1
 				state.Outcome.UnresolvedObjectionIDs = []string{"obj-1"}
@@ -851,7 +1112,7 @@ func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 		},
 		{
 			name: "evidence gap unresolved",
-			mutate: func(state *types.DeliberationControlState) {
+			mutate: func(_ *types.DeliberationControlState, state *types.DeliberationControlState) {
 				state.Claims = append(state.Claims, types.ClaimEvidence{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceUnverified})
 				state.Convergence.EvidenceGaps = 1
 				state.Outcome.EvidenceGapClaimIDs = []string{"claim-1"}
@@ -860,10 +1121,12 @@ func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			state := authenticatedTerminalConsensus()
-			tt.mutate(state)
+			active := authenticatedActiveConsensus()
+			state := terminalConsensusFromActive(t, active)
+			tt.mutate(active, state)
 			path := filepath.Join(t.TempDir(), "invalid-terminal.jsonl")
-			if err := os.WriteFile(path, []byte(marshalLine(t, mkControlRecord(state))+"\n"), 0o644); err != nil {
+			content := marshalLine(t, mkControlRecord(active)) + "\n" + marshalLine(t, mkControlRecord(state)) + "\n"
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 				t.Fatalf("write transcript: %v", err)
 			}
 			if _, err := LoadFileStrict(path); err == nil {
@@ -873,11 +1136,132 @@ func TestLoadRejectsUnauthenticatedPersistedConsensus(t *testing.T) {
 	}
 
 	validPath := filepath.Join(t.TempDir(), "valid-terminal.jsonl")
-	if err := os.WriteFile(validPath, []byte(marshalLine(t, mkControlRecord(authenticatedTerminalConsensus()))+"\n"), 0o644); err != nil {
+	validActive := authenticatedActiveConsensus()
+	validTerminal := terminalConsensusFromActive(t, validActive)
+	if err := os.WriteFile(validPath, []byte(marshalLine(t, mkControlRecord(validActive))+"\n"+marshalLine(t, mkControlRecord(validTerminal))+"\n"), 0o644); err != nil {
 		t.Fatalf("write valid transcript: %v", err)
 	}
-	if loaded, err := LoadFileStrict(validPath); err != nil || len(loaded) != 1 || loaded[0].Control.Outcome.Kind != types.OutcomeConsensus {
+	if loaded, err := LoadFileStrict(validPath); err != nil || len(loaded) != 2 || loaded[1].Control.Outcome.Kind != types.OutcomeConsensus {
 		t.Fatalf("valid authenticated consensus load: records=%#v err=%v", loaded, err)
+	}
+}
+
+func TestLoadersBindTerminalConsensusRequirementsToActiveContract(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(*types.DeliberationControlState)
+		mutate  func(*types.DeliberationControlState)
+		wantErr bool
+	}{
+		{
+			name: "matching requirements",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.MinimumRounds = 1
+				state.Convergence.RequiredDeliverableItems = 3
+				state.Proposals[0].Content = "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+			},
+		},
+		{
+			name: "lowered endorsement threshold",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredEndorsements = 3
+			},
+			mutate: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredEndorsements = 2
+			},
+			wantErr: true,
+		},
+		{
+			name: "lowered minimum rounds",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.MinimumRounds = 2
+			},
+			mutate: func(state *types.DeliberationControlState) {
+				state.Convergence.MinimumRounds = 1
+			},
+			wantErr: true,
+		},
+		{
+			name: "lowered deliverable requirement",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 3
+			},
+			mutate: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 0
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			active := authenticatedActiveConsensus()
+			tt.prepare(active)
+			terminal := terminalConsensusFromActive(t, active)
+			if tt.mutate != nil {
+				tt.mutate(terminal)
+			}
+			path := filepath.Join(t.TempDir(), "requirements.jsonl")
+			content := marshalLine(t, mkControlRecord(active)) + "\n" + marshalLine(t, mkControlRecord(terminal)) + "\n"
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("write transcript: %v", err)
+			}
+
+			strict, strictErr := LoadFileStrict(path)
+			var warnings bytes.Buffer
+			lenient, lenientErr := LoadFileLenient(path, &warnings)
+			if tt.wantErr {
+				for _, err := range []error{strictErr, lenientErr} {
+					if err == nil || !strings.Contains(err.Error(), "run consensus requirements are immutable") {
+						t.Fatalf("requirement mutation error: got %v", err)
+					}
+				}
+				return
+			}
+			if strictErr != nil || len(strict) != 2 || lenientErr != nil || len(lenient) != 2 || warnings.Len() != 0 {
+				t.Fatalf("authenticated terminal load: strict=%#v strictErr=%v lenient=%#v lenientErr=%v warnings=%q", strict, strictErr, lenient, lenientErr, warnings.String())
+			}
+		})
+	}
+}
+
+func TestLoadersRejectTerminalFirstTypedConsensusWithoutRunContract(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		version      string
+		replayConfig bool
+	}{
+		{name: "v2", version: types.DeliberationProtocolVersion},
+		{name: "v1 migration input", version: types.LegacyDeliberationProtocolVersion},
+		{name: "v2 replay metadata", version: types.DeliberationProtocolVersion, replayConfig: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			terminal := authenticatedTerminalConsensus()
+			terminal.ProtocolVersion = tt.version
+			if tt.version == types.DeliberationProtocolVersion {
+				if err := terminal.Validate(); err != nil {
+					t.Fatalf("self-consistent terminal state: %v", err)
+				}
+			}
+			record := mkControlRecord(terminal)
+			if tt.replayConfig {
+				record.Transcript = &types.TranscriptMetadata{
+					SchemaVersion: 1,
+					Config:        &types.DeliberationConfig{ConsensusThreshold: 2, MinRounds: 1},
+				}
+			}
+			path := filepath.Join(t.TempDir(), "terminal-first.jsonl")
+			if err := os.WriteFile(path, []byte(marshalLine(t, record)+"\n"), 0o644); err != nil {
+				t.Fatalf("write terminal-first transcript: %v", err)
+			}
+
+			if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+				t.Fatalf("strict terminal-first error: got %v", err)
+			}
+			if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+				t.Fatalf("lenient terminal-first error: got %v", err)
+			}
+		})
 	}
 }
 

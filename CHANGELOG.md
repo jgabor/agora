@@ -10,6 +10,8 @@
 
 ### Fixed
 - Phased control validation rejects incomplete per-agent phase work and phase-incompatible directives, keeps prior model work out of opening envelopes, enforces one opening contribution per active agent and directed-agent selection, and consumes proposal-revision directives before deriving the next directive. Opening envelopes now require only positions, discard non-opening proposal actions, and retain canonical proposal creation after opening.
+- Terminal consensus now preserves the threshold, minimum-round, and deliverable requirements established by the active typed run contract. Strict show/load and resume reject changed requirements or a terminal-first consensus without trusted provenance.
+- Historical typed v1 and early v2 active snapshots without persisted halt requirements remain readable. Resume now writes a versioned active v2 contract boundary from current authorized inputs before they can reach a terminal outcome; a historical terminal consensus without a prior established contract remains rejected.
 
 ## [0.4.2] - 2026-08-03
 

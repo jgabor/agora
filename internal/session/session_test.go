@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/jgabor/agora/internal/cast"
@@ -318,6 +319,146 @@ func TestResumeMigratesPersistedTypedV1BeforeExecution(t *testing.T) {
 	}
 }
 
+func TestResumeEstablishesContractForHistoricalTypedActiveSnapshots(t *testing.T) {
+	tests := []struct {
+		name                 string
+		protocolVersion      string
+		includeContributions bool
+	}{
+		{name: "typed v1", protocolVersion: types.LegacyDeliberationProtocolVersion},
+		{name: "early typed v2", protocolVersion: types.DeliberationProtocolVersion, includeContributions: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := historicalTypedActiveSource(t, tt.protocolVersion, tt.includeContributions)
+			source[0].Transcript = &types.TranscriptMetadata{
+				SchemaVersion: 1,
+				Config:        &types.DeliberationConfig{ConsensusThreshold: 99, MinRounds: 99},
+			}
+			cfg := &types.DeliberationConfig{
+				Topology:           types.TopologyRing,
+				ConsensusThreshold: 1,
+				MinRounds:          1,
+				Agents:             []types.AgentConfig{{ID: "alpha", Model: "test/model"}},
+			}
+			outputPath := filepath.Join(t.TempDir(), "resume.jsonl")
+			result, err := session.Resume(session.ResumeRequest{
+				RunRequest: session.RunRequest{
+					Topic:  "The final output must contain exactly three laws",
+					Config: cfg, OutputPath: outputPath, MaxTurns: 1, TimeLimit: 60, DryRun: true,
+				},
+				SourceRecords: source,
+			}, session.Hooks{})
+			if err != nil {
+				t.Fatalf("Resume: %v", err)
+			}
+			if result.Failure != nil || result.State.Control.Outcome.Kind != types.OutcomeConsensus {
+				t.Fatalf("historical active resume did not reach consensus: failure=%v control=%#v", result.Failure, result.State.Control)
+			}
+
+			boundary, terminal := -1, -1
+			var boundaryControl *types.DeliberationControlState
+			for i, record := range result.Records {
+				if record.Control == nil {
+					continue
+				}
+				if record.Control.Phase == types.PhaseTerminal {
+					terminal = i
+					continue
+				}
+				if boundary < 0 && record.AgentID == "moderator" && record.Turn == -1 &&
+					record.Control.Convergence.RequiredEndorsements == 1 &&
+					record.Control.Convergence.MinimumRounds == 1 &&
+					record.Control.Convergence.RequiredDeliverableItems == 3 &&
+					record.Control.Convergence.RunContractVersion == types.RunContractVersion {
+					boundary = i
+					boundaryControl = record.Control
+				}
+			}
+			if boundary < 0 || terminal < 0 || boundary >= terminal {
+				t.Fatalf("normalized active contract must precede terminal outcome: boundary=%d terminal=%d records=%#v", boundary, terminal, result.Records)
+			}
+			if tt.protocolVersion == types.LegacyDeliberationProtocolVersion {
+				if result.Records[0].Control.Contributions != nil {
+					t.Fatalf("historical source contributions changed: %#v", result.Records[0].Control.Contributions)
+				}
+				if boundaryControl.Contributions == nil {
+					t.Fatalf("run contract boundary must normalize nil historical contributions")
+				}
+			}
+			persisted, err := transcript.LoadFileStrict(outputPath)
+			if err != nil {
+				t.Fatalf("normalized resumed transcript must strictly load: %v", err)
+			}
+			info, err := transcript.ProtocolFromRecords(persisted)
+			if err != nil || info.PreContractActive {
+				t.Fatalf("normalized resumed transcript must retain an established contract: info=%#v err=%v", info, err)
+			}
+		})
+	}
+}
+
+func historicalTypedActiveSource(t *testing.T, protocolVersion string, includeContributions bool) []types.TurnRecord {
+	t.Helper()
+	proposal := "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+	control := map[string]any{
+		"protocol_version":         protocolVersion,
+		"phase":                    "voting",
+		"agent_ids":                []string{"alpha"},
+		"source_reference_count":   0,
+		"current_proposal_version": 1,
+		"proposals": []any{map[string]any{
+			"version": 1, "author_id": "alpha", "content": proposal, "supersedes": 0,
+		}},
+		"objections":   []any{},
+		"dispositions": []any{},
+		"votes": []any{map[string]any{
+			"agent_id": "alpha", "proposal_version": 1, "choice": "endorse",
+		}},
+		"claims": []any{},
+		"moderator_action": map[string]any{
+			"kind": "none", "objection_ids": []any{}, "claim_ids": []any{},
+		},
+		"convergence": map[string]any{
+			"current_endorsements": 0, "required_endorsements": 1,
+			"unresolved_objections": 0, "evidence_gaps": 0, "stagnant_rounds": 0, "ready_to_vote": false,
+		},
+		"outcome": map[string]any{
+			"kind": "pending", "dissenting_agent_ids": []any{}, "unresolved_objection_ids": []any{}, "evidence_gap_claim_ids": []any{},
+		},
+	}
+	if protocolVersion == types.DeliberationProtocolVersion {
+		control["directive"] = map[string]any{"kind": "none"}
+		control["contributions"] = []any{}
+		if includeContributions {
+			control["contributions"] = []any{map[string]any{
+				"agent_id": "alpha", "turn": 0, "position": "historical position",
+				"responses": []any{}, "concessions": []any{}, "proposal_action": map[string]any{"kind": "none"}, "objections": []any{}, "claims": []any{},
+			}}
+		}
+	}
+	record := map[string]any{
+		"turn": 0, "agent_id": "alpha", "model": "test/model", "timestamp": 1, "content": "historical typed active", "tokens": map[string]any{},
+		"consensus": false, "consensus_statement": "", "elapsed": 0, "control": control,
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal historical record: %v", err)
+	}
+	if strings.Contains(string(data), "minimum_rounds") || strings.Contains(string(data), "required_deliverable_items") {
+		t.Fatalf("historical fixture unexpectedly contains current requirement fields: %s", data)
+	}
+	path := filepath.Join(t.TempDir(), "historical.jsonl")
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("write historical fixture: %v", err)
+	}
+	records, err := transcript.LoadFileLenient(path, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("load historical fixture: %v", err)
+	}
+	return records
+}
+
 func TestRunDryRunProducesTurns(t *testing.T) {
 	dir := t.TempDir()
 	outputPath := dir + "/run.jsonl"
@@ -500,7 +641,8 @@ func TestResumePreservesPhaseAndOutstandingDirective(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
-	if len(result.Records) < 2 || result.Records[1].AgentID != "beta" {
+	if len(result.Records) < 3 || result.Records[1].AgentID != "moderator" || result.Records[1].Control == nil ||
+		result.Records[1].Control.Convergence.RunContractVersion != types.RunContractVersion || result.Records[2].AgentID != "beta" {
 		t.Fatalf("resumed directed turn: %#v", result.Records)
 	}
 	if result.State.Control.Phase != types.PhaseTerminal || result.State.Control.Outcome.Kind != types.OutcomeNoConsensus {
@@ -552,30 +694,23 @@ func TestResumePreservesTypedTerminalOutcome(t *testing.T) {
 func TestResumeRejectsUnauthenticatedTerminalConsensus(t *testing.T) {
 	model := "test/model"
 	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: "alpha", Model: model}}}
-	control := types.NewDeliberationControlState([]string{"alpha"}, 0)
-	control.Phase = types.PhaseTerminal
-	control.CurrentProposalVersion = 1
-	control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "candidate"}}
-	control.Convergence.RequiredEndorsements = 1
-	control.Convergence.MinimumRounds = 1
-	control.Outcome = types.TerminalOutcome{Kind: types.OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{"alpha"}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
+	control := authenticatedSessionConsensusControl()
 	source := []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}}
 	if _, err := session.Resume(session.ResumeRequest{
 		RunRequest:    session.RunRequest{Topic: "invalid terminal resume", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl", MaxTurns: 1, TimeLimit: 60, DryRun: true},
 		SourceRecords: source,
-	}, session.Hooks{}); err == nil {
-		t.Fatal("resume accepted terminal consensus without current votes")
+	}, session.Hooks{}); err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+		t.Fatalf("terminal-first consensus resume error: got %v", err)
 	}
 }
 
-func authenticatedSessionConsensusControl() *types.DeliberationControlState {
+func authenticatedSessionConsensusActiveControl() *types.DeliberationControlState {
 	control := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
-	control.Phase = types.PhaseTerminal
+	control.Phase = types.PhaseVoting
 	control.CurrentProposalVersion = 1
 	control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "candidate"}}
 	control.Convergence.RequiredEndorsements = 2
 	control.Convergence.MinimumRounds = 1
-	control.Convergence.CurrentEndorsements = 2
 	control.Contributions = []types.AgentContribution{
 		{AgentID: "alpha", Turn: 0, Position: "alpha position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
 		{AgentID: "beta", Turn: 1, Position: "beta position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
@@ -584,18 +719,49 @@ func authenticatedSessionConsensusControl() *types.DeliberationControlState {
 		{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
 		{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteEndorse},
 	}
+	return control
+}
+
+func authenticatedSessionConsensusControl() *types.DeliberationControlState {
+	control := authenticatedSessionConsensusActiveControl()
+	control.Phase = types.PhaseTerminal
+	control.Convergence.CurrentEndorsements = 2
 	control.Outcome = types.TerminalOutcome{Kind: types.OutcomeConsensus, ProposalVersion: 1, DissentingAgentIDs: []string{}, UnresolvedObjectionIDs: []string{}, EvidenceGapClaimIDs: []string{}}
 	return control
+}
+
+func terminalSessionConsensusFromActive(t *testing.T, active *types.DeliberationControlState) *types.DeliberationControlState {
+	t.Helper()
+	data, err := json.Marshal(active)
+	if err != nil {
+		t.Fatalf("marshal active control: %v", err)
+	}
+	var terminal types.DeliberationControlState
+	if err := json.Unmarshal(data, &terminal); err != nil {
+		t.Fatalf("unmarshal terminal control: %v", err)
+	}
+	terminal.Phase = types.PhaseTerminal
+	terminal.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	terminal.Convergence.CurrentEndorsements = len(terminal.AgentIDs)
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeConsensus,
+		ProposalVersion:        terminal.CurrentProposalVersion,
+		DissentingAgentIDs:     []string{},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	return &terminal
 }
 
 func TestResumePreservesAuthenticatedTerminalConsensus(t *testing.T) {
 	model := "test/model"
 	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: "alpha", Model: model}, {ID: "beta", Model: model}}}
-	control := authenticatedSessionConsensusControl()
+	active := authenticatedSessionConsensusActiveControl()
+	control := terminalSessionConsensusFromActive(t, active)
 	if err := control.Validate(); err != nil {
 		t.Fatalf("authenticated source control: %v", err)
 	}
-	source := []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}}
+	source := []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: active}, {Turn: -1, AgentID: "moderator", Control: control}}
 	result, err := session.Resume(session.ResumeRequest{
 		RunRequest:    session.RunRequest{Topic: "valid terminal resume", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl", MaxTurns: 1, TimeLimit: 60, DryRun: true},
 		SourceRecords: source,
@@ -603,7 +769,7 @@ func TestResumePreservesAuthenticatedTerminalConsensus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
-	if len(result.Records) != 1 || result.State.Control.Outcome.Kind != types.OutcomeConsensus || result.State.Control.Outcome.ProposalVersion != 1 {
+	if len(result.Records) != 2 || result.State.Control.Outcome.Kind != types.OutcomeConsensus || result.State.Control.Outcome.ProposalVersion != 1 {
 		t.Fatalf("authenticated consensus changed at resume: records=%#v outcome=%#v", result.Records, result.State.Control.Outcome)
 	}
 }
@@ -612,9 +778,41 @@ func TestResumeRejectsUnauthenticatedTerminalConsensusGates(t *testing.T) {
 	model := "test/model"
 	cfg := &types.DeliberationConfig{Topology: types.TopologyRing, Agents: []types.AgentConfig{{ID: "alpha", Model: model}, {ID: "beta", Model: model}}}
 	tests := []struct {
-		name   string
-		mutate func(*types.DeliberationControlState)
+		name    string
+		prepare func(*types.DeliberationControlState)
+		mutate  func(*types.DeliberationControlState)
+		want    string
 	}{
+		{
+			name: "lowered endorsement threshold",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredEndorsements = 3
+			},
+			mutate: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredEndorsements = 2
+			},
+			want: "run consensus requirements are immutable",
+		},
+		{
+			name: "lowered minimum rounds",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.MinimumRounds = 2
+			},
+			mutate: func(state *types.DeliberationControlState) {
+				state.Convergence.MinimumRounds = 1
+			},
+			want: "run consensus requirements are immutable",
+		},
+		{
+			name: "lowered deliverable requirement",
+			prepare: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 3
+			},
+			mutate: func(state *types.DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 0
+			},
+			want: "run consensus requirements are immutable",
+		},
 		{
 			name: "absent votes",
 			mutate: func(state *types.DeliberationControlState) {
@@ -646,27 +844,36 @@ func TestResumeRejectsUnauthenticatedTerminalConsensusGates(t *testing.T) {
 		},
 		{
 			name: "minimum rounds unmet",
-			mutate: func(state *types.DeliberationControlState) {
+			prepare: func(state *types.DeliberationControlState) {
 				state.Convergence.MinimumRounds = 2
 			},
 		},
 		{
 			name: "deliverable unmet",
-			mutate: func(state *types.DeliberationControlState) {
+			prepare: func(state *types.DeliberationControlState) {
 				state.Convergence.RequiredDeliverableItems = 3
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			control := authenticatedSessionConsensusControl()
-			tt.mutate(control)
+			active := authenticatedSessionConsensusActiveControl()
+			if tt.prepare != nil {
+				tt.prepare(active)
+			}
+			control := terminalSessionConsensusFromActive(t, active)
+			if tt.mutate != nil {
+				tt.mutate(control)
+			}
 			_, err := session.Resume(session.ResumeRequest{
 				RunRequest:    session.RunRequest{Topic: "invalid terminal resume", Config: cfg, OutputPath: t.TempDir() + "/resume.jsonl", MaxTurns: 1, TimeLimit: 60, DryRun: true},
-				SourceRecords: []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: control}},
+				SourceRecords: []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: active}, {Turn: -1, AgentID: "moderator", Control: control}},
 			}, session.Hooks{})
 			if err == nil {
 				t.Fatal("resume accepted unauthenticated terminal consensus")
+			}
+			if tt.want != "" && !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("resume mutation error: got %v, want %q", err, tt.want)
 			}
 		})
 	}

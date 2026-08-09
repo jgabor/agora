@@ -1,0 +1,16 @@
+id: coenojatce
+artifact: progress
+record:
+  timestamp: 2026-08-09 17:22
+  type: fix
+  phase: build
+  what: Bound terminal consensus to the active typed run contract, preserved that contract through resume, and documented the record-version compatibility matrix.
+  context:
+    intent: Execute only successor-plan task ufcqaxphcx, Authenticate terminal consensus against the run contract.
+    constraints: Preserve protocol-v2 evidence authority, typed-v1 migration, completed opening work, historical Agentera records, and position-only behavior. No provider calls, moderation or synthesis work, task completion, commit, push, release work, or state reconciliation.
+    unknowns: "Resolved: current replay metadata is not immutable terminal-requirement provenance, so terminal-first typed consensus rejects. Glossary advice for run contract returned no_applicable_entry; decision detail remains degraded, health remains incomplete, and historical personal-input caveats were not reconstructed."
+    scope: internal/types, internal/transcript, internal/orchestrator, internal/session, cmd/agora regressions, README compatibility policy, and CHANGELOG entry.
+  discovered: Terminal requirement fields were individually self-consistent but mutable during an active-to-terminal transition. TranscriptMetadata.Config is replay metadata, not immutable requirement authority, because it does not bind required_deliverable_items.
+  verified: "Compatibility matrix observations: untyped legacy load/show/resume remains readable and begins a new v2 contract; typed-v1 input migrates to v2 and accepts terminal consensus only with a prior active control; active typed-v2 freezes requirements; active-to-terminal v2 uses the prior active requirements; terminal-first v1/v2 consensus, including replay metadata, rejects. Mutation observations: lowering required_endorsements, minimum_rounds, or required_deliverable_items passed standalone terminal validation but failed internal/types.ValidateDeliberationTransition, strict LoadFileStrict/show, lenient LoadFileLenient, and session.Resume with run consensus requirements are immutable. Valid active-to-terminal consensus passed LoadFileStrict and session.Resume. Stale, split, absent votes; objection and evidence gaps; canonical deliverable absence; and post-terminal mutation remain rejected. Restricted-PATH go test ./... -race -coverprofile=coverage.out, go vet ./..., go build ./..., golangci-lint run ./..., and git diff --check passed. Checkout go run ./cmd/agora show/resume accepted a trusted terminal fixture and rejected the terminal-first fixture."
+  next: Await independent evaluator provenance. Do not change ufcqaxphcx status, complete the task, commit, or push in this cycle.
+  publication_order: 14

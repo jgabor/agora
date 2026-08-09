@@ -1,0 +1,15 @@
+id: cxqjirtklg
+artifact: progress
+record:
+  timestamp: 2026-08-09 18:15
+  type: fix
+  phase: build
+  what: Published concrete verification evidence for the ufcqaxphcx audit retry without changing source, tests, task status, or lifecycle.
+  context:
+    intent: Publish the exact observed retry evidence requested by the user.
+    constraints: Progress record only. Preserve all records. No code, test, task-status, commit, push, or lifecycle change.
+    unknowns: No requested observation is absent. Independent evaluation still owns task closure.
+    scope: One new Agentera progress record for ufcqaxphcx.
+  verified: "`TestShowAndResumeHistoricalPreContractTranscriptContracts` passed for two raw realistic historical active fixtures: typed-v1 and early typed-v2 missing `minimum_rounds` and `required_deliverable_items`. For each, show accepted the active input; dry-run resume wrote a moderator active v2 boundary with `run_contract_version: 1`, current-config threshold and minimum rounds, and topic-derived deliverable requirement before the terminal record; each then reached `OutcomeConsensus`. The same test rejected an active-plus-forged-terminal historical consensus through both show and resume for both fixture classes. `TestResumeEstablishesContractForHistoricalTypedActiveSnapshots` independently passed the same two resume-to-consensus paths and asserted the boundary precedes terminal consensus. Current-v2 coverage passed: `TestValidateDeliberationTransitionBindsTerminalConsensusToRunContract`, `TestLoadersBindTerminalConsensusRequirementsToActiveContract`, `TestResumeRejectsUnauthenticatedTerminalConsensusGates`, and `TestResumePreservesAuthenticatedTerminalConsensus` cover gate mutations rejection and valid consensus preservation. Exact targeted gates run: `env PATH=\"$(go env GOROOT)/bin:/usr/bin:/bin\" go test ./internal/types -run '^TestValidateDeliberationTransitionRequiresVersionedPreContractBoundary$' -count=1`; `env PATH=\"$(go env GOROOT)/bin:/usr/bin:/bin\" go test ./internal/session -run '^TestResumeEstablishesContractForHistoricalTypedActiveSnapshots$' -count=1`; `env PATH=\"$(go env GOROOT)/bin:/usr/bin:/bin\" go test ./cmd/agora -run '^TestShowAndResumeHistoricalPreContractTranscriptContracts$' -count=1`; and `env PATH=\"$(go env GOROOT)/bin:/usr/bin:/bin\" go test ./internal/types ./internal/transcript ./internal/session ./internal/orchestrator ./cmd/agora -count=1`. Exact full gates run: `env PATH=\"$(go env GOROOT)/bin:/usr/bin:/bin\" go test ./... -race -coverprofile=/tmp/opencode/agora-ufcqaxphcx.coverage.out`; `go vet ./...`; `go build ./...`; `golangci-lint run ./...`; and `git diff --check`. A locally built checkout also manually showed and resumed the raw v1 active fixture to the v2 boundary before consensus, and rejected its forged historical terminal in show and resume."
+  next: Keep ufcqaxphcx in_progress for independent evaluation. Do not change task lifecycle or commit this evidence-only record.
+  publication_order: 16

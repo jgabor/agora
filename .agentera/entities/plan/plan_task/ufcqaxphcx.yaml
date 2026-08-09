@@ -4,7 +4,7 @@ record:
   name: Authenticate terminal consensus against the run contract
   depends_on:
     []
-  status: pending
+  status: complete
   acceptance:
     - GIVEN each persisted record class and version WHEN terminal policy is evaluated THEN its trusted requirement source and allowed load, show, and resume behavior are explicit.
     - GIVEN an active run contract WHEN terminal consensus changes endorsement, round, or deliverable requirements THEN validation, loading, and resume reject it.
@@ -12,3 +12,13 @@ record:
     - GIVEN terminal consensus lacks trusted provenance WHEN loaded or resumed THEN it is rejected rather than self-authenticated.
     - "Test proportionality target: one pass and one fail per gate mutation, stale or split vote, provenance class, canonical deliverable, transition, load, and resume."
   plan: ogdtuxdwhi
+  evaluation:
+    attempt_count: 2
+    failure_count: 1
+    last_verdict: pass
+    last_failure_evidence: Historical typed-v1 and early-v2 active controls lack persisted minimum-round and deliverable requirement fields. They remain readable but resume with zero requirements and can fail when consensus becomes ready, contradicting the documented migration/resume contract.
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_018e00810ffeRTVVVn17bwobjR
+      recorded_at: 2026-08-09 18:21
+      writer_command: agentera state plan record-evaluation

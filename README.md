@@ -317,12 +317,28 @@ superseded proposal are stale and do not count; repeated agreement prose does
 not advance consensus. Turn, time, and budget caps record a typed
 `no_consensus` outcome with the current dissents, unresolved objections, and
 evidence gaps. Legacy `[CONSENSUS: <statement>]` fields remain readable for
-transcript compatibility only. Terminal control snapshots persist the
-threshold, minimum-round, and deliverable gate requirements; loaders validate a
-consensus outcome against that persisted typed state, while binding those
-requirements to the established run contract remains pending. Deliverable
-evaluation considers the current canonical proposal content as well as
-ordinary typed contribution positions.
+transcript compatibility only. Deliverable evaluation considers the current
+canonical proposal content as well as ordinary typed contribution positions.
+
+Terminal consensus is authenticated against the established run contract, not
+against its own mutable requirement fields. A current active typed control with
+persisted `minimum_rounds` establishes `required_endorsements`,
+`minimum_rounds`, and `required_deliverable_items`; every later typed control
+snapshot must preserve them. A terminal consensus must match that contract and
+satisfy the current vote, objection, evidence, and deliverable gates.
+
+| Persisted record class | Trusted requirement source | Load and show | Resume |
+|---|---|---|---|
+| Untyped legacy | None. Legacy consensus text is display-only. | Allowed for inspection. | Allowed. A new typed v2 contract is established from current resume configuration. |
+| Typed v1 pre-contract active input | None. The v1 schema did not persist `minimum_rounds` or `required_deliverable_items`; evidence references are first normalized during migration. | Allowed for inspection. | Allowed only while active. Resume writes a v2 `run_contract_version: 1` active boundary from current configuration and topic before execution. A terminal consensus in that pre-contract sequence rejects. |
+| Early typed v2 pre-contract active input | None. The snapshot lacks `minimum_rounds`, so zero values are not a contract. | Allowed for inspection. | Same active-only normalization path as v1. Replay metadata and terminal fields do not supply requirements. |
+| Current typed v2 active | Its first active snapshot with persisted `minimum_rounds`, or a prior versioned active boundary. | Allowed when later controls preserve the contract. | Preserves the persisted requirements, rather than replacing them from resume configuration. |
+| Current typed v2 terminal after an active contract | The immediately preceding validated active control, already bound to its active contract. | Allowed only when requirements match and all terminal gates pass. | Allowed with the same preserved contract. |
+| First typed terminal consensus, or consensus after a pre-contract active state (v1 or v2) | None. Transcript metadata is replay metadata, not immutable consensus-requirement authority. | Rejected with `terminal consensus has no established run contract`. | Rejected with the same diagnostic. |
+| Terminal-only `no_consensus` | No consensus claim needs authentication. | Structurally readable. | Readable and remains terminal. |
+
+Pre-contract normalization is an active boundary only. A later boundary cannot
+retroactively authenticate an existing terminal consensus.
 
 ## Synthesis
 

@@ -34,6 +34,8 @@ func consensusCandidate() *DeliberationControlState {
 	state.CurrentProposalVersion = 1
 	state.Proposals = []CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "proposal one"}}
 	state.Convergence.RequiredEndorsements = 2
+	state.Convergence.MinimumRounds = 1
+	state.Convergence.RequiredDeliverableItems = 0
 	for turn := 0; turn < 2; turn++ {
 		for _, agentID := range state.AgentIDs {
 			state.Contributions = append(state.Contributions, AgentContribution{
@@ -621,6 +623,167 @@ func TestValidateTerminalConsensusRequiresAuthenticTypedState(t *testing.T) {
 				t.Fatalf("terminal mutation error: got %v", err)
 			}
 		})
+	}
+}
+
+func TestValidateDeliberationTransitionBindsTerminalConsensusToRunContract(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(*DeliberationControlState)
+		mutate  func(*DeliberationControlState)
+		wantErr bool
+	}{
+		{
+			name: "matching requirements",
+			prepare: func(state *DeliberationControlState) {
+				state.Convergence.MinimumRounds = 2
+				state.Convergence.RequiredDeliverableItems = 3
+				state.Proposals[0].Content = "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+			},
+		},
+		{
+			name: "lowered endorsement threshold",
+			prepare: func(state *DeliberationControlState) {
+				state.Convergence.RequiredEndorsements = 3
+			},
+			mutate: func(state *DeliberationControlState) {
+				state.Convergence.RequiredEndorsements = 2
+			},
+			wantErr: true,
+		},
+		{
+			name: "lowered minimum rounds",
+			prepare: func(state *DeliberationControlState) {
+				state.Convergence.MinimumRounds = 3
+			},
+			mutate: func(state *DeliberationControlState) {
+				state.Convergence.MinimumRounds = 2
+			},
+			wantErr: true,
+		},
+		{
+			name: "lowered deliverable requirement",
+			prepare: func(state *DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 3
+			},
+			mutate: func(state *DeliberationControlState) {
+				state.Convergence.RequiredDeliverableItems = 0
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := consensusCandidate()
+			tt.prepare(previous)
+			if err := previous.Validate(); err != nil {
+				t.Fatalf("active run contract: %v", err)
+			}
+
+			next := cloneControlState(t, previous)
+			next.Phase = PhaseTerminal
+			next.Directive = TurnDirective{Kind: DirectiveNone}
+			next.Convergence.CurrentEndorsements = 2
+			next.Outcome = TerminalOutcome{
+				Kind:                   OutcomeConsensus,
+				ProposalVersion:        1,
+				DissentingAgentIDs:     []string{},
+				UnresolvedObjectionIDs: []string{},
+				EvidenceGapClaimIDs:    []string{},
+			}
+			if tt.mutate != nil {
+				tt.mutate(next)
+			}
+			if err := next.Validate(); err != nil {
+				t.Fatalf("self-consistent terminal snapshot: %v", err)
+			}
+
+			err := ValidateDeliberationTransition(previous, next)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "run consensus requirements are immutable") {
+					t.Fatalf("terminal requirement mutation error: got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("matching terminal requirements: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateDeliberationTransitionRequiresVersionedPreContractBoundary(t *testing.T) {
+	previous := consensusCandidate()
+	previous.Convergence.MinimumRounds = 0
+	previous.Proposals[0].Content = "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+	if err := previous.Validate(); err != nil {
+		t.Fatalf("pre-contract active state: %v", err)
+	}
+
+	boundary := cloneControlState(t, previous)
+	boundary.Convergence.RunContractVersion = RunContractVersion
+	boundary.Convergence.MinimumRounds = 2
+	boundary.Convergence.RequiredDeliverableItems = 3
+	if err := ValidateDeliberationTransition(previous, boundary); err != nil {
+		t.Fatalf("versioned pre-contract boundary: %v", err)
+	}
+	for _, tt := range []struct {
+		name   string
+		mutate func(*DeliberationControlState)
+	}{
+		{
+			name: "changes directive",
+			mutate: func(state *DeliberationControlState) {
+				state.Directive = TurnDirective{Kind: DirectiveVote, TargetAgentID: "alpha", ProposalVersion: 1}
+			},
+		},
+		{
+			name: "changes moderator action",
+			mutate: func(state *DeliberationControlState) {
+				state.ModeratorAction = ModeratorAction{Kind: ModeratorActionContinue}
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			invalid := cloneControlState(t, previous)
+			invalid.Convergence.RunContractVersion = RunContractVersion
+			invalid.Convergence.MinimumRounds = 2
+			invalid.Convergence.RequiredDeliverableItems = 3
+			tt.mutate(invalid)
+			if err := invalid.Validate(); err != nil {
+				t.Fatalf("self-consistent boundary mutation: %v", err)
+			}
+			if err := ValidateDeliberationTransition(previous, invalid); err == nil || !strings.Contains(err.Error(), "pre-contract active state requires a versioned run contract boundary") {
+				t.Fatalf("boundary history mutation error: got %v", err)
+			}
+		})
+	}
+
+	terminal := cloneControlState(t, boundary)
+	terminal.Phase = PhaseTerminal
+	terminal.Directive = TurnDirective{Kind: DirectiveNone}
+	terminal.Convergence.CurrentEndorsements = 2
+	terminal.Outcome = TerminalOutcome{
+		Kind:                   OutcomeConsensus,
+		ProposalVersion:        1,
+		DissentingAgentIDs:     []string{},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	if err := ValidateDeliberationTransition(boundary, terminal); err != nil {
+		t.Fatalf("terminal after versioned boundary: %v", err)
+	}
+
+	retroactive := cloneControlState(t, previous)
+	retroactive.Phase = PhaseTerminal
+	retroactive.Convergence.RunContractVersion = RunContractVersion
+	retroactive.Convergence.MinimumRounds = 2
+	retroactive.Convergence.RequiredDeliverableItems = 3
+	retroactive.Convergence.CurrentEndorsements = 2
+	retroactive.Outcome = terminal.Outcome
+	if err := ValidateDeliberationTransition(previous, retroactive); err == nil || !strings.Contains(err.Error(), "pre-contract active state cannot authenticate terminal consensus") {
+		t.Fatalf("retroactive terminal error: got %v", err)
 	}
 }
 

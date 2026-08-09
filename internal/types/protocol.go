@@ -11,6 +11,10 @@ import (
 // persisted evidence during transcript loading.
 const DeliberationProtocolVersion = "agora.deliberation.v2"
 
+// RunContractVersion identifies the versioned active control boundary that
+// establishes halt requirements for a resumed pre-contract transcript.
+const RunContractVersion = 1
+
 // LegacyDeliberationProtocolVersion identifies typed snapshots written before
 // persisted evidence became authoritative. Transcript loading migrates this
 // version explicitly before applying current validation; new state is never
@@ -207,9 +211,12 @@ type ModeratorAction struct {
 }
 
 // ConvergenceSignals captures computed control inputs used by typed halt
-// evaluation. It is persisted with the control state so threshold and current
-// vote counts remain inspectable across transcript boundaries.
+// evaluation. RunContractVersion marks a boundary established from authorized
+// run inputs. Older active records with MinimumRounds == 0 are pre-contract
+// and cannot authenticate a terminal consensus until resume writes that
+// boundary.
 type ConvergenceSignals struct {
+	RunContractVersion       int  `yaml:"run_contract_version,omitempty" json:"run_contract_version,omitempty"`
 	CurrentEndorsements      int  `yaml:"current_endorsements" json:"current_endorsements"`
 	RequiredEndorsements     int  `yaml:"required_endorsements" json:"required_endorsements"`
 	MinimumRounds            int  `yaml:"minimum_rounds" json:"minimum_rounds"`
@@ -302,6 +309,21 @@ func NewDeliberationControlState(agentIDs []string, sourceReferenceCount int) *D
 			EvidenceGapClaimIDs:    []string{},
 		},
 	}
+}
+
+// IsPreContractActive reports whether this historical active snapshot lacks
+// the persisted minimum-round requirement needed to authenticate consensus.
+func (s *DeliberationControlState) IsPreContractActive() bool {
+	return s != nil && s.Phase != PhaseTerminal &&
+		s.Convergence.RunContractVersion == 0 && s.Convergence.MinimumRounds == 0
+}
+
+// HasEstablishedRunContract reports whether the state carries a usable run
+// contract. Current v2 snapshots written before RunContractVersion was added
+// remain established when they already persist MinimumRounds.
+func (s *DeliberationControlState) HasEstablishedRunContract() bool {
+	return s != nil && s.Convergence.MinimumRounds > 0 &&
+		(s.Convergence.RunContractVersion == 0 || s.Convergence.RunContractVersion == RunContractVersion)
 }
 
 // PhaseWorkComplete reports whether every active agent has at least minimum
@@ -401,10 +423,9 @@ func (s *DeliberationControlState) DeliverablePresent(minItems int) bool {
 	return false
 }
 
-// EvaluateConsensus evaluates every typed consensus gate. The configured
-// endorsement threshold is carried in Convergence.RequiredEndorsements; the
-// minimum rounds and deliverable requirement are persisted in convergence
-// state before a terminal snapshot is written.
+// EvaluateConsensus evaluates every typed consensus gate against the
+// requirements carried by the established control state. Transitions preserve
+// those requirement values before a terminal snapshot is written.
 func (s *DeliberationControlState) EvaluateConsensus(minimumRounds int, deliverablePresent bool) ConsensusEvaluation {
 	if s == nil {
 		return emptyConsensusEvaluation()
@@ -658,8 +679,14 @@ func (s *DeliberationControlState) Validate() error {
 	if err := s.validateAction(agents, proposals, objections, claims); err != nil {
 		return err
 	}
+	if s.Convergence.RunContractVersion < 0 || s.Convergence.RunContractVersion > RunContractVersion {
+		return fmt.Errorf("unsupported run_contract_version %d", s.Convergence.RunContractVersion)
+	}
 	if s.Convergence.CurrentEndorsements < 0 || s.Convergence.RequiredEndorsements < 0 || s.Convergence.MinimumRounds < 0 || s.Convergence.RequiredDeliverableItems < 0 || s.Convergence.UnresolvedObjections < 0 || s.Convergence.EvidenceGaps < 0 || s.Convergence.StagnantRounds < 0 {
 		return fmt.Errorf("convergence signal counts must be >= 0")
+	}
+	if s.Convergence.RunContractVersion == RunContractVersion && s.Convergence.MinimumRounds == 0 {
+		return fmt.Errorf("versioned run contract requires minimum_rounds")
 	}
 	if err := s.validateOutcome(agents, proposals, objections, claims); err != nil {
 		return err
@@ -768,6 +795,9 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 	if err := previous.Validate(); err != nil {
 		return fmt.Errorf("previous control state: %w", err)
 	}
+	if previous.IsPreContractActive() && next != nil && next.Phase == PhaseTerminal && next.Outcome.Kind == OutcomeConsensus {
+		return fmt.Errorf("pre-contract active state cannot authenticate terminal consensus")
+	}
 	if err := next.Validate(); err != nil {
 		return fmt.Errorf("next control state: %w", err)
 	}
@@ -779,6 +809,10 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 			return nil
 		}
 		return fmt.Errorf("terminal control state is immutable")
+	}
+	contractBoundary := isRunContractBoundary(previous, next)
+	if err := validateRunConsensusRequirements(previous, next); err != nil {
+		return err
 	}
 	if !validPhaseTransition(previous.Phase, next.Phase) {
 		return fmt.Errorf("invalid phase transition from %q to %q", previous.Phase, next.Phase)
@@ -796,7 +830,8 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 		!reflect.DeepEqual(previous.Objections, next.Objections[:len(previous.Objections)]) ||
 		!reflect.DeepEqual(previous.Dispositions, next.Dispositions[:len(previous.Dispositions)]) ||
 		!reflect.DeepEqual(previous.Votes, next.Votes[:len(previous.Votes)]) ||
-		!reflect.DeepEqual(previous.Contributions, next.Contributions[:len(previous.Contributions)]) {
+		(!reflect.DeepEqual(previous.Contributions, next.Contributions[:len(previous.Contributions)]) &&
+			(!contractBoundary || len(previous.Contributions) != 0 || len(next.Contributions) != 0)) {
 		return fmt.Errorf("protocol history is immutable")
 	}
 	if err := validateClaimHistory(previous.Claims, next.Claims); err != nil {
@@ -806,6 +841,65 @@ func ValidateDeliberationTransition(previous, next *DeliberationControlState) er
 		return fmt.Errorf("terminal outcome is immutable")
 	}
 	return nil
+}
+
+func validateRunConsensusRequirements(previous, next *DeliberationControlState) error {
+	if previous.IsPreContractActive() {
+		if isRunContractBoundary(previous, next) {
+			return nil
+		}
+		if next.Phase == PhaseTerminal && next.Outcome.Kind == OutcomeNoConsensus && next.Convergence.RunContractVersion == 0 && sameRunConsensusRequirements(previous, next) {
+			return nil
+		}
+		if next.IsPreContractActive() && sameRunConsensusRequirements(previous, next) {
+			return nil
+		}
+		return fmt.Errorf("pre-contract active state requires a versioned run contract boundary")
+	}
+	if previous.Convergence.RunContractVersion != next.Convergence.RunContractVersion {
+		return fmt.Errorf("run contract version is immutable: changed from %d to %d", previous.Convergence.RunContractVersion, next.Convergence.RunContractVersion)
+	}
+	if !sameRunConsensusRequirements(previous, next) {
+		if previous.Convergence.RequiredEndorsements != next.Convergence.RequiredEndorsements {
+			return fmt.Errorf("run consensus requirements are immutable: required_endorsements changed from %d to %d", previous.Convergence.RequiredEndorsements, next.Convergence.RequiredEndorsements)
+		}
+		if previous.Convergence.MinimumRounds != next.Convergence.MinimumRounds {
+			return fmt.Errorf("run consensus requirements are immutable: minimum_rounds changed from %d to %d", previous.Convergence.MinimumRounds, next.Convergence.MinimumRounds)
+		}
+		return fmt.Errorf("run consensus requirements are immutable: required_deliverable_items changed from %d to %d", previous.Convergence.RequiredDeliverableItems, next.Convergence.RequiredDeliverableItems)
+	}
+	return nil
+}
+
+func sameRunConsensusRequirements(previous, next *DeliberationControlState) bool {
+	return previous.Convergence.RequiredEndorsements == next.Convergence.RequiredEndorsements &&
+		previous.Convergence.MinimumRounds == next.Convergence.MinimumRounds &&
+		previous.Convergence.RequiredDeliverableItems == next.Convergence.RequiredDeliverableItems
+}
+
+func isRunContractBoundary(previous, next *DeliberationControlState) bool {
+	if !previous.IsPreContractActive() || next == nil || next.Phase == PhaseTerminal || next.Phase != previous.Phase ||
+		next.Convergence.RunContractVersion != RunContractVersion || next.Convergence.MinimumRounds == 0 {
+		return false
+	}
+
+	// A boundary is a pure snapshot normalization. It can add the run contract,
+	// turn legacy nil contributions into an explicit empty slice, and make a
+	// historical missing directive explicit. It cannot carry unrelated state
+	// changes that could be mistaken for pre-boundary debate work.
+	previousSnapshot := *previous
+	if previousSnapshot.Contributions == nil {
+		previousSnapshot.Contributions = []AgentContribution{}
+	}
+	if previousSnapshot.Directive.Kind == "" {
+		previousSnapshot.Directive.Kind = DirectiveNone
+	}
+	nextSnapshot := *next
+	nextSnapshot.Convergence.RunContractVersion = previousSnapshot.Convergence.RunContractVersion
+	nextSnapshot.Convergence.RequiredEndorsements = previousSnapshot.Convergence.RequiredEndorsements
+	nextSnapshot.Convergence.MinimumRounds = previousSnapshot.Convergence.MinimumRounds
+	nextSnapshot.Convergence.RequiredDeliverableItems = previousSnapshot.Convergence.RequiredDeliverableItems
+	return reflect.DeepEqual(previousSnapshot, nextSnapshot)
 }
 
 func (s *DeliberationControlState) validateDirective(agents map[string]bool, proposals map[int]CanonicalProposal, objections, claims map[string]bool) error {
@@ -934,8 +1028,8 @@ func (s *DeliberationControlState) validateOutcome(agents map[string]bool, propo
 		}
 	}
 	if outcome.Kind == OutcomeConsensus {
-		if s.Convergence.RequiredEndorsements <= 0 || s.Convergence.MinimumRounds <= 0 {
-			return fmt.Errorf("consensus outcome is missing persisted halt requirements")
+		if !s.HasEstablishedRunContract() || s.Convergence.RequiredEndorsements <= 0 {
+			return fmt.Errorf("consensus outcome is missing established run contract")
 		}
 		if !evaluation.Ready {
 			return fmt.Errorf("consensus outcome does not satisfy persisted halt gates")

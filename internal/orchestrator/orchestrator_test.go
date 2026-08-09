@@ -94,6 +94,28 @@ func readyControlState() *types.DeliberationControlState {
 	return state
 }
 
+func TestNewOrchestratorPreservesPersistedRunContract(t *testing.T) {
+	control := readyControlState()
+	control.Convergence.MinimumRounds = 2
+	control.Convergence.RequiredDeliverableItems = 3
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/resume.jsonl")
+	if err := tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Control: control}); err != nil {
+		t.Fatalf("persist active control: %v", err)
+	}
+	state := newTestState(&types.DeliberationConfig{
+		Agents:             newTestAgents(2),
+		ConsensusThreshold: 1,
+		MinRounds:          1,
+	})
+	state.Control = control
+	state.DeliverableGate = nil
+
+	NewOrchestrator(state, tm, &mockRunner{})
+	if got := state.Control.Convergence; got.RequiredEndorsements != 2 || got.MinimumRounds != 2 || got.RequiredDeliverableItems != 3 {
+		t.Fatalf("persisted run contract was rehydrated from resume inputs: %#v", got)
+	}
+}
+
 func TestEmitSeed(t *testing.T) {
 	tm := transcript.NewTranscriptManager("/tmp/test_transcript.jsonl")
 	state := newTestState(&types.DeliberationConfig{Agents: newTestAgents(2)})
@@ -656,15 +678,18 @@ func TestTypedConsensusBindsCurrentProposalAndPersistsOutcome(t *testing.T) {
 		path := t.TempDir() + "/consensus.jsonl"
 		tm := transcript.NewTranscriptManager(path)
 		o := NewOrchestrator(state, tm, &mockRunner{})
+		if err := tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Control: state.Control}); err != nil {
+			t.Fatalf("persist active run contract: %v", err)
+		}
 		o.checkTerminationConditions()
 		if state.Running || state.Control.Outcome.Kind != types.OutcomeConsensus {
 			t.Fatalf("typed consensus outcome: running=%v outcome=%#v", state.Running, state.Control.Outcome)
 		}
-		if state.Control.Outcome.ProposalVersion != 1 || len(tm.Records()) != 1 {
+		if state.Control.Outcome.ProposalVersion != 1 || len(tm.Records()) != 2 {
 			t.Fatalf("terminal record: records=%d outcome=%#v", len(tm.Records()), state.Control.Outcome)
 		}
 		loaded, err := transcript.LoadFileStrict(path)
-		if err != nil || len(loaded) != 1 || loaded[0].Control.Outcome.Kind != types.OutcomeConsensus {
+		if err != nil || len(loaded) != 2 || loaded[1].Control.Outcome.Kind != types.OutcomeConsensus {
 			t.Fatalf("loaded terminal outcome: records=%#v err=%v", loaded, err)
 		}
 	})
@@ -701,10 +726,10 @@ func TestCapRecordsTypedNoConsensusEvidence(t *testing.T) {
 		cost := 0.02
 		path := t.TempDir() + "/budget.jsonl"
 		tm := transcript.NewTranscriptManager(path)
+		o := NewOrchestrator(state, tm, &mockRunner{})
 		if err := tm.Append(types.TurnRecord{Turn: 0, AgentID: "agent-0", Content: "prior", Cost: &cost}); err != nil {
 			t.Fatalf("seed budget record: %v", err)
 		}
-		o := NewOrchestrator(state, tm, &mockRunner{})
 		o.checkTerminationConditions()
 		if state.Control.Outcome.Kind != types.OutcomeNoConsensus || state.Control.Outcome.Reason != "budget_exceeded ($0.01)" {
 			t.Fatalf("budget outcome: %#v", state.Control.Outcome)

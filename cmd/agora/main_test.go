@@ -2121,6 +2121,143 @@ func TestShowCommandFormattedOutputReportsClearFailures(t *testing.T) {
 	assertStringContains(t, emptyOut, "transcript_empty")
 }
 
+func TestShowAndResumeRequireTerminalConsensusRunContract(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, "")
+	configPath := filepath.Join(dir, "config.yaml")
+	writeValidConfig(t, configPath)
+
+	active, terminal := terminalConsensusFixture()
+	validPath := filepath.Join(dir, "valid.jsonl")
+	if err := os.WriteFile(validPath, []byte(transcriptContent(t,
+		types.TurnRecord{Turn: -1, AgentID: "moderator", Control: active},
+		types.TurnRecord{Turn: -1, AgentID: "moderator", Control: terminal},
+	)), 0o644); err != nil {
+		t.Fatalf("write authenticated transcript: %v", err)
+	}
+	if _, err := executeShowCommandFormat(t, formatJSON, validPath); err != nil {
+		t.Fatalf("show authenticated terminal consensus: %v", err)
+	}
+
+	terminalOnlyPath := filepath.Join(dir, "terminal-first.jsonl")
+	if err := os.WriteFile(terminalOnlyPath, []byte(transcriptContent(t, types.TurnRecord{Turn: -1, AgentID: "moderator", Control: terminal})), 0o644); err != nil {
+		t.Fatalf("write terminal-first transcript: %v", err)
+	}
+	showOut, err := executeShowCommandFormat(t, formatJSON, terminalOnlyPath)
+	if err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+		t.Fatalf("show terminal-first error: got %v", err)
+	}
+	assertStringContains(t, showOut, "terminal consensus has no established run contract")
+
+	validOutput := filepath.Join(dir, "valid-resume.jsonl")
+	restore := configureResumeGlobals(configPath, validPath, validOutput)
+	if err := resumeCmd.RunE(artifactCommand(t, validOutput), nil); err != nil {
+		restore()
+		t.Fatalf("resume authenticated terminal consensus: %v", err)
+	}
+	restore()
+	if records, err := loadTranscriptFile(validOutput); err != nil || len(records) != 2 || records[1].Control.Outcome.Kind != types.OutcomeConsensus {
+		t.Fatalf("resumed authenticated terminal: records=%#v err=%v", records, err)
+	}
+
+	invalidOutput := filepath.Join(dir, "invalid-resume.jsonl")
+	restore = configureResumeGlobals(configPath, terminalOnlyPath, invalidOutput)
+	err = resumeCmd.RunE(artifactCommand(t, invalidOutput), nil)
+	restore()
+	if err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+		t.Fatalf("resume terminal-first error: got %v", err)
+	}
+}
+
+func TestShowAndResumeHistoricalPreContractTranscriptContracts(t *testing.T) {
+	const topic = "The final output must contain exactly three laws"
+	tests := []struct {
+		name                 string
+		protocolVersion      string
+		includeContributions bool
+	}{
+		{name: "typed v1", protocolVersion: types.LegacyDeliberationProtocolVersion},
+		{name: "early typed v2", protocolVersion: types.DeliberationProtocolVersion, includeContributions: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeConfig(t, "")
+			configPath := filepath.Join(dir, "config.yaml")
+			if err := os.WriteFile(configPath, []byte(`topology: ring
+consensus_threshold: 1
+min_rounds: 1
+agents:
+  - id: alpha
+    model: test/model
+    system_prompt: test
+`), 0o644); err != nil {
+				t.Fatalf("write resume config: %v", err)
+			}
+
+			activePath := filepath.Join(dir, "historical-active.jsonl")
+			activeLine := historicalPreContractControlLine(t, tt.protocolVersion, tt.includeContributions, false, false)
+			if err := os.WriteFile(activePath, []byte(activeLine+"\n"), 0o644); err != nil {
+				t.Fatalf("write historical active transcript: %v", err)
+			}
+			if _, err := executeShowCommandFormat(t, formatJSON, activePath); err != nil {
+				t.Fatalf("show historical active transcript: %v", err)
+			}
+
+			outputPath := filepath.Join(dir, "historical-resume.jsonl")
+			restore := configureResumeGlobals(configPath, activePath, outputPath)
+			resumeFlags.Topic = topic
+			resumeFlags.MaxTurns = 1
+			err := resumeCmd.RunE(artifactCommand(t, outputPath), nil)
+			restore()
+			if err != nil {
+				t.Fatalf("resume historical active transcript: %v", err)
+			}
+			records, err := loadTranscriptFile(outputPath)
+			if err != nil {
+				t.Fatalf("load normalized resume transcript: %v", err)
+			}
+			boundary, terminal := -1, -1
+			for i, record := range records {
+				if record.Control == nil {
+					continue
+				}
+				if record.Control.Phase == types.PhaseTerminal {
+					terminal = i
+					continue
+				}
+				if boundary < 0 && record.AgentID == "moderator" && record.Turn == -1 &&
+					record.Control.Convergence.RequiredEndorsements == 1 &&
+					record.Control.Convergence.MinimumRounds == 1 &&
+					record.Control.Convergence.RequiredDeliverableItems == 3 &&
+					record.Control.Convergence.RunContractVersion == types.RunContractVersion {
+					boundary = i
+				}
+			}
+			if boundary < 0 || terminal < 0 || boundary >= terminal || records[terminal].Control.Outcome.Kind != types.OutcomeConsensus {
+				t.Fatalf("normalized CLI resume: boundary=%d terminal=%d records=%#v", boundary, terminal, records)
+			}
+
+			terminalPath := filepath.Join(dir, "historical-terminal.jsonl")
+			terminalLine := historicalPreContractControlLine(t, tt.protocolVersion, tt.includeContributions, true, tt.protocolVersion == types.DeliberationProtocolVersion)
+			if err := os.WriteFile(terminalPath, []byte(activeLine+"\n"+terminalLine+"\n"), 0o644); err != nil {
+				t.Fatalf("write historical terminal transcript: %v", err)
+			}
+			if _, err := executeShowCommandFormat(t, formatJSON, terminalPath); err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+				t.Fatalf("show historical terminal consensus error: got %v", err)
+			}
+			invalidOutputPath := filepath.Join(dir, "historical-terminal-resume.jsonl")
+			restore = configureResumeGlobals(configPath, terminalPath, invalidOutputPath)
+			resumeFlags.Topic = topic
+			err = resumeCmd.RunE(artifactCommand(t, invalidOutputPath), nil)
+			restore()
+			if err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+				t.Fatalf("resume historical terminal consensus error: got %v", err)
+			}
+		})
+	}
+}
+
 func TestResumeCommandResolvesTranscriptSlugToNewestMatch(t *testing.T) {
 	dir := t.TempDir()
 	store := filepath.Join(dir, "store")
@@ -2275,6 +2412,88 @@ func writeResumeTranscript(t *testing.T, path string) {
 	if err := os.WriteFile(path, []byte(transcriptLine("a", "done", 0)), 0o644); err != nil {
 		t.Fatalf("write resume transcript: %v", err)
 	}
+}
+
+func terminalConsensusFixture() (*types.DeliberationControlState, *types.DeliberationControlState) {
+	active := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	active.Phase = types.PhaseVoting
+	active.CurrentProposalVersion = 1
+	active.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "candidate"}}
+	active.Convergence.RequiredEndorsements = 2
+	active.Convergence.MinimumRounds = 1
+	active.Contributions = []types.AgentContribution{
+		{AgentID: "alpha", Turn: 0, Position: "alpha position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
+		{AgentID: "beta", Turn: 1, Position: "beta position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}},
+	}
+	active.Votes = []types.ProposalVote{
+		{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
+		{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteEndorse},
+	}
+	terminal := *active
+	terminal.Phase = types.PhaseTerminal
+	terminal.Directive = types.TurnDirective{Kind: types.DirectiveNone}
+	terminal.Convergence.CurrentEndorsements = 2
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeConsensus,
+		ProposalVersion:        1,
+		DissentingAgentIDs:     []string{},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	return active, &terminal
+}
+
+func historicalPreContractControlLine(t *testing.T, protocolVersion string, includeContributions, terminal, terminalRequirements bool) string {
+	t.Helper()
+	proposal := "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+	convergence := map[string]any{
+		"current_endorsements": 0, "required_endorsements": 1,
+		"unresolved_objections": 0, "evidence_gaps": 0, "stagnant_rounds": 0, "ready_to_vote": false,
+	}
+	control := map[string]any{
+		"protocol_version": protocolVersion, "phase": "voting", "agent_ids": []string{"alpha"}, "source_reference_count": 0,
+		"current_proposal_version": 1,
+		"proposals":                []any{map[string]any{"version": 1, "author_id": "alpha", "content": proposal, "supersedes": 0}},
+		"objections":               []any{}, "dispositions": []any{},
+		"votes":            []any{map[string]any{"agent_id": "alpha", "proposal_version": 1, "choice": "endorse"}},
+		"claims":           []any{},
+		"moderator_action": map[string]any{"kind": "none", "objection_ids": []any{}, "claim_ids": []any{}},
+		"convergence":      convergence,
+		"outcome":          map[string]any{"kind": "pending", "dissenting_agent_ids": []any{}, "unresolved_objection_ids": []any{}, "evidence_gap_claim_ids": []any{}},
+	}
+	if protocolVersion == types.DeliberationProtocolVersion {
+		control["directive"] = map[string]any{"kind": "none"}
+		control["contributions"] = []any{}
+		if includeContributions {
+			control["contributions"] = []any{map[string]any{
+				"agent_id": "alpha", "turn": 0, "position": "historical position", "responses": []any{}, "concessions": []any{},
+				"proposal_action": map[string]any{"kind": "none"}, "objections": []any{}, "claims": []any{},
+			}}
+		}
+	}
+	if terminal {
+		control["phase"] = "terminal"
+		convergence["current_endorsements"] = 1
+		control["outcome"] = map[string]any{
+			"kind": "consensus", "proposal_version": 1, "dissenting_agent_ids": []any{}, "unresolved_objection_ids": []any{}, "evidence_gap_claim_ids": []any{},
+		}
+		if terminalRequirements {
+			convergence["minimum_rounds"] = 1
+			convergence["required_deliverable_items"] = 3
+		}
+	}
+	record := map[string]any{
+		"turn": 0, "agent_id": "alpha", "model": "test/model", "timestamp": 1, "content": "historical typed control", "tokens": map[string]any{},
+		"consensus": false, "consensus_statement": "", "elapsed": 0, "control": control,
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal historical control: %v", err)
+	}
+	if !terminalRequirements && (strings.Contains(string(data), "minimum_rounds") || strings.Contains(string(data), "required_deliverable_items")) {
+		t.Fatalf("historical fixture unexpectedly contains current requirement fields: %s", data)
+	}
+	return string(data)
 }
 
 func transcriptLine(agentID, content string, tokens int) string {

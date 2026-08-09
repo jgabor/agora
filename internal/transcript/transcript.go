@@ -26,10 +26,13 @@ type TranscriptManager struct {
 // ProtocolInfo classifies a loaded transcript without treating legacy
 // free-text consensus fields as typed protocol state.
 type ProtocolInfo struct {
-	Version      string
-	Legacy       bool
-	MigratedFrom string
+	Version           string
+	Legacy            bool
+	MigratedFrom      string
+	PreContractActive bool
 }
+
+const terminalConsensusMissingRunContract = "terminal consensus has no established run contract"
 
 // NewTranscriptManager creates a new TranscriptManager for the given file path.
 func NewTranscriptManager(path string) *TranscriptManager {
@@ -78,11 +81,13 @@ func (tm *TranscriptManager) LoadExisting() ([]types.TurnRecord, error) {
 
 // ProtocolFromRecords classifies transcripts without a typed control state as
 // legacy. Legacy consensus fields remain readable but do not establish typed
-// consensus. Typed control snapshots are validated in order, including
-// self-authenticating terminal consensus witnesses. Typed v1 snapshots are
-// explicitly migrated to v2 before validation; the migration trusts only
-// persisted evidence references and downgrades claims whose old source
-// references cannot be proven.
+// consensus. Typed control snapshots are validated in order. Historical v1
+// and early v2 active states without MinimumRounds are pre-contract: they are
+// readable, but only resume may establish a versioned active run contract from
+// current inputs. A terminal consensus must follow an established contract.
+// Typed v1 snapshots are explicitly migrated to v2 before validation; the
+// migration trusts only persisted evidence references and downgrades claims
+// whose old source references cannot be proven.
 func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
 	version, typed, err := typedProtocolVersion(records)
 	if err != nil {
@@ -115,15 +120,20 @@ func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
 			continue
 		}
 		if previous == nil {
+			if control.Phase == types.PhaseTerminal && control.Outcome.Kind == types.OutcomeConsensus {
+				return ProtocolInfo{}, fmt.Errorf("%s at record %d", terminalConsensusMissingRunContract, i)
+			}
 			if err := control.Validate(); err != nil {
 				return ProtocolInfo{}, fmt.Errorf("invalid control state at record %d: %w", i, err)
 			}
+		} else if previous.IsPreContractActive() && control.Phase == types.PhaseTerminal && control.Outcome.Kind == types.OutcomeConsensus {
+			return ProtocolInfo{}, fmt.Errorf("%s at record %d", terminalConsensusMissingRunContract, i)
 		} else if err := types.ValidateDeliberationTransition(previous, control); err != nil {
 			return ProtocolInfo{}, fmt.Errorf("invalid control state at record %d: %w", i, err)
 		}
 		previous = control
 	}
-	return ProtocolInfo{Version: version, MigratedFrom: migratedFrom}, nil
+	return ProtocolInfo{Version: version, MigratedFrom: migratedFrom, PreContractActive: previous.IsPreContractActive()}, nil
 }
 
 // EvidenceFromRecords returns the persisted, references-only evidence bundle
