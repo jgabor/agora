@@ -1,0 +1,13 @@
+id: mcrpjqlwfh
+artifact: plan
+record:
+  name: Integrate the evaluator as maintainer tooling
+  depends_on:
+    - vwhcvrbwdm
+  status: pending
+  acceptance:
+    - GIVEN maintainer workflows are inspected WHEN evaluation is needed THEN discovery evaluation and offline self-test are available but not default gates.
+    - GIVEN results are generated WHEN Git status is checked THEN outputs, logs, transcripts, and temporary credentials are not commit candidates.
+    - GIVEN CI runs without providers WHEN script gates execute THEN syntax, static analysis, deterministic scoring, and quiet output pass.
+    - GIVEN terminal E2E runs before and after integration WHEN compared THEN its behavior, configuration, and artifact isolation remain unchanged.
+  plan: cdpjpaatae

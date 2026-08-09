@@ -1,0 +1,13 @@
+id: vwhcvrbwdm
+artifact: plan
+record:
+  name: Make analysis deterministic and provider-free to test
+  depends_on:
+    - ciwxctzwzx
+  status: pending
+  acceptance:
+    - GIVEN duplicate, failed, compound, or spoofed events WHEN scoring runs THEN only the first completed qualifying Agora run ends the score.
+    - GIVEN transcript evidence exists WHEN analyzed THEN model, cast, persona, research, turns, tokens, and cost preserve unknown versus known states.
+    - GIVEN results are written WHEN consumed THEN schema, provenance, summaries, checklists, traces, and raw-evidence paths are stable.
+    - GIVEN self-test or quiet mode runs WHEN no provider is available THEN scoring cases pass and quiet stdout contains only the result path.
+  plan: cdpjpaatae

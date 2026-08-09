@@ -4,3 +4,11 @@ record:
   severity: annoying
   status: open
   description: Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Add explicit research refresh/replay controls for resumed transcripts instead of always reusing prior evidence
+      severity: annoying
+      status: open
+      order: 2

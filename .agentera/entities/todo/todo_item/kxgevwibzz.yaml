@@ -4,3 +4,11 @@ record:
   severity: critical
   status: open
   description: Make decisive factual claims evidence-backed. Let objections request
+  reconciliation:
+    schema_version: agentera.todoReconciliation.v1
+    public:
+      present: true
+      description: Make decisive factual claims evidence-backed. Let objections request
+      severity: critical
+      status: open
+      order: 3
