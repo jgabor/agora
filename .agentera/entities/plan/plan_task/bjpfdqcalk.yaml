@@ -7,7 +7,7 @@ record:
     - vwhcvrbwdm
     - mcrpjqlwfh
     - yqnkexwmdv
-  status: complete
+  status: in_progress
   acceptance:
     - GIVEN implementation is complete WHEN authoritative gates run THEN script checks, self-test, restricted Go tests, vet, build, and optional dry E2E pass.
     - GIVEN one bounded outer trial is authorized WHEN it runs THEN model routing, dry nesting, marker integrity, and contamination checks are evidenced.
