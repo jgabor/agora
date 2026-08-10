@@ -28,7 +28,7 @@ const (
 	maxNonAutoWindow             = 8
 )
 
-var version = "0.4.2"
+var version = "0.4.3"
 
 func main() {
 	rootCmd.SetUsageTemplate(rootCmd.UsageTemplate() + "\n\nAuthor:\n  Jonathan Gabor (https://jgabor.se)\n\nSource:\n  https://github.com/jgabor/agora\n")

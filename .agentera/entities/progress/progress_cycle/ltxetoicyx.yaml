@@ -1,0 +1,16 @@
+id: ltxetoicyx
+artifact: progress
+record:
+  timestamp: 2026-08-10 10:06
+  type: chore
+  phase: build
+  what: Synchronized cmd/agora/main.go version 0.4.3, CHANGELOG.md release notes, and typed release state after terminal integration passed and an explicit patch-line release choice selected 0.4.3.
+  context:
+    intent: Complete task gxecbwghho release-state boundary without closing its task or plan.
+    constraints: Use typed TODO, docs, and progress writers; preserve archived predecessor josxwbovpf and historical failed audits; do not infer user decision satisfaction; do not commit, tag, push, or complete lifecycle state.
+    unknowns: macOS test isolation remains deferred and unverified in this Linux checkout. Deterministic fake-runner coverage does not exercise live provider behavior.
+    scope: CLI version, CHANGELOG, docs inventory/config, TODO reconciliation, and release-state verification only.
+  discovered: The docs policy normally recommends a feat-minor release and declares CHANGELOG.md as a version file; the explicit patch-line release choice selected 0.4.3 instead, so cmd/agora/main.go and CHANGELOG.md both require 0.4.3.
+  verified: Typed writers resolved dynufsdiqr from the complete/PASS tibgrkmilp opening replacement and eprrpqhkrb from the complete/PASS ufcqaxphcx terminal-contract replacement; README, Changelog, and TODO inventory entries now report 2026-08-10. A checkout-built artifact reported agora version 0.4.3, emitted prime JSON, and produced dry-run no_consensus show JSON with preserve_terminal_state. TestBuiltCLIAuthenticatesConsensusAndPreservesTerminalOutcomes passed its deterministic consensus and no-consensus cases. Restricted-PATH go test ./... -race with a temporary coverage profile, golangci-lint run ./..., go vet ./..., go build ./..., docs lint, and release-version consistency/mismatch tests passed. The explicit patch-line release choice selected 0.4.3, overriding the normal feat-minor recommendation.
+  next: Await independent Audit evaluation. Keep gxecbwghho in_progress and ogdtuxdwhi open; do not complete the task or plan, commit, tag, or push.
+  publication_order: 22

@@ -3,5 +3,5 @@ artifact: docs
 record:
   document: Output Inventory
   path: .agentera/output-inventory.yaml
-  last_updated: 2026-05-06
+  last_updated: 2026-07-08
   status: current

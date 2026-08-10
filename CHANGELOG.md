@@ -2,16 +2,27 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-10
+
 ### Added
-- Versioned typed deliberation control state for proposal revisions, objections and dispositions, unique-agent votes, claim evidence status, moderation, convergence, and terminal outcomes, with strict validation and explicit legacy transcript classification.
+- The typed deliberation control ledger is the authoritative control plane for proposal revisions, objections and dispositions, unique-agent votes, claim evidence status, moderation, convergence, and terminal outcomes, with strict validation and explicit legacy transcript classification.
 - Decisive claims now enter as source-bound or explicitly unverified, verification directives record typed outcomes without accepting invented source references, and synthesis output labels claim kinds separately from evidence status.
-- Strengthened typed control state is written as `agora.deliberation.v2`; persisted typed v1 transcripts are explicitly normalized against their persisted evidence references, with unverifiable claim citations downgraded to unverified rather than invented.
 - `internal/orchestrator/phases.go` makes `agora run` advance `DeliberationControlState` through ordered opening, rebuttal, drafting, and voting phases with independent openings, deterministic speakers, and persisted typed directives.
+- State-driven moderation runs only after complete post-opening rounds with fresh typed state. It selects one validated action, preserves participation fairness, and cannot write a terminal outcome.
+- Synthesis and CLI inspection surfaces (`show`, `stats`, `resume`, and `prime`) now derive outcomes from persisted terminal state. A `no_consensus` result labels model recommendation prose as independent analysis, not a group decision.
 
 ### Fixed
 - Phased control validation rejects incomplete per-agent phase work and phase-incompatible directives, keeps prior model work out of opening envelopes, enforces one opening contribution per active agent and directed-agent selection, and consumes proposal-revision directives before deriving the next directive. Opening envelopes now require only positions, discard non-opening proposal actions, and retain canonical proposal creation after opening.
 - Terminal consensus now preserves the threshold, minimum-round, and deliverable requirements established by the active typed run contract. Strict show/load and resume reject changed requirements or a terminal-first consensus without trusted provenance.
-- Historical typed v1 and early v2 active snapshots without persisted halt requirements remain readable. Resume now writes a versioned active v2 contract boundary from current authorized inputs before they can reach a terminal outcome; a historical terminal consensus without a prior established contract remains rejected.
+
+### Compatibility
+- Strengthened typed control state is written as `agora.deliberation.v2`. Persisted typed v1 transcripts are normalized against their persisted evidence references, with unverifiable claim citations downgraded to unverified rather than invented.
+- Historical typed v1 and early v2 active snapshots without persisted halt requirements remain readable. Resume writes a versioned active v2 contract boundary from current authorized inputs before they can reach a terminal outcome; a historical terminal consensus without a prior established contract remains rejected.
+- Legacy consensus markers remain readable display-only compatibility data. They do not authorize a typed consensus outcome.
+
+### Caveats
+- Deterministic built-artifact integration uses a temporary fake `opencode` runner and non-provider models. It does not exercise live provider behavior.
+- macOS test isolation remains deferred and was not verified in this Linux checkout.
 
 ## [0.4.2] - 2026-08-03
 

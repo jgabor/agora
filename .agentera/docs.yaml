@@ -1,4 +1,4 @@
-last_audit: 2026-06-15 (public-release documentation checkpoint)
+last_audit: 2026-08-10 (documentation inventory consistency retry)
 conventions:
   doc_root: .
   style: technical, concise, evidence-backed; README uses command examples and tables
@@ -41,23 +41,23 @@ mapping:
 index:
   - document: README
     path: README.md
-    last_updated: 2026-06-15
+    last_updated: 2026-08-10
     status: current
   - document: Changelog
     path: CHANGELOG.md
-    last_updated: 2026-06-15
+    last_updated: 2026-08-10
     status: current
   - document: TODO
     path: TODO.md
-    last_updated: 2026-06-15
+    last_updated: 2026-08-10
     status: current
   - document: Contributing
     path: CONTRIBUTING.md
-    last_updated: 2026-06-15
+    last_updated: 2026-08-07
     status: current
   - document: Security
     path: SECURITY.md
-    last_updated: 2026-06-15
+    last_updated: 2026-08-03
     status: current
   - document: License
     path: LICENSE
@@ -69,14 +69,32 @@ index:
     status: current
   - document: Output Inventory
     path: .agentera/output-inventory.yaml
-    last_updated: 2026-05-06
+    last_updated: 2026-07-08
     status: current
 coverage:
   documented: 8/8 discovered documentation artifacts indexed
   undocumented: AGENTS.md and DESIGN.md are absent
-  stale: none found during 2026-06-15 audit
+  stale: none found during 2026-08-10 inventory date review
   tests: CI runs go test ./... -race -coverprofile=coverage.out
 audit_log:
+  - date: 2026-08-10
+    label: audit-1 documentation inventory consistency retry
+    findings:
+      - type: freshness
+        severity: info
+        description: CONTRIBUTING.md, SECURITY.md, and .agentera/output-inventory.yaml dates predated their latest Git changes.
+        resolution: Updated the matching index and typed inventory dates to 2026-08-07, 2026-08-03, and 2026-07-08; no stale inventory date remains.
+  - date: 2026-08-10
+    label: patch-line release-state synchronization
+    findings:
+      - type: freshness
+        severity: info
+        description: Version 0.4.3, release notes, terminal-control README coverage, and resolved opening and terminal-contract TODO lifecycle state were checked together after the explicit patch-line release choice.
+        resolution: Source version and the latest changelog release agree; README, Changelog, and TODO index dates are current.
+      - type: verification
+        severity: info
+        description: Deterministic checkout-built consensus and no-consensus coverage remains the release gate; macOS test isolation is deferred.
+        resolution: Preserve the macOS caveat without claiming a platform check that did not run.
   - date: 2026-06-15
     label: public-release documentation checkpoint
     findings:

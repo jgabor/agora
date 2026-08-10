@@ -3,5 +3,5 @@ artifact: docs
 record:
   document: Security
   path: SECURITY.md
-  last_updated: 2026-06-15
+  last_updated: 2026-08-03
   status: current

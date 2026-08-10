@@ -4,11 +4,21 @@ record:
   name: Synchronize release and project state
   depends_on:
     - nwjlrbybkn
-  status: pending
+  status: complete
   acceptance:
-    - GIVEN integrated evidence passes WHEN version and release notes are updated THEN the intended feature-minor version and changelog accurately describe authority, moderation, evidence, compatibility, and remaining caveats.
+    - GIVEN integrated evidence passes WHEN version and release notes are updated THEN the intended release version and changelog accurately describe authority, moderation, evidence, compatibility, and remaining caveats.
     - GIVEN predecessor blockers are replaced WHEN TODO and plan lineage are reconciled THEN failed audits remain historical evidence and TODOs resolve only with verified replacement outcomes.
     - GIVEN project state is synchronized WHEN docs, decisions, progress, TODO, and plan lifecycle are inspected THEN they agree on completed and remaining work.
     - GIVEN synchronization changes are complete WHEN final checks run THEN no release or state update invalidates task 5 evidence.
     - "Test proportionality target: one consistency pass and one deliberate mismatch rejection per synchronized state family."
   plan: ogdtuxdwhi
+  evaluation:
+    attempt_count: 2
+    failure_count: 1
+    last_verdict: pass
+    last_failure_evidence: Documentation inventory claims no stale entries, but Contributing, Security, and Output Inventory dates predate their latest Git changes. Update the three typed inventory entities and matching docs index, then rerun docs/state consistency.
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_0154677c0ffeLwFeLs66gEfZYd
+      recorded_at: 2026-08-10 10:52
+      writer_command: agentera state plan record-evaluation

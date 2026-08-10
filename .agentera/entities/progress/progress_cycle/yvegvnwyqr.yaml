@@ -1,0 +1,16 @@
+id: yvegvnwyqr
+artifact: progress
+record:
+  timestamp: 2026-08-10 10:46
+  type: docs
+  phase: build
+  what: Corrected dttbyqgogo, iryrkcvmyn, and syopbhmepg inventory dates against CONTRIBUTING.md, SECURITY.md, and .agentera/output-inventory.yaml Git history.
+  context:
+    intent: Retry gxecbwghho after audit-1 failed only on documentation inventory freshness.
+    constraints: Use typed docs and progress writers; preserve release, TODO, lineage, decision, task, version, and caveat state; do not commit, tag, push, or complete the task or plan.
+    unknowns: macOS test isolation remains deferred and unverified in this Linux checkout. Deterministic fake-runner coverage does not exercise live provider behavior.
+    scope: Only three documentation inventory entities and matching .agentera/docs.yaml freshness metadata.
+  discovered: A current inventory status does not make a stale last_updated date truthful. The date must match the latest Git change unless a documented review supplies a later current date.
+  verified: Exact Git dates are CONTRIBUTING.md 2026-08-07, SECURITY.md 2026-08-03, and .agentera/output-inventory.yaml 2026-07-08. Typed docs updates set dttbyqgogo, iryrkcvmyn, and syopbhmepg to those dates; matching docs index dates and stale summary now agree. Exact docs list/gets and an eight-entry Git-date comparison passed, including current uncommitted CHANGELOG.md and TODO.md dates. Docs lint passed for all three files and .agentera/docs.yaml. A dry-run docs update with CLI-owned id was rejected. TestBuiltCLIAuthenticatesConsensusAndPreservesTerminalOutcomes, restricted-PATH go test ./... -race with temporary coverage, golangci-lint run ./..., go vet ./..., go build ./..., state validation, and git diff --check passed.
+  next: Await independent Audit re-review. Keep gxecbwghho in_progress and ogdtuxdwhi open; do not complete lifecycle state, commit, tag, or push.
+  publication_order: 23

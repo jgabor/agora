@@ -16,12 +16,16 @@ record:
     - Independent Audit verifies gate immutability, canonical deliverable behavior, stale/split vote rejection, and terminal persistence.
   release_blocker: false
   severity: degraded
-  status: open
+  status: resolved
   reconciliation:
     schema_version: agentera.todoReconciliation.v1
     public:
       present: true
       description: "[fix] Bind terminal consensus gates to the established run contract"
-      severity: degraded
-      status: open
+      status: resolved
       order: 2
+      severity: degraded
+  lifecycle:
+    operation: resolve
+    reason: Complete/PASS successor task ufcqaxphcx authenticated terminal consensus to the run contract.
+    date: 2026-08-10
