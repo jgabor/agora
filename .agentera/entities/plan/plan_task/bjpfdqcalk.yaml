@@ -7,7 +7,7 @@ record:
     - vwhcvrbwdm
     - mcrpjqlwfh
     - yqnkexwmdv
-  status: in_progress
+  status: complete
   acceptance:
     - GIVEN implementation is complete WHEN authoritative gates run THEN script checks, self-test, restricted Go tests, vet, build, and optional dry E2E pass.
     - GIVEN one bounded outer trial is authorized WHEN it runs THEN model routing, dry nesting, marker integrity, and contamination checks are evidenced.
@@ -15,12 +15,12 @@ record:
     - GIVEN merge readiness is declared WHEN local integration runs THEN no generated or sensitive artifacts remain and the branch merges cleanly without a remote PR.
   plan: cdpjpaatae
   evaluation:
-    attempt_count: 1
+    attempt_count: 2
     failure_count: 0
     last_verdict: pass
     last_failure_evidence: null
     provenance:
-      attempt_id: audit-2
-      source: "independent Audit re-review: temporary auth isolation, credential-free shell entry, corrected live aggregate, full gates and merge proof"
-      recorded_at: 2026-08-10 10:49
+      attempt_id: audit-3
+      source: "independent Audit refresh: canonical TODO reconciliation, stable-current-main scoped diff and ref-only merge proof"
+      recorded_at: 2026-08-10 11:56
       writer_command: agentera state plan record-evaluation
