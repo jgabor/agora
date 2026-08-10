@@ -1,0 +1,16 @@
+id: wylyqcyuft
+artifact: progress
+record:
+  timestamp: 2026-08-10 08:55
+  type: test
+  phase: build
+  what: Added a built-artifact CLI regression that compiles the checkout binary and drives it through a temporary deterministic OpenCode replacement. It covers one authenticated consensus transcript and one cap-driven no-consensus transcript, then strictly loads, shows, and resumes both.
+  context:
+    intent: Prove ledger-controlled terminal behavior through the newly built checkout CLI without live providers.
+    constraints: Test-only temporary fixtures, no live model calls, no lifecycle completion, no commit, and no remote actions.
+    unknowns: The generated temporary evidence is retained only under /tmp; the checked-in regression reproduces it from source.
+    scope: cmd/agora built-artifact integration coverage and disposable verification fixtures only.
+  discovered: The public dry-run path is deterministic and safely produces no_consensus, but it never creates an initial canonical proposal. The smallest public CLI consensus path is a temporary fake opencode executable at the existing subprocess seam, not production injection machinery.
+  verified: Built /tmp/opencode/agora-nwjlrbybkn.jUa94q/agora-current with `go build -o /tmp/opencode/agora-nwjlrbybkn.jUa94q/agora-current ./cmd/agora`; it reports `agora version 0.4.2`. With PATH prefixed by the temporary test-binary fake opencode, AGORA_TEST_FAKE_OPENCODE=1, and fake/non-provider models, the consensus run used two agents, threshold 2, minimum rounds 3, ledger true, and max turns 8. It persisted one terminal consensus at proposal v3, `Authenticated current proposal v3`, with unique alpha/beta endorse votes, run contract v1, and preserve_terminal_state through show JSON and resume. The no-consensus run used the same config and max turns 6. It persisted no_consensus at v1 with reason `max_turns (6)`, alpha/beta dissents, and unresolved `safety-objection`; show JSON and resume preserved the state and compatibility action. Focused cmd, session, and orchestrator tests passed. Restricted-PATH `go test ./... -race -coverprofile=/tmp/opencode/agora-nwjlrbybkn.jUa94q/coverage.out`, `golangci-lint run ./...`, `go vet ./...`, `go build ./...`, and `git diff --check` passed.
+  next: Keep nwjlrbybkn in_progress for independent evaluation. Do not complete the task, change evaluator state, commit, or push.
+  publication_order: 21
