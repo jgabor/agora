@@ -1,0 +1,15 @@
+id: fbmlsoqtbb
+artifact: progress
+record:
+  timestamp: 2026-08-10 08:24
+  type: fix
+  phase: build
+  what: Hardened typed-v1 migration provenance and made typed terminal state authoritative for consensus presentation. V1 requirement fields now cannot authenticate a terminal consensus. Typed terminal no-consensus output separates legacy markers from terminal authority and quotes model recommendation analysis.
+  context:
+    intent: Retry audit-1 by addressing only typed-v1 provenance and typed terminal output authority.
+    constraints: Keep ajzcjfbzvv in_progress. Do not complete the task, commit, push, or expand scope.
+    unknowns: None.
+    scope: Transcript migration, resume provenance, terminal inspection output, synthesis presentation, tests, and README contract text.
+  verified: 'Built /tmp/opencode/agora-audit1-final.NHFy2g/agora, version 0.4.2. Negative observation: a typed-v1 active record with injected run_contract_version=1, minimum_rounds=1, and required_deliverable_items=1 followed by terminal consensus was rejected by show JSON with "terminal consensus has no established run contract at record 1" and compatibility_action "reject_unauthenticated_terminal_consensus"; resume rejected the same source. Positive observation: resuming the injected v1 active record with explicit v2 config wrote an authorized boundary, reached typed consensus, and displayed "resume action: migrate_v1_then_establish_run_contract". A typed no-consensus fixture with two legacy markers and contradictory "The group consensus is" synthesis prose showed typed endorsements 0/2, no consensus events, separately labeled non-authoritative markers and trailing streak, and quoted independent analysis in text, JSON, Markdown, stats, and resume. go test ./... -race, go vet ./..., go build ./..., golangci-lint run ./..., and git diff --check passed.'
+  next: Audit-1 retry remains in_progress for independent evaluation. No task completion, commit, push, or scope expansion.
+  publication_order: 20

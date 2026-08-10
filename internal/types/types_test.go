@@ -341,6 +341,18 @@ func TestDeliberationConfigValidate(t *testing.T) {
 		}
 	})
 
+	t.Run("negative required deliverable items", func(t *testing.T) {
+		cfg := &DeliberationConfig{
+			Agents:                   []AgentConfig{{ID: "a", Model: "m"}},
+			Topology:                 TopologyRing,
+			RequiredDeliverableItems: -1,
+		}
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "required_deliverable_items") {
+			t.Fatalf("error: got %v, want required_deliverable_items validation", err)
+		}
+	})
+
 	t.Run("invalid topology", func(t *testing.T) {
 		cfg := &DeliberationConfig{
 			Agents:   []AgentConfig{{ID: "a", Model: "m"}},
@@ -441,6 +453,40 @@ func TestComputeStats(t *testing.T) {
 		}
 	} else {
 		t.Error("missing per-agent stats for 'b'")
+	}
+}
+
+func TestComputeStatsTreatsLegacyMarkersAsNonAuthoritativeAfterTypedTerminal(t *testing.T) {
+	terminal := NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	terminal.Phase = PhaseTerminal
+	terminal.Convergence = ConvergenceSignals{
+		RunContractVersion:   RunContractVersion,
+		RequiredEndorsements: 2,
+		MinimumRounds:        1,
+	}
+	terminal.Outcome = TerminalOutcome{
+		Kind:                   OutcomeNoConsensus,
+		Reason:                 "max_turns (2)",
+		DissentingAgentIDs:     []string{"alpha", "beta"},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	if err := terminal.Validate(); err != nil {
+		t.Fatalf("terminal fixture: %v", err)
+	}
+	records := []TurnRecord{
+		{Turn: 0, AgentID: "alpha", Consensus: true, ConsensusStatement: "legacy marker one"},
+		{Turn: 1, AgentID: "beta", Consensus: true, ConsensusStatement: "legacy marker two"},
+		{Turn: -1, AgentID: "moderator", Control: terminal},
+	}
+
+	stats := ComputeStats(records)
+	if len(stats.ConsensusEvents) != 0 {
+		t.Fatalf("typed no-consensus emitted raw consensus events: %#v", stats.ConsensusEvents)
+	}
+	legacy := LegacyConsensusDataFromRecords(records)
+	if legacy == nil || !legacy.NonAuthoritative || len(legacy.Markers) != 2 || legacy.TrailingStreak != 2 {
+		t.Fatalf("legacy compatibility data: %#v", legacy)
 	}
 }
 

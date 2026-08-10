@@ -9,6 +9,7 @@ import (
 
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/output"
+	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -270,15 +271,23 @@ func writeTranscriptListMarkdown(w io.Writer, data transcriptListOutput) error {
 }
 
 type commandErrorOutput struct {
-	OK      bool   `json:"ok"`
-	Input   string `json:"input,omitempty"`
-	Path    string `json:"path,omitempty"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	OK                  bool   `json:"ok"`
+	Input               string `json:"input,omitempty"`
+	Path                string `json:"path,omitempty"`
+	Code                string `json:"code"`
+	Message             string `json:"message"`
+	CompatibilityAction string `json:"compatibility_action,omitempty"`
 }
 
 func commandErrorData(input, path, code string, err error) commandErrorOutput {
-	return commandErrorOutput{OK: false, Input: input, Path: path, Code: code, Message: err.Error()}
+	return commandErrorOutput{
+		OK:                  false,
+		Input:               input,
+		Path:                path,
+		Code:                code,
+		Message:             err.Error(),
+		CompatibilityAction: transcript.CompatibilityActionForError(err),
+	}
 }
 
 func writeCommandErrorMarkdown(w io.Writer, title string, data commandErrorOutput) error {
@@ -288,6 +297,9 @@ func writeCommandErrorMarkdown(w io.Writer, title string, data commandErrorOutpu
 	}
 	if data.Path != "" {
 		rows = append(rows, []string{"Path", data.Path})
+	}
+	if data.CompatibilityAction != "" {
+		rows = append(rows, []string{"Compatibility action", data.CompatibilityAction})
 	}
 	return writeMarkdown(w, title, rows)
 }
@@ -302,27 +314,31 @@ func writeFormattedCommandError(cmd *cobra.Command, format, command, title strin
 }
 
 type transcriptShowOutput struct {
-	DocumentType          string                   `json:"document_type"`
-	DocumentSchemaVersion int                      `json:"document_schema_version"`
-	Path                  string                   `json:"path"`
-	RecordCount           int                      `json:"record_count"`
-	Agents                []string                 `json:"agents"`
-	Metadata              transcriptMetadataOutput `json:"metadata,omitempty"`
-	Records               []transcriptRecordOutput `json:"records"`
-	EvidenceBoundary      string                   `json:"evidence_boundary"`
+	DocumentType          string                        `json:"document_type"`
+	DocumentSchemaVersion int                           `json:"document_schema_version"`
+	Path                  string                        `json:"path"`
+	RecordCount           int                           `json:"record_count"`
+	Agents                []string                      `json:"agents"`
+	Metadata              transcriptMetadataOutput      `json:"metadata,omitempty"`
+	Records               []transcriptRecordOutput      `json:"records"`
+	EvidenceBoundary      string                        `json:"evidence_boundary"`
+	TerminalState         *types.TerminalState          `json:"terminal_state"`
+	LegacyConsensus       *types.LegacyConsensusData    `json:"legacy_consensus,omitempty"`
+	Compatibility         transcript.CompatibilityState `json:"compatibility"`
 }
 
 type transcriptMetadataOutput struct {
-	Available          bool               `json:"available"`
-	SchemaVersion      int                `json:"schema_version,omitempty"`
-	Cast               []types.CastMember `json:"cast,omitempty"`
-	Topology           types.Topology     `json:"topology,omitempty"`
-	ConsensusThreshold int                `json:"consensus_threshold,omitempty"`
-	MinRounds          int                `json:"min_rounds,omitempty"`
-	Workdir            string             `json:"workdir,omitempty"`
-	SynthesisModel     *string            `json:"synthesis_model,omitempty"`
-	Research           bool               `json:"research"`
-	ContextPaths       []string           `json:"context_paths,omitempty"`
+	Available                bool               `json:"available"`
+	SchemaVersion            int                `json:"schema_version,omitempty"`
+	Cast                     []types.CastMember `json:"cast,omitempty"`
+	Topology                 types.Topology     `json:"topology,omitempty"`
+	ConsensusThreshold       int                `json:"consensus_threshold,omitempty"`
+	MinRounds                int                `json:"min_rounds,omitempty"`
+	RequiredDeliverableItems int                `json:"required_deliverable_items"`
+	Workdir                  string             `json:"workdir,omitempty"`
+	SynthesisModel           *string            `json:"synthesis_model,omitempty"`
+	Research                 bool               `json:"research"`
+	ContextPaths             []string           `json:"context_paths,omitempty"`
 }
 
 type transcriptRecordOutput struct {
@@ -334,9 +350,18 @@ type transcriptRecordOutput struct {
 	Content            string                          `json:"content,omitempty"`
 	Evidence           *transcriptEvidenceOutput       `json:"evidence,omitempty"`
 	Control            *types.DeliberationControlState `json:"control,omitempty"`
-	Consensus          bool                            `json:"consensus"`
+	Consensus          bool                            `json:"consensus,omitempty"`
 	ConsensusStatement string                          `json:"consensus_statement,omitempty"`
+	LegacyConsensus    *types.LegacyConsensusMarker    `json:"legacy_consensus_marker,omitempty"`
+	SynthesisAuthority *transcriptSynthesisAuthority   `json:"synthesis_authority,omitempty"`
 	CastMember         *types.CastMember               `json:"cast_member,omitempty"`
+}
+
+// transcriptSynthesisAuthority labels model prose without letting it override
+// the terminal outcome in machine-readable inspection output.
+type transcriptSynthesisAuthority struct {
+	RecommendationScope                 string `json:"recommendation_scope"`
+	ModelRecommendationNonAuthoritative bool   `json:"model_recommendation_non_authoritative"`
 }
 
 type transcriptEvidenceOutput struct {
@@ -346,8 +371,13 @@ type transcriptEvidenceOutput struct {
 	FullSourceContentOmitted bool                    `json:"full_source_content_omitted"`
 }
 
-func transcriptShowData(path string, records []types.TurnRecord) transcriptShowOutput {
+func transcriptShowDataWithCompatibility(path string, records []types.TurnRecord, compatibility transcript.CompatibilityState) transcriptShowOutput {
 	metadata := transcriptMetadataFromRecords(records)
+	terminalState := types.TerminalStateFromRecords(records)
+	var legacyConsensus *types.LegacyConsensusData
+	if terminalState != nil {
+		legacyConsensus = types.LegacyConsensusDataFromRecords(records)
+	}
 	return transcriptShowOutput{
 		DocumentType:          "agora.transcript.show",
 		DocumentSchemaVersion: 1,
@@ -355,8 +385,11 @@ func transcriptShowData(path string, records []types.TurnRecord) transcriptShowO
 		RecordCount:           len(records),
 		Agents:                transcriptAgents(records),
 		Metadata:              transcriptMetadataData(metadata),
-		Records:               transcriptRecordData(records, metadata),
+		Records:               transcriptRecordDataWithTerminal(records, metadata, terminalState),
 		EvidenceBoundary:      "Evidence source contents are not included; output preserves transcript references and summaries only.",
+		TerminalState:         terminalState,
+		LegacyConsensus:       legacyConsensus,
+		Compatibility:         compatibility,
 	}
 }
 
@@ -369,6 +402,7 @@ func transcriptMetadataData(metadata *types.TranscriptMetadata) transcriptMetada
 		out.Topology = metadata.Config.Topology
 		out.ConsensusThreshold = metadata.Config.ConsensusThreshold
 		out.MinRounds = metadata.Config.MinRounds
+		out.RequiredDeliverableItems = metadata.Config.RequiredDeliverableItems
 		out.Workdir = metadata.Config.Workdir
 		out.SynthesisModel = metadata.Config.SynthesisModel
 		out.Research = metadata.Config.ResearchEnabled
@@ -378,6 +412,10 @@ func transcriptMetadataData(metadata *types.TranscriptMetadata) transcriptMetada
 }
 
 func transcriptRecordData(records []types.TurnRecord, metadata *types.TranscriptMetadata) []transcriptRecordOutput {
+	return transcriptRecordDataWithTerminal(records, metadata, types.TerminalStateFromRecords(records))
+}
+
+func transcriptRecordDataWithTerminal(records []types.TurnRecord, metadata *types.TranscriptMetadata, terminalState *types.TerminalState) []transcriptRecordOutput {
 	castByAgent := map[string]types.CastMember{}
 	if metadata != nil {
 		for _, member := range metadata.Cast {
@@ -387,14 +425,26 @@ func transcriptRecordData(records []types.TurnRecord, metadata *types.Transcript
 	out := make([]transcriptRecordOutput, 0, len(records))
 	for i, record := range records {
 		entry := transcriptRecordOutput{
-			RecordIndex:        i + 1,
-			Turn:               record.Turn,
-			AgentID:            strings.TrimSpace(record.AgentID),
-			Timestamp:          record.Timestamp,
-			Content:            strings.TrimSpace(record.Content),
-			Control:            record.Control,
-			Consensus:          record.Consensus,
-			ConsensusStatement: strings.TrimSpace(record.ConsensusStatement),
+			RecordIndex: i + 1,
+			Turn:        record.Turn,
+			AgentID:     strings.TrimSpace(record.AgentID),
+			Timestamp:   record.Timestamp,
+			Content:     strings.TrimSpace(record.Content),
+			Control:     record.Control,
+		}
+		if terminalState != nil && (record.Consensus || record.ConsensusIgnored) {
+			entry.LegacyConsensus = &types.LegacyConsensusMarker{
+				Turn:      record.Turn,
+				AgentID:   strings.TrimSpace(record.AgentID),
+				Statement: strings.TrimSpace(record.ConsensusStatement),
+				Ignored:   record.ConsensusIgnored,
+			}
+		} else {
+			entry.Consensus = record.Consensus
+			entry.ConsensusStatement = strings.TrimSpace(record.ConsensusStatement)
+		}
+		if entry.AgentID == "synthesizer" && terminalState != nil {
+			entry.SynthesisAuthority = synthesisAuthorityForTerminalState(terminalState)
 		}
 		if entry.AgentID == "" {
 			entry.AgentID = "unknown"
@@ -412,6 +462,20 @@ func transcriptRecordData(records []types.TurnRecord, metadata *types.Transcript
 		out = append(out, entry)
 	}
 	return out
+}
+
+func synthesisAuthorityForTerminalState(state *types.TerminalState) *transcriptSynthesisAuthority {
+	if state == nil {
+		return nil
+	}
+	authority := &transcriptSynthesisAuthority{RecommendationScope: "unverified", ModelRecommendationNonAuthoritative: true}
+	switch state.Outcome.Kind {
+	case types.OutcomeConsensus:
+		authority.RecommendationScope = "group_consensus"
+	case types.OutcomeNoConsensus:
+		authority.RecommendationScope = "independent"
+	}
+	return authority
 }
 
 func transcriptEvidenceData(evidence *types.EvidenceBundle) *transcriptEvidenceOutput {
@@ -452,13 +516,46 @@ func statsMarkdownRows(stats map[string]any) [][]string {
 		}
 	}
 
-	if events, ok := stats["consensus_events"].([]any); ok {
-		rows = append(rows, []string{"Consensus events", fmt.Sprintf("%d", len(events))})
-		for i, event := range events {
-			if eventMap, ok := event.(map[string]any); ok {
-				rows = append(rows, []string{fmt.Sprintf("Consensus %d", i+1), fmt.Sprintf("turn=%v; agent=%v; statement=%v", eventMap["turn"], eventMap["agent_id"], eventMap["statement"])})
+	terminalState, _ := stats["terminal_state"].(*types.TerminalState)
+	if terminalState == nil {
+		if events, ok := stats["consensus_events"].([]any); ok {
+			rows = append(rows, []string{"Consensus events", fmt.Sprintf("%d", len(events))})
+			for i, event := range events {
+				if eventMap, ok := event.(map[string]any); ok {
+					rows = append(rows, []string{fmt.Sprintf("Consensus %d", i+1), fmt.Sprintf("turn=%v; agent=%v; statement=%v", eventMap["turn"], eventMap["agent_id"], eventMap["statement"])})
+				}
 			}
 		}
+	}
+	if terminalState != nil {
+		rows = append(rows,
+			[]string{"Terminal phase", string(terminalState.Phase)},
+			[]string{"Terminal outcome", string(terminalState.Outcome.Kind)},
+			[]string{"Terminal proposal version", fmt.Sprint(terminalState.ProposalVersion)},
+			[]string{"Terminal halt reason", terminalState.HaltReason},
+			[]string{"Terminal dissents", strings.Join(terminalState.DissentingAgentIDs, ", ")},
+			[]string{"Terminal evidence gaps", strings.Join(terminalState.EvidenceGapClaimIDs, ", ")},
+			[]string{"Terminal convergence", fmt.Sprintf("endorsements=%d/%d; minimum_rounds=%d; unresolved_objections=%d; evidence_gaps=%d", terminalState.Convergence.CurrentEndorsements, terminalState.Convergence.RequiredEndorsements, terminalState.Convergence.MinimumRounds, terminalState.Convergence.UnresolvedObjections, terminalState.Convergence.EvidenceGaps)},
+		)
+		if terminalState.CanonicalProposal != nil {
+			rows = append(rows, []string{"Terminal canonical proposal", terminalState.CanonicalProposal.Content})
+		}
+		if len(terminalState.CurrentVotes) > 0 {
+			votes := make([]string, 0, len(terminalState.CurrentVotes))
+			for _, vote := range terminalState.CurrentVotes {
+				votes = append(votes, fmt.Sprintf("%s=%s", vote.AgentID, vote.Choice))
+			}
+			rows = append(rows, []string{"Terminal current votes", strings.Join(votes, ", ")})
+		}
+		if legacyConsensus, ok := stats["legacy_consensus"].(*types.LegacyConsensusData); ok && legacyConsensus != nil {
+			rows = append(rows,
+				[]string{"Legacy consensus markers (non-authoritative)", fmt.Sprint(len(legacyConsensus.Markers))},
+				[]string{"Legacy consensus trailing streak (non-authoritative)", fmt.Sprint(legacyConsensus.TrailingStreak)},
+			)
+		}
+	}
+	if compatibility, ok := stats["compatibility"].(transcript.CompatibilityState); ok {
+		rows = append(rows, []string{"Compatibility resume action", compatibility.ResumeAction})
 	}
 
 	return rows
@@ -482,15 +579,29 @@ func writeTranscriptMarkdown(w io.Writer, data transcriptShowOutput) error {
 			fmt.Fprintf(&sb, "- **Topology:** %s\n", data.Metadata.Topology)
 		}
 		fmt.Fprintf(&sb, "- **Consensus threshold:** %d\n", data.Metadata.ConsensusThreshold)
+		fmt.Fprintf(&sb, "- **Required deliverable items:** %d\n", data.Metadata.RequiredDeliverableItems)
 		for _, member := range data.Metadata.Cast {
 			fmt.Fprintf(&sb, "- **A%d %s:** persona `%s`, model `%s`, color `%s`\n", member.ID, member.Name, member.Persona, member.ProviderModel, member.Color)
 		}
 	}
+	writeTerminalStateMarkdown(&sb, data.TerminalState)
+	if data.LegacyConsensus != nil {
+		fmt.Fprintln(&sb)
+		fmt.Fprintln(&sb, "## Legacy consensus compatibility (non-authoritative)")
+		fmt.Fprintf(&sb, "- **Markers:** %d\n", len(data.LegacyConsensus.Markers))
+		fmt.Fprintf(&sb, "- **Trailing streak:** %d\n", data.LegacyConsensus.TrailingStreak)
+	}
+	fmt.Fprintln(&sb)
+	fmt.Fprintln(&sb, "## Protocol compatibility")
+	fmt.Fprintf(&sb, "- **Resume action:** %s\n", data.Compatibility.ResumeAction)
+	fmt.Fprintf(&sb, "- **Legacy:** %t\n", data.Compatibility.Legacy)
+	fmt.Fprintf(&sb, "- **Pre-contract active:** %t\n", data.Compatibility.PreContractActive)
+	fmt.Fprintf(&sb, "- **Terminal:** %t\n", data.Compatibility.Terminal)
 	fmt.Fprintln(&sb)
 	fmt.Fprintln(&sb, "## Records")
 	for _, record := range data.Records {
 		if record.AgentID == "synthesizer" {
-			writeTranscriptSynthesisMarkdown(&sb, record)
+			writeTranscriptSynthesisMarkdown(&sb, record, data.TerminalState)
 			continue
 		}
 		fmt.Fprintf(&sb, "\n### Record %d\n\n", record.RecordIndex)
@@ -517,9 +628,19 @@ func writeTranscriptMarkdown(w io.Writer, data transcriptShowOutput) error {
 			fmt.Fprintf(&sb, "- **Unresolved objections:** %s\n", strings.Join(outcome.UnresolvedObjectionIDs, ", "))
 			fmt.Fprintf(&sb, "- **Evidence gaps:** %s\n", strings.Join(outcome.EvidenceGapClaimIDs, ", "))
 		}
-		fmt.Fprintf(&sb, "- **Consensus:** %t\n", record.Consensus)
-		if record.ConsensusStatement != "" {
-			fmt.Fprintf(&sb, "- **Consensus statement:** %s\n", record.ConsensusStatement)
+		if record.LegacyConsensus != nil {
+			fmt.Fprintf(&sb, "- **Legacy consensus marker (non-authoritative):** true\n")
+			if record.LegacyConsensus.Ignored {
+				fmt.Fprintf(&sb, "- **Legacy marker ignored (non-authoritative):** true\n")
+			}
+			if record.LegacyConsensus.Statement != "" {
+				fmt.Fprintf(&sb, "- **Legacy consensus statement (non-authoritative):** %s\n", record.LegacyConsensus.Statement)
+			}
+		} else {
+			fmt.Fprintf(&sb, "- **Consensus:** %t\n", record.Consensus)
+			if record.ConsensusStatement != "" {
+				fmt.Fprintf(&sb, "- **Consensus statement:** %s\n", record.ConsensusStatement)
+			}
 		}
 		if record.Evidence != nil {
 			fmt.Fprintln(&sb, "- **Evidence full source content omitted:** true")
@@ -538,7 +659,55 @@ func writeTranscriptMarkdown(w io.Writer, data transcriptShowOutput) error {
 	return err
 }
 
-func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptRecordOutput) {
+func writeTerminalStateMarkdown(sb *strings.Builder, state *types.TerminalState) {
+	if state == nil {
+		return
+	}
+	fmt.Fprintln(sb)
+	fmt.Fprintln(sb, "## Terminal state")
+	fmt.Fprintf(sb, "- **Phase:** %s\n", state.Phase)
+	fmt.Fprintf(sb, "- **Outcome:** %s\n", state.Outcome.Kind)
+	fmt.Fprintf(sb, "- **Proposal version:** %d\n", state.ProposalVersion)
+	fmt.Fprintf(sb, "- **Halt reason:** %s\n", state.HaltReason)
+	fmt.Fprintf(sb, "- **Dissenting agents:** %s\n", strings.Join(state.DissentingAgentIDs, ", "))
+	fmt.Fprintf(sb, "- **Evidence gaps:** %s\n", strings.Join(state.EvidenceGapClaimIDs, ", "))
+	fmt.Fprintf(sb, "- **Convergence:** endorsements=%d/%d; minimum_rounds=%d; unresolved_objections=%d; evidence_gaps=%d\n",
+		state.Convergence.CurrentEndorsements,
+		state.Convergence.RequiredEndorsements,
+		state.Convergence.MinimumRounds,
+		state.Convergence.UnresolvedObjections,
+		state.Convergence.EvidenceGaps,
+	)
+	if state.CanonicalProposal != nil {
+		fmt.Fprintf(sb, "- **Canonical proposal:** v%d by %s: %s\n", state.CanonicalProposal.Version, state.CanonicalProposal.AuthorID, state.CanonicalProposal.Content)
+	}
+	if len(state.CurrentVotes) > 0 {
+		votes := make([]string, 0, len(state.CurrentVotes))
+		for _, vote := range state.CurrentVotes {
+			votes = append(votes, fmt.Sprintf("%s=%s", vote.AgentID, vote.Choice))
+		}
+		fmt.Fprintf(sb, "- **Current votes:** %s\n", strings.Join(votes, ", "))
+	}
+	if len(state.Objections) > 0 {
+		objections := make([]string, 0, len(state.Objections))
+		for _, objection := range state.Objections {
+			objections = append(objections, objection.ID)
+		}
+		fmt.Fprintf(sb, "- **Objections:** %s\n", strings.Join(objections, ", "))
+	}
+	if len(state.Dispositions) > 0 {
+		dispositions := make([]string, 0, len(state.Dispositions))
+		for _, disposition := range state.Dispositions {
+			dispositions = append(dispositions, fmt.Sprintf("%s=%s", disposition.ObjectionID, disposition.Status))
+		}
+		fmt.Fprintf(sb, "- **Dispositions:** %s\n", strings.Join(dispositions, ", "))
+	}
+	if state.Evidence != nil {
+		fmt.Fprintf(sb, "- **Evidence:** %s (%d source references)\n", state.Evidence.Summary, len(state.Evidence.SourceReferences))
+	}
+}
+
+func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptRecordOutput, terminalState *types.TerminalState) {
 	var result map[string]any
 	if err := json.Unmarshal([]byte(record.Content), &result); err != nil {
 		fmt.Fprintf(sb, "- **Synthesis:** %s\n", record.Content)
@@ -546,9 +715,10 @@ func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptReco
 	}
 	fmt.Fprintf(sb, "\n### Synthesis\n\n")
 	fmt.Fprintf(sb, "- **Record:** %d\n", record.RecordIndex)
+	labels := output.LabelsForTerminalState(terminalState)
 	if rec, ok := result["recommended_decision"]; ok {
 		if s, ok := rec.(string); ok && s != "" {
-			fmt.Fprintf(sb, "- **Recommended Decision:** %s\n", s)
+			fmt.Fprintf(sb, "- **%s:** %s\n", labels.Recommendation, output.ModelRecommendationProse(terminalState, s))
 		}
 	}
 	if c, ok := result["confidence"]; ok {
@@ -568,9 +738,9 @@ func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptReco
 	if agrs, ok := result["points_of_agreement"]; ok {
 		if list, ok := agrs.([]any); ok && len(list) > 0 {
 			fmt.Fprintln(sb)
-			fmt.Fprintln(sb, "### Points of Agreement")
+			fmt.Fprintf(sb, "### %s\n", labels.Agreements)
 			for _, arg := range list {
-				fmt.Fprintf(sb, "- %s\n", fmt.Sprint(arg))
+				fmt.Fprintf(sb, "- %s %s\n", labels.AgreementMark, fmt.Sprint(arg))
 			}
 		}
 	}
@@ -630,16 +800,17 @@ func transcriptEvidenceReferenceLine(source types.SourceReference) string {
 
 func configSummaryData(cfg *types.DeliberationConfig) map[string]any {
 	return map[string]any{
-		"valid":               true,
-		"topology":            cfg.Topology,
-		"agents":              cfg.Agents,
-		"agent_count":         len(cfg.Agents),
-		"consensus_threshold": cfg.ConsensusThreshold,
-		"min_rounds":          cfg.MinRounds,
-		"workdir":             cfg.Workdir,
-		"synthesis_model":     cfg.SynthesisModel,
-		"research":            cfg.ResearchEnabled,
-		"context":             cfg.ContextPaths,
+		"valid":                      true,
+		"topology":                   cfg.Topology,
+		"agents":                     cfg.Agents,
+		"agent_count":                len(cfg.Agents),
+		"consensus_threshold":        cfg.ConsensusThreshold,
+		"min_rounds":                 cfg.MinRounds,
+		"required_deliverable_items": cfg.RequiredDeliverableItems,
+		"workdir":                    cfg.Workdir,
+		"synthesis_model":            cfg.SynthesisModel,
+		"research":                   cfg.ResearchEnabled,
+		"context":                    cfg.ContextPaths,
 	}
 }
 
@@ -650,6 +821,9 @@ func configMarkdownRows(cfg *types.DeliberationConfig) [][]string {
 	}
 	if cfg.MinRounds > 0 {
 		rows = append(rows, []string{"Min rounds", fmt.Sprintf("%d", cfg.MinRounds)})
+	}
+	if cfg.RequiredDeliverableItems > 0 {
+		rows = append(rows, []string{"Required deliverable items", fmt.Sprintf("%d", cfg.RequiredDeliverableItems)})
 	}
 	if cfg.Workdir != "" {
 		rows = append(rows, []string{"Workdir", cfg.Workdir})
@@ -732,9 +906,10 @@ func writeValidationMarkdown(w io.Writer, title string, result validationResult)
 	}
 	if result.Valid {
 		rows := configMarkdownRows(&types.DeliberationConfig{
-			Topology:           types.Topology(fmt.Sprint(result.Summary["topology"])),
-			ConsensusThreshold: intFromAny(result.Summary["consensus_threshold"]),
-			SynthesisModel:     stringPtrFromAny(result.Summary["synthesis_model"]),
+			Topology:                 types.Topology(fmt.Sprint(result.Summary["topology"])),
+			ConsensusThreshold:       intFromAny(result.Summary["consensus_threshold"]),
+			RequiredDeliverableItems: intFromAny(result.Summary["required_deliverable_items"]),
+			SynthesisModel:           stringPtrFromAny(result.Summary["synthesis_model"]),
 		})
 		fmt.Fprintln(&sb)
 		fmt.Fprintln(&sb, "## Summary")
@@ -1122,11 +1297,12 @@ func configValuePolicy(def configKeyDef) string {
 
 func transcriptMetadataContract() map[string]any {
 	return map[string]any{
-		"storage_schema": "jsonl turn records; transcript metadata appears on the first record transcript field",
+		"storage_schema": "jsonl turn records; transcript metadata appears on the first record transcript field and terminal_state is derived from the last terminal control snapshot",
 		"fields": []map[string]any{
 			{"name": "schema_version", "type": "integer", "default": 1},
 			{"name": "cast", "type": "array", "items": []string{"id", "name", "persona", "provider_model", "color"}},
-			{"name": "config", "type": "object", "fields": []string{"agents", "topology", "consensus_threshold", "min_rounds", "workdir", "synthesis_model", "research", "context"}},
+			{"name": "config", "type": "object", "fields": []string{"agents", "topology", "consensus_threshold", "min_rounds", "required_deliverable_items", "workdir", "synthesis_model", "research", "context"}},
+			{"name": "terminal_state", "type": "object", "fields": []string{"phase", "proposal_version", "canonical_proposal", "current_votes", "objections", "dispositions", "claims", "evidence", "dissenting_agent_ids", "evidence_gap_claim_ids", "convergence", "outcome", "halt_reason"}},
 		},
 	}
 }
@@ -1164,6 +1340,6 @@ func metadataMarkdownRows(data map[string]any) [][]string {
 		{"Valid formats", strings.Join(validFormats, ", ")},
 		{"Supported inspection commands", "list, stats, show, validate, config get --all, metadata"},
 		{"Config keys", fmt.Sprintf("%d", len(configKeyDefs))},
-		{"Transcript metadata", "schema_version, cast, config"},
+		{"Transcript metadata", "schema_version, cast, config, terminal_state"},
 	}
 }

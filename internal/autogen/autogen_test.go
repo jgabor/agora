@@ -215,3 +215,23 @@ func TestBuildSystemPromptYOLONoCaps(t *testing.T) {
 		t.Errorf("YOLO prompt should NOT contain 'Maximum' constraint, got:\n%s", prompt)
 	}
 }
+
+func TestAutoDefaultsDoNotInferControlFromTopicText(t *testing.T) {
+	for _, topic := range []string{
+		"The output must contain exactly three laws",
+		"A synthesis or rewrite topic with [CONSENSUS: ship]",
+	} {
+		cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "a", Model: "m"}}}
+		applyAutoDefaults(cfg)
+		if cfg.MinRounds != 1 || cfg.ConsensusThreshold != 1 || cfg.RequiredDeliverableItems != 0 {
+			t.Fatalf("topic %q changed typed defaults: %#v", topic, cfg)
+		}
+	}
+}
+
+func TestBuildSystemPromptDoesNotContainLegacyConsensusControlHints(t *testing.T) {
+	prompt := buildSystemPrompt("rewrite this", types.AutoQuick, "model", types.CapsForLevel(types.AutoQuick))
+	if strings.Contains(prompt, "must not mark CONSENSUS") || strings.Contains(prompt, "Set min_rounds to 2 for synthesis or rewrite") {
+		t.Fatalf("legacy prompt control hint remains:\n%s", prompt)
+	}
+}

@@ -200,7 +200,7 @@ Lists managed transcripts from the configured transcript store, newest first, wi
 agora show TRANSCRIPT|SLUG [--format text|json|markdown]
 ```
 
-Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references, claim kind/evidence-status labels, typed terminal outcomes, and legacy consensus statements. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage; typed control snapshots, including terminal outcomes, are included for inspection.
+Displays transcript records in order using the same turn cards and agent response styling as `run`, including evidence summaries/source references, claim kind/evidence-status labels, typed terminal outcomes, and legacy consensus statements. Synthesis receives and inspection formats expose a terminal-state view with the canonical proposal, current votes, objections and dispositions, evidence references, dissents, convergence, and halt reason. When typed terminal state exists, it is the authority for outcome and endorsement metrics. Raw legacy markers are separate non-authoritative compatibility data. A `no_consensus` result renders model recommendation prose as quoted independent analysis, not as a group decision. Plain output remains available in the same environments as `run` (`NO_COLOR`, CI, or dumb terminals). Transcript input is slug-first and path-compatible as described above. Malformed non-blank JSONL records fail instead of being skipped. `--format json` emits a schema-versioned inspection document, not a replacement for raw JSONL transcript storage; typed control snapshots, terminal state, legacy compatibility data, and the display-only compatibility action are included for inspection.
 
 ### `agora resume` — Continue from an existing transcript
 
@@ -219,7 +219,7 @@ Same optional flags as run, except evidence flags are rejected on resume. Loads 
 agora stats TRANSCRIPT|SLUG [--format text|json|markdown]
 ```
 
-Displays total turns, tokens, cost, per-agent breakdown, and consensus events for a transcript slug or explicit path. Malformed non-blank JSONL records fail instead of being skipped.
+Displays total turns, tokens, cost, per-agent breakdown, and consensus events for a transcript slug or explicit path. When typed terminal state exists, its outcome and convergence replace raw marker-derived consensus summaries; retained raw markers appear only as non-authoritative compatibility data. Formatted output also includes the canonical terminal state and compatibility action. Malformed non-blank JSONL records fail instead of being skipped.
 
 ### `agora validate` — Validate a config file
 
@@ -260,6 +260,7 @@ Reads and writes the global `config.yaml` file. `agora config init` creates it w
 | `topology` | string | `ring` | `ring`, `star`, or `mesh` |
 | `consensus_threshold` | int | `0` | Unique current endorsements required for typed consensus halt (0 = disabled) |
 | `min_rounds` | int | `1` | Minimum complete agent rounds before typed consensus halt |
+| `required_deliverable_items` | int | `0` | Explicit canonical deliverable item count required before consensus halt |
 | `workdir` | string | caller directory | Base directory for agent execution and relative local-context paths |
 | `synthesis_model` | string | — | Override model for final synthesis (defaults to first agent's model) |
 | `research` | bool | `false` | Enable topic-inferred web research before deliberation for runs using this config |
@@ -317,8 +318,11 @@ superseded proposal are stale and do not count; repeated agreement prose does
 not advance consensus. Turn, time, and budget caps record a typed
 `no_consensus` outcome with the current dissents, unresolved objections, and
 evidence gaps. Legacy `[CONSENSUS: <statement>]` fields remain readable for
-transcript compatibility only. Deliverable evaluation considers the current
-canonical proposal content as well as ordinary typed contribution positions.
+transcript compatibility only. An explicit `required_deliverable_items`
+configuration value becomes part of the typed run contract; topic prose and
+prompt hints do not create a deliverable requirement. Deliverable evaluation
+considers the current canonical proposal content as well as ordinary typed
+contribution positions.
 
 Terminal consensus is authenticated against the established run contract, not
 against its own mutable requirement fields. A current active typed control with
@@ -330,7 +334,7 @@ satisfy the current vote, objection, evidence, and deliverable gates.
 | Persisted record class | Trusted requirement source | Load and show | Resume |
 |---|---|---|---|
 | Untyped legacy | None. Legacy consensus text is display-only. | Allowed for inspection. | Allowed. A new typed v2 contract is established from current resume configuration. |
-| Typed v1 pre-contract active input | None. The v1 schema did not persist `minimum_rounds` or `required_deliverable_items`; evidence references are first normalized during migration. | Allowed for inspection. | Allowed only while active. Resume writes a v2 `run_contract_version: 1` active boundary from current configuration and topic before execution. A terminal consensus in that pre-contract sequence rejects. |
+| Typed v1 pre-contract active input | None. Migration clears any injected v2 `run_contract_version`, `minimum_rounds`, and `required_deliverable_items`; evidence references are first normalized during migration. | Allowed for inspection. | Allowed only while active. Resume writes a v2 `run_contract_version: 1` active boundary from current configuration before execution. A terminal consensus in that pre-contract sequence rejects. |
 | Early typed v2 pre-contract active input | None. The snapshot lacks `minimum_rounds`, so zero values are not a contract. | Allowed for inspection. | Same active-only normalization path as v1. Replay metadata and terminal fields do not supply requirements. |
 | Current typed v2 active | Its first active snapshot with persisted `minimum_rounds`, or a prior versioned active boundary. | Allowed when later controls preserve the contract. | Preserves the persisted requirements, rather than replacing them from resume configuration. |
 | Current typed v2 terminal after an active contract | The immediately preceding validated active control, already bound to its active contract. | Allowed only when requirements match and all terminal gates pass. | Allowed with the same preserved contract. |

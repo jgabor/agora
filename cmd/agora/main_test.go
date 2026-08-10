@@ -1983,6 +1983,156 @@ func TestShowCommandRendersReadableTurnsInRecordOrder(t *testing.T) {
 	}
 }
 
+func TestShowStatsAndResumePreserveNoConsensusTerminalState(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeConfig(t, "")
+	path := filepath.Join(dir, "no-consensus.jsonl")
+	terminal := terminalNoConsensusFixture()
+	records := []types.TurnRecord{
+		{Turn: -2, AgentID: "moderator", Timestamp: 1, Evidence: &types.EvidenceBundle{Summary: "trusted evidence", SourceReferences: []types.SourceReference{{Title: "spec", URL: "https://example.test/spec"}}}},
+		{Turn: 0, AgentID: "alpha", Timestamp: 2, Content: "legacy marker one", Consensus: true, ConsensusStatement: "legacy marker one"},
+		{Turn: 1, AgentID: "beta", Timestamp: 3, Content: "legacy marker two", Consensus: true, ConsensusStatement: "legacy marker two"},
+		{Turn: -1, AgentID: "moderator", Timestamp: 4, Control: terminal},
+		{Turn: 2, AgentID: "synthesizer", Timestamp: 5, Content: `{"recommended_decision":"The group consensus is to ship immediately.","confidence":"medium","points_of_agreement":["Everyone agrees to ship."],"key_arguments":[],"unresolved_tensions":[]}`},
+	}
+	if err := os.WriteFile(path, []byte(transcriptContent(t, records...)), 0o644); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	jsonOut, err := executeShowCommandFormat(t, formatJSON, path)
+	if err != nil {
+		t.Fatalf("show json: %v", err)
+	}
+	var showDoc struct {
+		Data struct {
+			TerminalState   *types.TerminalState       `json:"terminal_state"`
+			LegacyConsensus *types.LegacyConsensusData `json:"legacy_consensus"`
+			Records         []struct {
+				Consensus          bool                          `json:"consensus"`
+				LegacyConsensus    *types.LegacyConsensusMarker  `json:"legacy_consensus_marker"`
+				SynthesisAuthority *transcriptSynthesisAuthority `json:"synthesis_authority"`
+			} `json:"records"`
+			Compatibility struct {
+				ResumeAction string `json:"resume_action"`
+			} `json:"compatibility"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &showDoc); err != nil {
+		t.Fatalf("decode show json: %v", err)
+	}
+	state := showDoc.Data.TerminalState
+	if state == nil || state.Phase != types.PhaseTerminal || state.ProposalVersion != 1 || state.CanonicalProposal == nil || state.CanonicalProposal.Content != "canonical proposal" {
+		t.Fatalf("show terminal proposal: %#v", state)
+	}
+	if len(state.CurrentVotes) != 2 || len(state.DissentingAgentIDs) != 1 || len(state.EvidenceGapClaimIDs) != 1 || state.HaltReason != "max_turns (2)" {
+		t.Fatalf("show terminal outcome: %#v", state)
+	}
+	if state.Evidence == nil || len(state.Evidence.SourceReferences) != 1 || showDoc.Data.Compatibility.ResumeAction != "preserve_terminal_state" {
+		t.Fatalf("show evidence or compatibility: %#v %#v", state, showDoc.Data.Compatibility)
+	}
+	if showDoc.Data.LegacyConsensus == nil || !showDoc.Data.LegacyConsensus.NonAuthoritative || len(showDoc.Data.LegacyConsensus.Markers) != 2 || showDoc.Data.LegacyConsensus.TrailingStreak != 2 {
+		t.Fatalf("show legacy consensus compatibility: %#v", showDoc.Data.LegacyConsensus)
+	}
+	if len(showDoc.Data.Records) < 4 || showDoc.Data.Records[1].Consensus || showDoc.Data.Records[1].LegacyConsensus == nil || showDoc.Data.Records[2].Consensus || showDoc.Data.Records[2].LegacyConsensus == nil {
+		t.Fatalf("show raw consensus was not separated: %#v", showDoc.Data.Records)
+	}
+	if len(showDoc.Data.Records) < 5 || showDoc.Data.Records[4].SynthesisAuthority == nil || showDoc.Data.Records[4].SynthesisAuthority.RecommendationScope != "independent" || !showDoc.Data.Records[4].SynthesisAuthority.ModelRecommendationNonAuthoritative {
+		t.Fatalf("show synthesis authority: %#v", showDoc.Data.Records)
+	}
+	assertStringNotContains(t, jsonOut, `"consensus":true`)
+
+	textOut, err := executeShowCommandFormat(t, formatText, path)
+	if err != nil {
+		t.Fatalf("show text: %v", err)
+	}
+	for _, want := range []string{"Terminal state", "canonical proposal", "current votes: alpha=endorse, beta=reject", "halt reason: max_turns (2)", "Legacy consensus compatibility (non-authoritative)", "[LEGACY COMPATIBILITY, NON-AUTHORITATIVE]", "Quoted independent analysis (non-authoritative; not group consensus)", `"The group consensus is to ship immediately."`, "[NOT CONSENSUS] Everyone agrees to ship.", "resume action: preserve_terminal_state"} {
+		assertStringContains(t, textOut, want)
+	}
+	assertStringNotContains(t, textOut, "[CONSENSUS]")
+	assertStringNotContains(t, textOut, "AGREEMENT")
+
+	markdownOut, err := executeShowCommandFormat(t, formatMarkdown, path)
+	if err != nil {
+		t.Fatalf("show markdown: %v", err)
+	}
+	for _, want := range []string{"## Terminal state", "**Halt reason:** max_turns (2)", "**Current votes:** alpha=endorse, beta=reject", "## Legacy consensus compatibility (non-authoritative)", "**Legacy consensus marker (non-authoritative):** true", "Quoted independent analysis (non-authoritative; not group consensus)", `"The group consensus is to ship immediately."`, "[NOT CONSENSUS] Everyone agrees to ship.", "**Resume action:** preserve_terminal_state"} {
+		assertStringContains(t, markdownOut, want)
+	}
+	assertStringNotContains(t, markdownOut, "[CONSENSUS]")
+	assertStringNotContains(t, markdownOut, "**Consensus:** true")
+
+	statsJSON, err := executeStatsCommand(t, formatJSON, path)
+	if err != nil {
+		t.Fatalf("stats json: %v", err)
+	}
+	var statsDoc struct {
+		Data struct {
+			TerminalState   *types.TerminalState       `json:"terminal_state"`
+			ConsensusEvents []any                      `json:"consensus_events"`
+			LegacyConsensus *types.LegacyConsensusData `json:"legacy_consensus"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(statsJSON), &statsDoc); err != nil {
+		t.Fatalf("decode stats json: %v", err)
+	}
+	if statsDoc.Data.TerminalState == nil || statsDoc.Data.TerminalState.HaltReason != "max_turns (2)" || len(statsDoc.Data.TerminalState.EvidenceGapClaimIDs) != 1 {
+		t.Fatalf("stats terminal state: %#v", statsDoc.Data.TerminalState)
+	}
+	if len(statsDoc.Data.ConsensusEvents) != 0 || statsDoc.Data.LegacyConsensus == nil || !statsDoc.Data.LegacyConsensus.NonAuthoritative || len(statsDoc.Data.LegacyConsensus.Markers) != 2 || statsDoc.Data.LegacyConsensus.TrailingStreak != 2 {
+		t.Fatalf("stats consensus authority: events=%#v legacy=%#v", statsDoc.Data.ConsensusEvents, statsDoc.Data.LegacyConsensus)
+	}
+	assertStringNotContains(t, statsJSON, `"consensus_events":[{"turn"`)
+	statsMarkdown, err := executeStatsCommand(t, formatMarkdown, path)
+	if err != nil {
+		t.Fatalf("stats markdown: %v", err)
+	}
+	assertStringContains(t, statsMarkdown, "Terminal halt reason")
+	assertStringContains(t, statsMarkdown, "Terminal canonical proposal")
+	assertStringContains(t, statsMarkdown, "Terminal current votes")
+	assertStringContains(t, statsMarkdown, "Legacy consensus markers (non-authoritative)")
+	assertStringContains(t, statsMarkdown, "Compatibility resume action")
+	assertStringNotContains(t, statsMarkdown, "Consensus events")
+
+	oldStatsFormat := statsFormat
+	statsFormat = formatText
+	t.Cleanup(func() { statsFormat = oldStatsFormat })
+	var statsTextErr error
+	statsText := captureStdout(t, func() {
+		statsTextErr = statsCmd.RunE(&cobra.Command{}, []string{path})
+	})
+	if statsTextErr != nil {
+		t.Fatalf("stats text: %v", statsTextErr)
+	}
+	assertStringContains(t, statsText, "Legacy consensus compatibility (non-authoritative)")
+	assertStringNotContains(t, statsText, "Consensus Events:")
+	assertStringNotContains(t, statsText, "[CONSENSUS]")
+
+	configPath := filepath.Join(dir, "config.yaml")
+	writeValidConfig(t, configPath)
+	resumedPath := filepath.Join(dir, "resumed.jsonl")
+	restore := configureResumeGlobals(configPath, path, resumedPath)
+	resumeOut := captureStdout(t, func() {
+		if err := resumeCmd.RunE(artifactCommand(t, resumedPath), nil); err != nil {
+			t.Fatalf("resume terminal-only no-consensus: %v", err)
+		}
+	})
+	restore()
+	assertStringContains(t, resumeOut, "resume action: preserve_terminal_state")
+	assertStringContains(t, resumeOut, "Typed endorsements")
+	assertStringContains(t, resumeOut, "Legacy consensus compatibility (non-authoritative)")
+	assertStringNotContains(t, resumeOut, "Agreement")
+	resumed, err := loadTranscriptFile(resumedPath)
+	if err != nil {
+		t.Fatalf("load resumed transcript: %v", err)
+	}
+	resumedState := types.TerminalStateFromRecords(resumed)
+	if resumedState == nil || resumedState.HaltReason != state.HaltReason || len(resumedState.CurrentVotes) != len(state.CurrentVotes) || len(resumedState.EvidenceGapClaimIDs) != len(state.EvidenceGapClaimIDs) {
+		t.Fatalf("resume lost terminal state: %#v", resumedState)
+	}
+}
+
 func TestShowCommandReportsEmptyTranscript(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, "")
@@ -2148,6 +2298,7 @@ func TestShowAndResumeRequireTerminalConsensusRunContract(t *testing.T) {
 		t.Fatalf("show terminal-first error: got %v", err)
 	}
 	assertStringContains(t, showOut, "terminal consensus has no established run contract")
+	assertStringContains(t, showOut, "reject_unauthenticated_terminal_consensus")
 
 	validOutput := filepath.Join(dir, "valid-resume.jsonl")
 	restore := configureResumeGlobals(configPath, validPath, validOutput)
@@ -2169,6 +2320,43 @@ func TestShowAndResumeRequireTerminalConsensusRunContract(t *testing.T) {
 	}
 }
 
+func TestShowAndResumeRejectInjectedTypedV1TerminalConsensus(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, "")
+	configPath := filepath.Join(dir, "config.yaml")
+	writeValidConfig(t, configPath)
+
+	active, terminal := terminalConsensusFixture()
+	active.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	terminal.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	active.Proposals[0].Content = "1. An agent must preserve the run contract."
+	active.Convergence.RunContractVersion = types.RunContractVersion
+	active.Convergence.RequiredDeliverableItems = 1
+	terminal.Convergence.RunContractVersion = types.RunContractVersion
+	terminal.Convergence.RequiredDeliverableItems = 1
+	path := filepath.Join(dir, "injected-v1-terminal.jsonl")
+	if err := os.WriteFile(path, []byte(transcriptContent(t,
+		types.TurnRecord{Turn: 0, AgentID: "alpha", Control: active},
+		types.TurnRecord{Turn: -1, AgentID: "moderator", Control: terminal},
+	)), 0o644); err != nil {
+		t.Fatalf("write injected v1 transcript: %v", err)
+	}
+
+	showOut, err := executeShowCommandFormat(t, formatJSON, path)
+	if err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+		t.Fatalf("show injected v1 terminal consensus: %v", err)
+	}
+	assertStringContains(t, showOut, "reject_unauthenticated_terminal_consensus")
+
+	resumePath := filepath.Join(dir, "resume.jsonl")
+	restore := configureResumeGlobals(configPath, path, resumePath)
+	err = resumeCmd.RunE(artifactCommand(t, resumePath), nil)
+	restore()
+	if err == nil || !strings.Contains(err.Error(), "terminal consensus has no established run contract") {
+		t.Fatalf("resume injected v1 terminal consensus: %v", err)
+	}
+}
+
 func TestShowAndResumeHistoricalPreContractTranscriptContracts(t *testing.T) {
 	const topic = "The final output must contain exactly three laws"
 	tests := []struct {
@@ -2187,6 +2375,7 @@ func TestShowAndResumeHistoricalPreContractTranscriptContracts(t *testing.T) {
 			if err := os.WriteFile(configPath, []byte(`topology: ring
 consensus_threshold: 1
 min_rounds: 1
+required_deliverable_items: 3
 agents:
   - id: alpha
     model: test/model
@@ -2200,19 +2389,28 @@ agents:
 			if err := os.WriteFile(activePath, []byte(activeLine+"\n"), 0o644); err != nil {
 				t.Fatalf("write historical active transcript: %v", err)
 			}
-			if _, err := executeShowCommandFormat(t, formatJSON, activePath); err != nil {
+			showOut, err := executeShowCommandFormat(t, formatJSON, activePath)
+			if err != nil {
 				t.Fatalf("show historical active transcript: %v", err)
 			}
+			wantAction := "establish_run_contract_on_resume"
+			if tt.protocolVersion == types.LegacyDeliberationProtocolVersion {
+				wantAction = "migrate_v1_then_establish_run_contract"
+			}
+			assertStringContains(t, showOut, wantAction)
 
 			outputPath := filepath.Join(dir, "historical-resume.jsonl")
 			restore := configureResumeGlobals(configPath, activePath, outputPath)
 			resumeFlags.Topic = topic
 			resumeFlags.MaxTurns = 1
-			err := resumeCmd.RunE(artifactCommand(t, outputPath), nil)
+			resumeOut := captureStdout(t, func() {
+				err = resumeCmd.RunE(artifactCommand(t, outputPath), nil)
+			})
 			restore()
 			if err != nil {
 				t.Fatalf("resume historical active transcript: %v", err)
 			}
+			assertStringContains(t, resumeOut, "resume action: "+wantAction)
 			records, err := loadTranscriptFile(outputPath)
 			if err != nil {
 				t.Fatalf("load normalized resume transcript: %v", err)
@@ -2441,6 +2639,38 @@ func terminalConsensusFixture() (*types.DeliberationControlState, *types.Deliber
 		EvidenceGapClaimIDs:    []string{},
 	}
 	return active, &terminal
+}
+
+func terminalNoConsensusFixture() *types.DeliberationControlState {
+	terminal := types.NewDeliberationControlState([]string{"alpha", "beta"}, 1)
+	terminal.Phase = types.PhaseTerminal
+	terminal.CurrentProposalVersion = 1
+	terminal.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "canonical proposal"}}
+	terminal.Objections = []types.Objection{{ID: "obj-1", AgentID: "beta", ProposalVersion: 1, Summary: "rollback evidence is missing"}}
+	terminal.Dispositions = []types.ObjectionDisposition{{ObjectionID: "obj-1", AgentID: "alpha", Status: types.DispositionSustained, Rationale: "not resolved"}}
+	terminal.Claims = []types.ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceUnverified}}
+	terminal.Votes = []types.ProposalVote{
+		{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
+		{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteReject},
+	}
+	terminal.Convergence = types.ConvergenceSignals{
+		RunContractVersion:       types.RunContractVersion,
+		CurrentEndorsements:      1,
+		RequiredEndorsements:     2,
+		MinimumRounds:            1,
+		UnresolvedObjections:     1,
+		EvidenceGaps:             1,
+		RequiredDeliverableItems: 0,
+	}
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeNoConsensus,
+		ProposalVersion:        1,
+		Reason:                 "max_turns (2)",
+		DissentingAgentIDs:     []string{"beta"},
+		UnresolvedObjectionIDs: []string{"obj-1"},
+		EvidenceGapClaimIDs:    []string{"claim-1"},
+	}
+	return terminal
 }
 
 func historicalPreContractControlLine(t *testing.T, protocolVersion string, includeContributions, terminal, terminalRequirements bool) string {
@@ -2868,6 +3098,20 @@ func TestSynthesisUnresolvedAfterConsensus(t *testing.T) {
 	}
 	if synthesisUnresolvedAfterConsensus(noneSemicolon) {
 		t.Fatal("expected no warning when tension item begins with none")
+	}
+
+	typedNoConsensus := session.Result{
+		HaltedBy: "consensus (legacy marker)",
+		Records:  []types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: terminalNoConsensusFixture()}},
+		Synthesis: map[string]any{
+			"confidence": "low",
+			"unresolved_tensions": []any{
+				"The model claims consensus despite the terminal outcome.",
+			},
+		},
+	}
+	if synthesisUnresolvedAfterConsensus(typedNoConsensus) {
+		t.Fatal("typed no-consensus outcome must override a legacy halt string")
 	}
 }
 

@@ -267,6 +267,26 @@ type TerminalOutcome struct {
 	EvidenceGapClaimIDs    []string            `yaml:"evidence_gap_claim_ids" json:"evidence_gap_claim_ids"`
 }
 
+// TerminalState is the canonical terminal view used by synthesis and
+// transcript inspection. It is derived only from the last persisted terminal
+// control snapshot and references-only evidence records.
+type TerminalState struct {
+	Phase               DeliberationPhase         `yaml:"phase" json:"phase"`
+	ProposalVersion     int                       `yaml:"proposal_version" json:"proposal_version"`
+	CanonicalProposal   *CanonicalProposal        `yaml:"canonical_proposal" json:"canonical_proposal"`
+	CurrentVotes        []ProposalVote            `yaml:"current_votes" json:"current_votes"`
+	Objections          []Objection               `yaml:"objections" json:"objections"`
+	Dispositions        []ObjectionDisposition    `yaml:"dispositions" json:"dispositions"`
+	Claims              []ClaimEvidence           `yaml:"claims" json:"claims"`
+	Evidence            *EvidenceBundle           `yaml:"evidence" json:"evidence"`
+	DissentingAgentIDs  []string                  `yaml:"dissenting_agent_ids" json:"dissenting_agent_ids"`
+	EvidenceGapClaimIDs []string                  `yaml:"evidence_gap_claim_ids" json:"evidence_gap_claim_ids"`
+	Convergence         ConvergenceSignals        `yaml:"convergence" json:"convergence"`
+	Outcome             TerminalOutcome           `yaml:"outcome" json:"outcome"`
+	HaltReason          string                    `yaml:"halt_reason" json:"halt_reason"`
+	Control             *DeliberationControlState `yaml:"control" json:"control"`
+}
+
 // ConsensusEvaluation is the typed result of evaluating the control-state
 // consensus gates. It intentionally contains no model prose: an endorsement
 // counts only when it is the unique current vote for the current proposal.
@@ -380,6 +400,66 @@ func (s *DeliberationControlState) CurrentVotes() []ProposalVote {
 		}
 	}
 	return current
+}
+
+// CurrentProposal returns a copy of the current canonical proposal, if one
+// exists. It never selects a proposal from prose or a stale vote.
+func (s *DeliberationControlState) CurrentProposal() *CanonicalProposal {
+	if s == nil || s.CurrentProposalVersion == 0 {
+		return nil
+	}
+	for _, proposal := range s.Proposals {
+		if proposal.Version == s.CurrentProposalVersion {
+			copy := proposal
+			return &copy
+		}
+	}
+	return nil
+}
+
+// TerminalStateFromRecords returns the terminal state represented by the last
+// terminal control snapshot. Evidence is copied as persisted references only,
+// so synthesis and inspection never regain local context source content.
+func TerminalStateFromRecords(records []TurnRecord) *TerminalState {
+	var control *DeliberationControlState
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Control != nil && records[i].Control.Phase == PhaseTerminal {
+			control = records[i].Control
+			break
+		}
+	}
+	if control == nil {
+		return nil
+	}
+
+	var evidence *EvidenceBundle
+	for _, record := range records {
+		if record.Evidence == nil {
+			continue
+		}
+		evidence = &EvidenceBundle{
+			Summary:          record.Evidence.Summary,
+			SourceReferences: append([]SourceReference{}, record.Evidence.SourceReferences...),
+		}
+		break
+	}
+
+	return &TerminalState{
+		Phase:               control.Phase,
+		ProposalVersion:     control.CurrentProposalVersion,
+		CanonicalProposal:   control.CurrentProposal(),
+		CurrentVotes:        append([]ProposalVote{}, control.CurrentVotes()...),
+		Objections:          append([]Objection{}, control.Objections...),
+		Dispositions:        append([]ObjectionDisposition{}, control.Dispositions...),
+		Claims:              append([]ClaimEvidence{}, control.Claims...),
+		Evidence:            evidence,
+		DissentingAgentIDs:  append([]string{}, control.Outcome.DissentingAgentIDs...),
+		EvidenceGapClaimIDs: append([]string{}, control.Outcome.EvidenceGapClaimIDs...),
+		Convergence:         control.Convergence,
+		Outcome:             control.Outcome,
+		HaltReason:          control.Outcome.Reason,
+		Control:             control,
+	}
 }
 
 // UnresolvedObjections returns objections without a resolving or withdrawing

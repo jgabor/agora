@@ -368,9 +368,16 @@ func sessionHooks(outMgr *output.OutputManager) session.Hooks {
 
 func printSessionResult(outMgr *output.OutputManager, result session.Result, completeMsg string) error {
 	outMgr.FinalStats(result.Records, result.State)
+	haltedBy := result.HaltedBy
+	if terminalState := types.TerminalStateFromRecords(result.Records); terminalState != nil {
+		haltedBy = terminalState.HaltReason
+	}
+	if result.Compatibility != nil {
+		outMgr.ProtocolCompatibility(*result.Compatibility)
+	}
 	if result.Failure != nil {
 		outMgr.Info(fmt.Sprintf("Transcript: %s", result.OutputPath))
-		return fmt.Errorf("%s", outMgr.HaltedByText(result.HaltedBy))
+		return fmt.Errorf("%s", outMgr.HaltedByText(haltedBy))
 	}
 	if result.Synthesis != nil {
 		outMgr.SynthesizeHeader()
@@ -389,12 +396,19 @@ func printSessionResult(outMgr *output.OutputManager, result session.Result, com
 	}
 	outMgr.Success(completeMsg)
 	outMgr.Success(fmt.Sprintf("Transcript: %s", result.OutputPath))
-	outMgr.Success(outMgr.HaltedByDisplay(result.HaltedBy))
+	outMgr.Success(outMgr.HaltedByDisplay(haltedBy))
 	return nil
 }
 
 func synthesisUnresolvedAfterConsensus(result session.Result) bool {
-	if result.Synthesis == nil || !strings.HasPrefix(result.HaltedBy, "consensus") {
+	if result.Synthesis == nil {
+		return false
+	}
+	if terminalState := types.TerminalStateFromRecords(result.Records); terminalState != nil {
+		if terminalState.Outcome.Kind != types.OutcomeConsensus {
+			return false
+		}
+	} else if !strings.HasPrefix(result.HaltedBy, "consensus") {
 		return false
 	}
 	if confidence, ok := result.Synthesis["confidence"].(string); ok && strings.EqualFold(confidence, "low") {
@@ -454,7 +468,7 @@ var statsCmd = &cobra.Command{
 			writeFormattedCommandError(cmd, statsFormat, "stats", "Transcript Statistics Error", commandErrorData(args[0], path, "transcript_load_failed", loadErr))
 			return loadErr
 		}
-		records, err := loadTranscriptFile(path)
+		records, protocol, err := loadTranscriptFileWithProtocol(path)
 		if err != nil {
 			loadErr := fmt.Errorf("loading transcript: %w", err)
 			writeFormattedCommandError(cmd, statsFormat, "stats", "Transcript Statistics Error", commandErrorData(args[0], path, "transcript_load_failed", loadErr))
@@ -467,7 +481,7 @@ var statsCmd = &cobra.Command{
 		}
 
 		stats := types.ComputeStats(records)
-		statsData := statsToDict(stats)
+		statsData := statsToDictWithCompatibility(stats, transcript.CompatibilityFromProtocolInfo(protocol))
 		switch statsFormat {
 		case formatJSON:
 			return writeJSON(cmd.OutOrStdout(), "stats", statsData)
@@ -504,7 +518,7 @@ var showCmd = &cobra.Command{
 			}
 			return fmt.Errorf("loading transcript: %w", err)
 		}
-		records, err := loadTranscriptFile(path)
+		records, protocol, err := loadTranscriptFileWithProtocol(path)
 		if err != nil {
 			if showFormat == formatJSON || showFormat == formatMarkdown {
 				writeFormattedCommandError(cmd, showFormat, "show", "Transcript Error", commandErrorData(args[0], path, "transcript_load_failed", err))
@@ -519,7 +533,8 @@ var showCmd = &cobra.Command{
 			return err
 		}
 
-		showData := transcriptShowData(path, records)
+		compatibility := transcript.CompatibilityFromProtocolInfo(protocol)
+		showData := transcriptShowDataWithCompatibility(path, records, compatibility)
 		switch showFormat {
 		case formatJSON:
 			return writeJSON(cmd.OutOrStdout(), "show", showData)
@@ -527,7 +542,7 @@ var showCmd = &cobra.Command{
 			return writeTranscriptMarkdown(cmd.OutOrStdout(), showData)
 		}
 
-		output.RenderTranscript(cmd.OutOrStdout(), records)
+		output.RenderTranscriptWithCompatibility(cmd.OutOrStdout(), records, compatibility)
 		return nil
 	},
 }
@@ -799,7 +814,7 @@ var resumeCmd = &cobra.Command{
 		}
 		agent.ApplyReadOnlyPromptGuard(cfg)
 
-		sourceRecords, err := loadTranscriptFileLenient(sourcePath)
+		sourceRecords, sourceProtocol, err := loadTranscriptFileLenientWithProtocol(sourcePath)
 		if err != nil {
 			return fmt.Errorf("loading source transcript: %w", err)
 		}
@@ -831,7 +846,8 @@ var resumeCmd = &cobra.Command{
 				Ledger:      ledgerPolicy,
 				Synthesize:  runSynthesize || autoMode,
 			},
-			SourceRecords: sourceRecords,
+			SourceRecords:  sourceRecords,
+			SourceProtocol: &sourceProtocol,
 		}
 		if autoMode {
 			req.Auto = sessionAutoCaps(cmd, levelCaps)
@@ -1083,14 +1099,15 @@ func loadTranscriptFile(path string) ([]types.TurnRecord, error) {
 	return transcript.LoadFileStrict(path)
 }
 
-// loadTranscriptFileLenient loads a transcript for resume: malformed ledger
-// records emit a warning to stderr and are skipped so resume continues with
-// best-effort state, while records that fail JSON parsing still fail loading.
-func loadTranscriptFileLenient(path string) ([]types.TurnRecord, error) {
-	return transcript.LoadFileLenient(path, os.Stderr)
+func loadTranscriptFileWithProtocol(path string) ([]types.TurnRecord, transcript.ProtocolInfo, error) {
+	return transcript.LoadFileStrictWithProtocol(path)
 }
 
-func statsToDict(s types.DeliberationStats) map[string]any {
+func loadTranscriptFileLenientWithProtocol(path string) ([]types.TurnRecord, transcript.ProtocolInfo, error) {
+	return transcript.LoadFileLenientWithProtocol(path, os.Stderr)
+}
+
+func statsToDictWithCompatibility(s types.DeliberationStats, compatibility transcript.CompatibilityState) map[string]any {
 	perAgent := make(map[string]any, len(s.PerAgent))
 	for id, as := range s.PerAgent {
 		perAgent[id] = map[string]any{
@@ -1100,7 +1117,7 @@ func statsToDict(s types.DeliberationStats) map[string]any {
 		}
 	}
 
-	var consensusEvents []any
+	consensusEvents := make([]any, 0, len(s.ConsensusEvents))
 	for _, ce := range s.ConsensusEvents {
 		consensusEvents = append(consensusEvents, map[string]any{
 			"turn":      ce.Turn,
@@ -1109,12 +1126,21 @@ func statsToDict(s types.DeliberationStats) map[string]any {
 		})
 	}
 
-	return map[string]any{
+	terminalState := types.TerminalStateFromRecords(s.Records)
+	data := map[string]any{
 		"total_turns":               s.TotalTurns,
 		"total_tokens":              s.TotalTokens,
 		"total_cost":                s.TotalCost,
 		"avg_turn_duration_seconds": s.AvgTurnDuration,
 		"per_agent":                 perAgent,
 		"consensus_events":          consensusEvents,
+		"terminal_state":            terminalState,
+		"compatibility":             compatibility,
 	}
+	if terminalState != nil {
+		if legacyConsensus := types.LegacyConsensusDataFromRecords(s.Records); legacyConsensus != nil {
+			data["legacy_consensus"] = legacyConsensus
+		}
+	}
+	return data
 }

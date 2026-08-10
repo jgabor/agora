@@ -115,6 +115,49 @@ func TestRunCreatesVersionedDeliberationControlState(t *testing.T) {
 	}
 }
 
+func TestRunDoesNotInferDeliverableRequirementFromTopic(t *testing.T) {
+	cfg := &types.DeliberationConfig{
+		Topology: types.TopologyRing,
+		Agents:   []types.AgentConfig{{ID: "alpha", Model: "test/model"}},
+	}
+	result, err := session.Run(session.RunRequest{
+		Topic:      "The final output must contain exactly three laws",
+		Config:     cfg,
+		OutputPath: t.TempDir() + "/run.jsonl",
+		MaxTurns:   1,
+		TimeLimit:  60,
+		DryRun:     true,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.State.Control.Convergence.RequiredDeliverableItems != 0 {
+		t.Fatalf("topic prose set deliverable requirement: %#v", result.State.Control.Convergence)
+	}
+}
+
+func TestRunPersistsExplicitDeliverableRequirement(t *testing.T) {
+	cfg := &types.DeliberationConfig{
+		Topology:                 types.TopologyRing,
+		RequiredDeliverableItems: 3,
+		Agents:                   []types.AgentConfig{{ID: "alpha", Model: "test/model"}},
+	}
+	result, err := session.Run(session.RunRequest{
+		Topic:      "ordinary topic",
+		Config:     cfg,
+		OutputPath: t.TempDir() + "/run.jsonl",
+		MaxTurns:   1,
+		TimeLimit:  60,
+		DryRun:     true,
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.State.Control.Convergence.RequiredDeliverableItems != 3 {
+		t.Fatalf("explicit requirement lost: %#v", result.State.Control.Convergence)
+	}
+}
+
 func TestResumePreservesSourceMetadata(t *testing.T) {
 	dir := t.TempDir()
 	outputPath := dir + "/resume.jsonl"
@@ -319,6 +362,47 @@ func TestResumeMigratesPersistedTypedV1BeforeExecution(t *testing.T) {
 	}
 }
 
+func TestResumeEstablishesV2BoundaryForInjectedTypedV1Requirements(t *testing.T) {
+	model := "test/model"
+	proposal := "1. An agent must verify claims.\n2. An agent must preserve evidence.\n3. An agent must record dissent."
+	active := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	active.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	active.Phase = types.PhaseVoting
+	active.CurrentProposalVersion = 1
+	active.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: proposal}}
+	active.Votes = []types.ProposalVote{{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse}}
+	active.Contributions = []types.AgentContribution{{AgentID: "alpha", Turn: 0, Position: "historical position", ProposalAction: types.ContributionProposalAction{Kind: types.ProposalActionNone}}}
+	active.Convergence = types.ConvergenceSignals{
+		RunContractVersion:       types.RunContractVersion,
+		RequiredEndorsements:     1,
+		MinimumRounds:            1,
+		RequiredDeliverableItems: 3,
+	}
+	result, err := session.Resume(session.ResumeRequest{
+		RunRequest: session.RunRequest{
+			Topic: "resume injected v1", OutputPath: filepath.Join(t.TempDir(), "resume.jsonl"), MaxTurns: 1, TimeLimit: 60, DryRun: true,
+			Config: &types.DeliberationConfig{
+				Topology: types.TopologyRing, ConsensusThreshold: 1, MinRounds: 1, RequiredDeliverableItems: 3,
+				Agents: []types.AgentConfig{{ID: "alpha", Model: model}},
+			},
+		},
+		SourceRecords: []types.TurnRecord{{Turn: 0, AgentID: "alpha", Model: &model, Content: "historical", Control: active}},
+	}, session.Hooks{})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if len(result.Records) < 3 || result.Records[0].Control.Convergence.RunContractVersion != 0 ||
+		result.Records[0].Control.Convergence.MinimumRounds != 0 || result.Records[0].Control.Convergence.RequiredDeliverableItems != 0 {
+		t.Fatalf("migrated v1 source retained injected requirements: %#v", result.Records)
+	}
+	boundary := result.Records[1].Control
+	if boundary == nil || boundary.Convergence.RunContractVersion != types.RunContractVersion ||
+		boundary.Convergence.MinimumRounds != 1 || boundary.Convergence.RequiredDeliverableItems != 3 ||
+		result.State.Control.Outcome.Kind != types.OutcomeConsensus {
+		t.Fatalf("authorized v2 boundary did not produce typed consensus: boundary=%#v state=%#v", boundary, result.State.Control)
+	}
+}
+
 func TestResumeEstablishesContractForHistoricalTypedActiveSnapshots(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -336,10 +420,11 @@ func TestResumeEstablishesContractForHistoricalTypedActiveSnapshots(t *testing.T
 				Config:        &types.DeliberationConfig{ConsensusThreshold: 99, MinRounds: 99},
 			}
 			cfg := &types.DeliberationConfig{
-				Topology:           types.TopologyRing,
-				ConsensusThreshold: 1,
-				MinRounds:          1,
-				Agents:             []types.AgentConfig{{ID: "alpha", Model: "test/model"}},
+				Topology:                 types.TopologyRing,
+				ConsensusThreshold:       1,
+				MinRounds:                1,
+				RequiredDeliverableItems: 3,
+				Agents:                   []types.AgentConfig{{ID: "alpha", Model: "test/model"}},
 			}
 			outputPath := filepath.Join(t.TempDir(), "resume.jsonl")
 			result, err := session.Resume(session.ResumeRequest{
@@ -589,7 +674,7 @@ func TestResumeLegacySourceNoLedgerInjection(t *testing.T) {
 		{Turn: 1, AgentID: "b", Model: &model, Content: "legacy turn b"},
 	}
 
-	_, err := session.Resume(session.ResumeRequest{
+	result, err := session.Resume(session.ResumeRequest{
 		RunRequest: session.RunRequest{
 			Topic:      "legacy resume topic",
 			Config:     cfg,
@@ -604,6 +689,9 @@ func TestResumeLegacySourceNoLedgerInjection(t *testing.T) {
 	}, session.Hooks{})
 	if err != nil {
 		t.Fatalf("legacy resume should not fail: %v", err)
+	}
+	if result.Compatibility == nil || result.Compatibility.ResumeAction != transcript.CompatibilityActionLegacyReadable {
+		t.Fatalf("legacy resume compatibility: %#v", result.Compatibility)
 	}
 
 	loaded := readTranscript(t, outputPath)
@@ -851,6 +939,9 @@ func TestResumePreservesTypedTerminalOutcome(t *testing.T) {
 	if len(result.Records) != 1 || result.State.Control.Phase != types.PhaseTerminal ||
 		!reflect.DeepEqual(result.State.Control.Outcome, control.Outcome) || result.HaltedBy != "budget_exceeded ($0.01)" {
 		t.Fatalf("terminal resume changed outcome: records=%#v state=%#v halted=%q", result.Records, result.State.Control, result.HaltedBy)
+	}
+	if result.Compatibility == nil || result.Compatibility.ResumeAction != transcript.CompatibilityActionPreserveTerminal {
+		t.Fatalf("terminal resume compatibility: %#v", result.Compatibility)
 	}
 }
 

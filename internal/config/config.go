@@ -13,15 +13,16 @@ const defaultMinRounds = 3
 
 // rawConfig mirrors the YAML structure for unmarshaling.
 type rawConfig struct {
-	Topology           string              `yaml:"topology"`
-	Agents             []types.AgentConfig `yaml:"agents"`
-	ConsensusThreshold int                 `yaml:"consensus_threshold"`
-	MinRounds          int                 `yaml:"min_rounds"`
-	Workdir            string              `yaml:"workdir"`
-	SynthesisModel     *string             `yaml:"synthesis_model"`
-	Research           *bool               `yaml:"research"`
-	Ledger             *bool               `yaml:"ledger"`
-	Context            *[]string           `yaml:"context"`
+	Topology                 string              `yaml:"topology"`
+	Agents                   []types.AgentConfig `yaml:"agents"`
+	ConsensusThreshold       int                 `yaml:"consensus_threshold"`
+	MinRounds                int                 `yaml:"min_rounds"`
+	RequiredDeliverableItems int                 `yaml:"required_deliverable_items"`
+	Workdir                  string              `yaml:"workdir"`
+	SynthesisModel           *string             `yaml:"synthesis_model"`
+	Research                 *bool               `yaml:"research"`
+	Ledger                   *bool               `yaml:"ledger"`
+	Context                  *[]string           `yaml:"context"`
 }
 
 // LoadConfig loads and validates a deliberation configuration from a YAML file.
@@ -74,13 +75,14 @@ func loadConfigFromBytes(data []byte, gconf Config, applyNonAutoDefaults bool) (
 	}
 
 	cfg := &types.DeliberationConfig{
-		Agents:             agents,
-		Topology:           topology,
-		ConsensusThreshold: raw.ConsensusThreshold,
-		MinRounds:          raw.MinRounds,
-		Workdir:            raw.Workdir,
-		SynthesisModel:     raw.SynthesisModel,
-		Ledger:             raw.Ledger,
+		Agents:                   agents,
+		Topology:                 topology,
+		ConsensusThreshold:       raw.ConsensusThreshold,
+		MinRounds:                raw.MinRounds,
+		RequiredDeliverableItems: raw.RequiredDeliverableItems,
+		Workdir:                  raw.Workdir,
+		SynthesisModel:           raw.SynthesisModel,
+		Ledger:                   raw.Ledger,
 	}
 	if raw.Context != nil {
 		cfg.ContextConfigured = true

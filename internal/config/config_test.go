@@ -287,6 +287,23 @@ agents:
 	}
 }
 
+func TestLoadConfigPreservesExplicitRequiredDeliverableItems(t *testing.T) {
+	yaml := `
+required_deliverable_items: 3
+agents:
+  - id: a
+    model: m
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.RequiredDeliverableItems != 3 {
+		t.Fatalf("required_deliverable_items: got %d, want 3", cfg.RequiredDeliverableItems)
+	}
+}
+
 func TestLoadConfigFromBytesDoesNotApplyNonAutoDefaults(t *testing.T) {
 	yaml := `
 agents:

@@ -103,12 +103,12 @@ func TestNewOrchestratorPreservesPersistedRunContract(t *testing.T) {
 		t.Fatalf("persist active control: %v", err)
 	}
 	state := newTestState(&types.DeliberationConfig{
-		Agents:             newTestAgents(2),
-		ConsensusThreshold: 1,
-		MinRounds:          1,
+		Agents:                   newTestAgents(2),
+		ConsensusThreshold:       1,
+		MinRounds:                1,
+		RequiredDeliverableItems: 1,
 	})
 	state.Control = control
-	state.DeliverableGate = nil
 
 	NewOrchestrator(state, tm, &mockRunner{})
 	if got := state.Control.Convergence; got.RequiredEndorsements != 2 || got.MinimumRounds != 2 || got.RequiredDeliverableItems != 3 {
@@ -776,14 +776,11 @@ func TestExecuteTurn(t *testing.T) {
 	if record.Turn != 0 {
 		t.Errorf("expected turn 0, got %d", record.Turn)
 	}
-	if !record.Consensus {
-		t.Error("expected consensus=true")
+	if record.Consensus || record.ConsensusIgnored || record.ConsensusStatement != "" {
+		t.Errorf("new execution must not derive legacy consensus fields: %#v", record)
 	}
-	if record.ConsensusStatement != "we agree" {
-		t.Errorf("expected 'we agree', got %q", record.ConsensusStatement)
-	}
-	if record.Content == "[CONSENSUS: we agree] This is the agent response." {
-		t.Error("consensus marker should have been stripped from content")
+	if record.Content != "[CONSENSUS: we agree] This is the agent response." {
+		t.Errorf("response prose should remain unchanged, got %q", record.Content)
 	}
 	if record.Tokens.Total == nil || *record.Tokens.Total != 42 {
 		t.Errorf("expected total tokens=42, got %v", record.Tokens.Total)
@@ -1014,13 +1011,18 @@ func TestMaxTurnCapRecordsTypedNoConsensus(t *testing.T) {
 	}
 	path := t.TempDir() + "/max-turn.jsonl"
 	tm := transcript.NewTranscriptManager(path)
-	runner := &mockRunner{content: `{"position":"agreement prose only","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`}
+	runner := &mockRunner{content: `{"position":"[CONSENSUS: ship] I reject this and need more evidence.","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`}
 	stats := NewOrchestrator(state, tm, runner).Run()
 	if stats.TotalTurns != 1 || state.HaltedBy != "max_turns (1)" {
 		t.Fatalf("max-turn cap: turns=%d halted=%q", stats.TotalTurns, state.HaltedBy)
 	}
 	if state.Control.Phase != types.PhaseTerminal || state.Control.Outcome.Kind != types.OutcomeNoConsensus {
 		t.Fatalf("max-turn outcome: %#v", state.Control.Outcome)
+	}
+	for _, record := range tm.Records() {
+		if record.AgentID == "agent-0" && (record.Consensus || record.ConsensusIgnored) {
+			t.Fatalf("typed marker changed legacy display fields: %#v", record)
+		}
 	}
 	loaded, err := transcript.LoadFileStrict(path)
 	if err != nil || loaded[len(loaded)-1].Control.Outcome.Kind != types.OutcomeNoConsensus {
@@ -1823,20 +1825,16 @@ func TestRemainingBudgetWithBudgetCap(t *testing.T) {
 	}
 }
 
-func TestHaltingRuleDeliverableGate(t *testing.T) {
+func TestHaltingRuleUsesTypedDeliverableRequirement(t *testing.T) {
 	tm := transcript.NewTranscriptManager("/tmp/test_deliverable_gate.jsonl")
 	_ = tm.Append(types.TurnRecord{Turn: -1, AgentID: "moderator", Content: "seed"})
 
-	cfg := &types.DeliberationConfig{Agents: newTestAgents(2)}
+	cfg := &types.DeliberationConfig{Agents: newTestAgents(2), RequiredDeliverableItems: 3}
 	state := newTestState(cfg)
 	state.Topic = "The output must contain exactly three laws"
-	state.DeliverableGate = ParseDeliverableGate(state.Topic)
+	state.Control = types.NewDeliberationControlState([]string{"agent-0", "agent-1"}, 0)
 
-	if state.DeliverableGate == nil || state.DeliverableGate.MinItems != 3 {
-		t.Fatalf("setup: expected DeliverableGate with MinItems=3, got %+v", state.DeliverableGate)
-	}
-
-	runner := &recordingRunner{responses: []mockResponse{{content: "agent response"}}}
+	runner := &recordingRunner{responses: []mockResponse{{content: `{"position":"typed response","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]}`}}}
 	o := NewOrchestrator(state, tm, runner)
 
 	_, ok := o.executeTurn(cfg.Agents[0])

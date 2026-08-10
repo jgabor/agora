@@ -1,0 +1,14 @@
+id: zkqzpalfuh
+artifact: progress
+record:
+  timestamp: 2026-08-10 07:31
+  type: fix
+  phase: build
+  what: Grounded synthesis and all transcript inspection surfaces in the persisted typed terminal state. Canonical terminal state now carries the current proposal, current votes, objections and dispositions, claims, references-only evidence, dissents, convergence, and halt reason. No-consensus synthesis is explicitly an independent recommendation, never group consensus. Removed topic/marker/rejection/streak prompt control paths; required deliverable items are explicit configuration and persisted contract state.
+  context:
+    intent: Make terminal typed state the sole authority for synthesis and inspection.
+    constraints: Preserved protocol v2, pre-contract resume, evidence authority, canonical deliverable, and legacy readability. No provider calls, commit, push, or task completion.
+    unknowns: Agora supports text, JSON, and Markdown inspection formats only; YAML output is rejected.
+    scope: Synthesis, transcript loading, show, stats, resume, prime metadata, typed config, and focused tests/docs.
+  verified: Observed checkout-built Agora 0.4.2 show text, JSON, and Markdown for consensus and no-consensus fixtures; stats JSON and Markdown; terminal-only no-consensus resume; v1 migration action; and prime terminal-state contract. go test ./... -race -coverprofile=coverage.out, go vet ./..., go build ./..., golangci-lint run ./..., and git diff --check passed.
+  publication_order: 19

@@ -792,7 +792,7 @@ func TestSynthesisResultPreservesAllModelFields(t *testing.T) {
 	})
 
 	assertContains(t, got, "Synthesis")
-	assertContains(t, got, "Recommended Decision")
+	assertContains(t, got, "Synthesis recommendation")
 	assertContains(t, got, "Proceed with the smallest safe option.")
 	assertContains(t, got, "Synthesis Confidence")
 	assertContains(t, got, "Confidence")
@@ -800,10 +800,57 @@ func TestSynthesisResultPreservesAllModelFields(t *testing.T) {
 	assertContains(t, got, "Key Arguments")
 	assertContains(t, got, "It limits blast radius.")
 	assertContains(t, got, "It remains reversible.")
-	assertContains(t, got, "Points of Agreement")
-	assertContains(t, got, "[CONSENSUS] Everyone accepts the core constraint.")
+	assertContains(t, got, "Model-reported points of agreement")
+	assertContains(t, got, "[UNVERIFIED] Everyone accepts the core constraint.")
 	assertContains(t, got, "Unresolved Tensions")
 	assertContains(t, got, "[WARNING] Cost versus speed remains unresolved.")
+}
+
+func TestSynthesisOutputUsesTerminalOutcomeLabels(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	terminal := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+	terminal.Phase = types.PhaseTerminal
+	terminal.CurrentProposalVersion = 1
+	terminal.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "canonical proposal"}}
+	terminal.Votes = []types.ProposalVote{
+		{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
+		{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteReject},
+	}
+	terminal.Convergence = types.ConvergenceSignals{RunContractVersion: types.RunContractVersion, CurrentEndorsements: 1, RequiredEndorsements: 2, MinimumRounds: 1}
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeNoConsensus,
+		ProposalVersion:        1,
+		Reason:                 "max_turns (2)",
+		DissentingAgentIDs:     []string{"beta"},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	result := map[string]any{
+		"terminal_state":       types.TerminalStateFromRecords([]types.TurnRecord{{Turn: -1, AgentID: "moderator", Control: terminal}}),
+		"recommended_decision": "Ship the independent proposal.",
+		"points_of_agreement":  []any{"Ship the independent proposal."},
+	}
+
+	got := captureOutput(t, func() {
+		NewOutputManager(false).SynthesisResult(result)
+	})
+	assertContains(t, got, "Quoted independent analysis (non-authoritative; not group consensus)")
+	assertContains(t, got, `"Ship the independent proposal."`)
+	assertContains(t, got, "Model-reported points of agreement (not group consensus)")
+	assertContains(t, got, "[NOT CONSENSUS] Ship the independent proposal.")
+	assertNotContains(t, got, "[CONSENSUS]")
+
+	synthesisContent := `{"recommended_decision":"Ship the independent proposal.","points_of_agreement":["Ship the independent proposal."]}`
+	var transcriptOut bytes.Buffer
+	RenderTranscript(&transcriptOut, []types.TurnRecord{
+		{Turn: -1, AgentID: "moderator", Control: terminal},
+		{Turn: 0, AgentID: "synthesizer", Content: synthesisContent},
+	})
+	got = transcriptOut.String()
+	assertContains(t, got, "Quoted independent analysis (non-authoritative; not group consensus)")
+	assertContains(t, got, `"Ship the independent proposal."`)
+	assertContains(t, got, "[NOT CONSENSUS] Ship the independent proposal.")
+	assertNotContains(t, got, "[CONSENSUS]")
 }
 
 func TestSynthesisResultDistinguishesClaimKindsAndEvidenceStatus(t *testing.T) {

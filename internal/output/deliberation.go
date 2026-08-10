@@ -219,10 +219,10 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 	if record.AgentID != "moderator" {
 		o.turnDurations = append(o.turnDurations, record.Elapsed)
 	}
-	o.renderTurnProgress(os.Stdout, record, turn, maxTurns)
+	o.renderTurnProgress(os.Stdout, record, turn, maxTurns, nil)
 }
 
-func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord, turn int, maxTurns int) {
+func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord, turn int, maxTurns int, terminalState *types.TerminalState) {
 	elapsed := fmt.Sprintf("%.1fs", record.Elapsed)
 	tokensTotal := "?"
 	if record.Tokens.Total != nil {
@@ -238,7 +238,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	if o.state != nil && o.state.Budget != nil {
 		costValue = boundedCostMetricValue(o.renderer, o.totalCost, *o.state.Budget)
 	}
-	if types.IsInternalAgent(record.AgentID) {
+	if terminalState != nil || types.IsInternalAgent(record.AgentID) {
 		// internal agents (moderator, ledger, synthesizer) do not affect consensus
 	} else if record.Consensus {
 		o.consensusStreak++
@@ -265,7 +265,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
 		metadata += " | " + labelValue("TIME", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit))
 	}
-	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
+	if terminalState == nil && o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
 		displayStreak := min(o.displayConsensusStreak(record), o.state.Config.ConsensusThreshold)
 		metadata += " | " + labelValue("AGREEMENT", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold))
 	}
@@ -283,9 +283,9 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 		turnValue = boundedIntMetricValue(o.renderer, turn+1, maxTurns)
 	}
 	if o.renderer.IsRich() {
-		writeLine(w, o.renderTurnCard(record, turn, maxTurns, elapsed, tokensTotal, costValue))
+		writeLine(w, o.renderTurnCard(record, turn, maxTurns, elapsed, tokensTotal, costValue, terminalState))
 		if o.mode == OutputVerbose {
-			writeText(w, o.renderTurnDiagnostics(record, costValue))
+			writeText(w, o.renderTurnDiagnostics(record, costValue, terminalState))
 		}
 		if o.mode != OutputQuiet && record.Content != "" {
 			writeLine(w)
@@ -295,7 +295,9 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}
 	writeFormat(w, "TURN %s | %s\n", turnValue, metadata)
 
-	if record.ConsensusIgnored {
+	if terminalState != nil && (record.Consensus || record.ConsensusIgnored) {
+		writeFormat(w, "  [LEGACY COMPATIBILITY, NON-AUTHORITATIVE] %s\n", legacyConsensusMarkerText(record))
+	} else if record.ConsensusIgnored {
 		writeFormat(w, "  %s consensus marker ignored: statement expresses disagreement\n",
 			o.renderer.Styled("[WARNING]", "3"))
 	} else if record.Consensus {
@@ -307,7 +309,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}
 
 	if o.mode == OutputVerbose {
-		writeText(w, o.renderTurnDiagnostics(record, costValue))
+		writeText(w, o.renderTurnDiagnostics(record, costValue, terminalState))
 	}
 
 	if o.mode != OutputQuiet && record.Content != "" {
@@ -316,7 +318,7 @@ func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord,
 	}
 }
 
-func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue string) string {
+func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue string, terminalState *types.TerminalState) string {
 	parts := []string{"DIAGNOSTICS"}
 	if record.Tokens.Input != nil {
 		parts = append(parts, labelValue("INPUT_TOKENS", fmt.Sprintf("%d", *record.Tokens.Input)))
@@ -328,14 +330,14 @@ func (o *OutputManager) renderTurnDiagnostics(record types.TurnRecord, costValue
 		parts = append(parts, labelValue("REASONING_TOKENS", fmt.Sprintf("%d", *record.Tokens.Reasoning)))
 	}
 	parts = append(parts, labelValue("CUMULATIVE_COST", costValue))
-	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
+	if terminalState == nil && o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
 		displayStreak := min(o.displayConsensusStreak(record), o.state.Config.ConsensusThreshold)
 		parts = append(parts, labelValue("AGREEMENT", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold)))
 	}
 	return "  " + strings.Join(parts, " | ") + "\n"
 }
 
-func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTurns int, elapsed, tokensTotal, costValue string) string {
+func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTurns int, elapsed, tokensTotal, costValue string, terminalState *types.TerminalState) string {
 	width := outputWidth()
 	accent := o.agentColorFor(record.AgentID)
 	title := fmt.Sprintf("Turn %d", turn+1)
@@ -374,11 +376,13 @@ func (o *OutputManager) renderTurnCard(record types.TurnRecord, turn int, maxTur
 		elapsedTotal := float64(time.Now().UnixNano())/1e9 - o.state.StartTime
 		lines = append(lines, richMetricLine("Time limit", boundedSecondsMetricValue(o.renderer, elapsedTotal, o.state.TimeLimit), "3"))
 	}
-	if o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
+	if terminalState == nil && o.state != nil && o.state.Config != nil && o.state.Config.ConsensusThreshold > 0 {
 		displayStreak := min(o.displayConsensusStreak(record), o.state.Config.ConsensusThreshold)
 		lines = append(lines, richMetricLine("Agreement", boundedIntMetricValue(o.renderer, displayStreak, o.state.Config.ConsensusThreshold), "2"))
 	}
-	if record.Consensus {
+	if terminalState != nil && (record.Consensus || record.ConsensusIgnored) {
+		lines = append(lines, "", o.renderer.Styled("Legacy marker (non-authoritative)", "3"), legacyConsensusMarkerText(record))
+	} else if record.Consensus {
 		statement := strings.TrimSpace(record.ConsensusStatement)
 		if statement == "" {
 			statement = "This turn agrees with the emerging decision."
@@ -407,9 +411,9 @@ func writeFormat(w io.Writer, format string, args ...any) {
 func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.DeliberationState) {
 	stats := types.ComputeStats(records)
 	duration := float64(time.Now().UnixNano())/1e9 - state.StartTime
+	terminalState := types.TerminalStateFromRecords(records)
 
 	actualTurns := transcript.AgentTurnCount(records)
-	consensusStreak := finalConsensusStreak(records, state)
 
 	fmt.Println()
 	rows := [][]string{
@@ -418,19 +422,34 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 		{"Total tokens", fmt.Sprintf("%d", stats.TotalTokens)},
 		{"Total cost", finalCostValue(o.renderer, stats.TotalCost, state.Budget)},
 	}
-	if state.Config != nil && state.Config.ConsensusThreshold > 0 {
+	if terminalState != nil && terminalState.Convergence.RequiredEndorsements > 0 {
+		rows = append(rows, []string{"Typed endorsements", boundedIntMetricValue(o.renderer, terminalState.Convergence.CurrentEndorsements, terminalState.Convergence.RequiredEndorsements)})
+	} else if state.Config != nil && state.Config.ConsensusThreshold > 0 {
+		consensusStreak := finalConsensusStreak(records, state)
 		displayStreak := min(consensusStreak, state.Config.ConsensusThreshold)
 		rows = append(rows, []string{"Agreement", boundedIntMetricValue(o.renderer, displayStreak, state.Config.ConsensusThreshold)})
 	}
-	if state.Control != nil && state.Control.Phase == types.PhaseTerminal {
-		outcome := state.Control.Outcome
+	if terminalState != nil {
+		outcome := terminalState.Outcome
 		rows = append(rows, []string{"Outcome", string(outcome.Kind)})
 		if outcome.ProposalVersion > 0 {
 			rows = append(rows, []string{"Outcome proposal", fmt.Sprintf("v%d", outcome.ProposalVersion)})
 		}
 	}
-	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(state.HaltedBy), haltColor(state.HaltedBy))})
+	haltedBy := state.HaltedBy
+	if terminalState != nil {
+		haltedBy = terminalState.HaltReason
+	}
+	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(haltedBy), haltColor(haltedBy))})
 	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
+	if terminalState != nil {
+		fmt.Println()
+		fmt.Println(o.renderer.SectionBlock("Terminal state", terminalStateLines(terminalState), outputWidth()))
+		if legacyConsensus := types.LegacyConsensusDataFromRecords(records); legacyConsensus != nil {
+			fmt.Println()
+			fmt.Println(o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
+		}
+	}
 
 	if len(stats.PerAgent) > 0 {
 		fmt.Println()
@@ -484,6 +503,20 @@ func finalConsensusStreak(records []types.TurnRecord, state *types.DeliberationS
 	// This is a legacy display metric only. Typed halting uses the control
 	// state's current vote evaluation and never reads this streak.
 	return transcript.ConsecutiveAgentConsensusCount(records)
+}
+
+func legacyConsensusMarkerText(record types.TurnRecord) string {
+	statement := strings.TrimSpace(record.ConsensusStatement)
+	if record.ConsensusIgnored {
+		if statement == "" {
+			return "consensus marker ignored"
+		}
+		return "consensus marker ignored: " + statement
+	}
+	if statement == "" {
+		return "consensus marker present"
+	}
+	return "consensus marker: " + statement
 }
 
 func isInternalAgent(agentID string) bool {
@@ -601,6 +634,18 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 	rows = append(rows, []string{"Avg turn duration", fmt.Sprintf("%vs", stats["avg_turn_duration_seconds"])})
 
 	fmt.Println(o.renderer.Table("Transcript Statistics", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
+	terminalState, _ := stats["terminal_state"].(*types.TerminalState)
+	if terminalState != nil {
+		fmt.Println()
+		fmt.Println(o.renderer.SectionBlock("Terminal state", terminalStateLines(terminalState), outputWidth()))
+		if legacyConsensus, ok := stats["legacy_consensus"].(*types.LegacyConsensusData); ok && legacyConsensus != nil {
+			fmt.Println()
+			fmt.Println(o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
+		}
+	}
+	if compatibility, ok := stats["compatibility"].(transcript.CompatibilityState); ok {
+		o.ProtocolCompatibility(compatibility)
+	}
 
 	if perAgent, ok := stats["per_agent"]; ok {
 		if pa, ok := perAgent.(map[string]any); ok && len(pa) > 0 {
@@ -625,16 +670,28 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 		}
 	}
 
-	if ce, ok := stats["consensus_events"]; ok {
-		if events, ok := ce.([]any); ok && len(events) > 0 {
-			fmt.Println()
-			lines := make([]string, 0, len(events))
-			for _, evt := range events {
-				if em, ok := evt.(map[string]any); ok {
-					lines = append(lines, fmt.Sprintf("[CONSENSUS] Turn %v [%v]: %v", em["turn"], em["agent_id"], em["statement"]))
+	if terminalState == nil {
+		if ce, ok := stats["consensus_events"]; ok {
+			if events, ok := ce.([]any); ok && len(events) > 0 {
+				fmt.Println()
+				lines := make([]string, 0, len(events))
+				for _, evt := range events {
+					if em, ok := evt.(map[string]any); ok {
+						lines = append(lines, fmt.Sprintf("[CONSENSUS] Turn %v [%v]: %v", em["turn"], em["agent_id"], em["statement"]))
+					}
 				}
+				fmt.Println(o.renderer.ListSection("Consensus Events:", lines, outputWidth(), "2"))
 			}
-			fmt.Println(o.renderer.ListSection("Consensus Events:", lines, outputWidth(), "2"))
 		}
 	}
+}
+
+// ProtocolCompatibility prints the display-only compatibility action attached
+// to a loaded transcript or resumed session.
+func (o *OutputManager) ProtocolCompatibility(compatibility transcript.CompatibilityState) {
+	if compatibility.ResumeAction == "" {
+		return
+	}
+	fmt.Println()
+	fmt.Println(o.renderer.SectionBlock("Protocol compatibility", protocolCompatibilityLines(compatibility), outputWidth()))
 }

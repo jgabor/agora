@@ -3,6 +3,7 @@ package transcript
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1117,32 +1118,82 @@ func TestLegacyTypedV1IsExplicitlyMigratedWithoutPhantomSources(t *testing.T) {
 	if err := os.WriteFile(path, []byte(marshalLine(t, legacyRecord)+"\n"), 0o644); err != nil {
 		t.Fatalf("write legacy transcript: %v", err)
 	}
-	loaded, err := LoadFileStrict(path)
+	loaded, loadedInfo, err := LoadFileStrictWithProtocol(path)
 	if err != nil {
 		t.Fatalf("legacy typed transcript should remain readable: %v", err)
 	}
 	if loaded[0].Control.ProtocolVersion != types.DeliberationProtocolVersion || loaded[0].Control.SourceReferenceCount != 0 {
 		t.Fatalf("loaded legacy normalization: %#v", loaded[0].Control)
 	}
+	if loadedInfo.MigratedFrom != types.LegacyDeliberationProtocolVersion || loadedInfo.CompatibilityAction() != CompatibilityActionMigrateV1 {
+		t.Fatalf("loader lost v1 compatibility provenance: %#v", loadedInfo)
+	}
 }
 
-func TestTypedV1TerminalConsensusUsesMigratedActiveRunContract(t *testing.T) {
+func TestTypedV1InjectedRunRequirementsCannotAuthenticateTerminalConsensus(t *testing.T) {
 	active := authenticatedActiveConsensus()
 	active.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	active.Proposals[0].Content = "1. An agent must preserve the run contract."
+	active.Convergence.RunContractVersion = types.RunContractVersion
+	active.Convergence.RequiredDeliverableItems = 1
 	terminal := terminalConsensusFromActive(t, active)
 	terminal.ProtocolVersion = types.LegacyDeliberationProtocolVersion
-	path := filepath.Join(t.TempDir(), "typed-v1-terminal.jsonl")
+	dir := t.TempDir()
+	activePath := filepath.Join(dir, "typed-v1-active.jsonl")
+	if err := os.WriteFile(activePath, []byte(marshalLine(t, mkControlRecord(active))+"\n"), 0o644); err != nil {
+		t.Fatalf("write typed v1 active transcript: %v", err)
+	}
+	loaded, info, err := LoadFileStrictWithProtocol(activePath)
+	if err != nil {
+		t.Fatalf("typed v1 active load: %v", err)
+	}
+	if !info.PreContractActive || loaded[0].Control.Convergence.RunContractVersion != 0 ||
+		loaded[0].Control.Convergence.MinimumRounds != 0 || loaded[0].Control.Convergence.RequiredDeliverableItems != 0 {
+		t.Fatalf("typed v1 requirements must remain pre-contract: info=%#v control=%#v", info, loaded[0].Control.Convergence)
+	}
+
+	path := filepath.Join(dir, "typed-v1-terminal.jsonl")
 	content := marshalLine(t, mkControlRecord(active)) + "\n" + marshalLine(t, mkControlRecord(terminal)) + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write typed v1 transcript: %v", err)
 	}
 
-	loaded, err := LoadFileStrict(path)
-	if err != nil {
-		t.Fatalf("typed v1 terminal load: %v", err)
+	if _, err := LoadFileStrict(path); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+		t.Fatalf("typed v1 terminal consensus must reject: %v", err)
 	}
-	if len(loaded) != 2 || loaded[0].Control.ProtocolVersion != types.DeliberationProtocolVersion || loaded[1].Control.Outcome.Kind != types.OutcomeConsensus {
-		t.Fatalf("migrated typed v1 terminal: %#v", loaded)
+	if _, err := LoadFileLenient(path, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+		t.Fatalf("typed v1 terminal consensus lenient load must reject: %v", err)
+	}
+}
+
+func TestTypedV1TerminalOnlyNoConsensusRemainsReadable(t *testing.T) {
+	terminal := types.NewDeliberationControlState([]string{"alpha"}, 0)
+	terminal.ProtocolVersion = types.LegacyDeliberationProtocolVersion
+	terminal.Phase = types.PhaseTerminal
+	terminal.Convergence = types.ConvergenceSignals{
+		RunContractVersion:       types.RunContractVersion,
+		RequiredEndorsements:     1,
+		MinimumRounds:            1,
+		RequiredDeliverableItems: 1,
+	}
+	terminal.Outcome = types.TerminalOutcome{
+		Kind:                   types.OutcomeNoConsensus,
+		Reason:                 "max_turns (1)",
+		DissentingAgentIDs:     []string{"alpha"},
+		UnresolvedObjectionIDs: []string{},
+		EvidenceGapClaimIDs:    []string{},
+	}
+	path := filepath.Join(t.TempDir(), "typed-v1-no-consensus.jsonl")
+	if err := os.WriteFile(path, []byte(marshalLine(t, mkControlRecord(terminal))+"\n"), 0o644); err != nil {
+		t.Fatalf("write typed v1 no-consensus transcript: %v", err)
+	}
+	loaded, info, err := LoadFileStrictWithProtocol(path)
+	if err != nil {
+		t.Fatalf("typed v1 no-consensus load: %v", err)
+	}
+	if !info.Terminal || info.CompatibilityAction() != CompatibilityActionPreserveTerminal || len(loaded) != 1 ||
+		loaded[0].Control.Outcome.Kind != types.OutcomeNoConsensus || loaded[0].Control.Convergence.RunContractVersion != 0 {
+		t.Fatalf("typed v1 no-consensus migration: info=%#v records=%#v", info, loaded)
 	}
 }
 
@@ -1453,5 +1504,29 @@ func TestLoadFileLenientLegacyTranscriptNoWarnings(t *testing.T) {
 	}
 	if warn.Len() > 0 {
 		t.Fatalf("legacy transcript should load without warnings: %q", warn.String())
+	}
+}
+
+func TestProtocolCompatibilityActionsAreDisplayOnlyAndStable(t *testing.T) {
+	tests := []struct {
+		name string
+		info ProtocolInfo
+		want string
+	}{
+		{name: "legacy", info: ProtocolInfo{Legacy: true}, want: CompatibilityActionLegacyReadable},
+		{name: "typed v1 pre-contract", info: ProtocolInfo{MigratedFrom: types.LegacyDeliberationProtocolVersion, PreContractActive: true}, want: CompatibilityActionMigrateV1},
+		{name: "early v2 pre-contract", info: ProtocolInfo{Version: types.DeliberationProtocolVersion, PreContractActive: true}, want: CompatibilityActionEstablish},
+		{name: "current v2", info: ProtocolInfo{Version: types.DeliberationProtocolVersion}, want: CompatibilityActionPreserveTyped},
+		{name: "terminal only", info: ProtocolInfo{Version: types.DeliberationProtocolVersion, Terminal: true}, want: CompatibilityActionPreserveTerminal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.info.CompatibilityAction(); got != tt.want {
+				t.Fatalf("compatibility action: got %q, want %q", got, tt.want)
+			}
+		})
+	}
+	if got := CompatibilityActionForError(fmt.Errorf("%s", terminalConsensusMissingRunContract)); got != CompatibilityActionRejectTerminalConsensus {
+		t.Fatalf("terminal-first rejection action: got %q", got)
 	}
 }

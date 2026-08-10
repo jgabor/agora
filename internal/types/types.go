@@ -145,17 +145,18 @@ func (a *AgentConfig) Validate() error {
 
 // DeliberationConfig holds the top-level deliberation configuration.
 type DeliberationConfig struct {
-	Agents             []AgentConfig `yaml:"agents" json:"agents"`
-	Topology           Topology      `yaml:"topology" json:"topology"`
-	ConsensusThreshold int           `yaml:"consensus_threshold" json:"consensus_threshold"`
-	MinRounds          int           `yaml:"min_rounds" json:"min_rounds"`
-	Workdir            string        `yaml:"workdir,omitempty" json:"workdir,omitempty"`
-	SynthesisModel     *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
-	MetaModel          *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
-	ResearchEnabled    bool          `yaml:"research" json:"research"`
-	Ledger             *bool         `yaml:"ledger,omitempty" json:"ledger,omitempty"`
-	ContextPaths       []string      `yaml:"context,omitempty" json:"context,omitempty"`
-	ContextConfigured  bool          `yaml:"-" json:"-"`
+	Agents                   []AgentConfig `yaml:"agents" json:"agents"`
+	Topology                 Topology      `yaml:"topology" json:"topology"`
+	ConsensusThreshold       int           `yaml:"consensus_threshold" json:"consensus_threshold"`
+	MinRounds                int           `yaml:"min_rounds" json:"min_rounds"`
+	RequiredDeliverableItems int           `yaml:"required_deliverable_items" json:"required_deliverable_items"`
+	Workdir                  string        `yaml:"workdir,omitempty" json:"workdir,omitempty"`
+	SynthesisModel           *string       `yaml:"synthesis_model,omitempty" json:"synthesis_model,omitempty"`
+	MetaModel                *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
+	ResearchEnabled          bool          `yaml:"research" json:"research"`
+	Ledger                   *bool         `yaml:"ledger,omitempty" json:"ledger,omitempty"`
+	ContextPaths             []string      `yaml:"context,omitempty" json:"context,omitempty"`
+	ContextConfigured        bool          `yaml:"-" json:"-"`
 }
 
 // EffectiveMinRounds returns the minimum full agent rounds before consensus halt.
@@ -241,6 +242,9 @@ func (c *DeliberationConfig) Validate() error {
 	if c.MinRounds < 0 {
 		return fmt.Errorf("min_rounds must be >= 0")
 	}
+	if c.RequiredDeliverableItems < 0 {
+		return fmt.Errorf("required_deliverable_items must be >= 0")
+	}
 	switch c.Topology {
 	case TopologyRing, TopologyStar, TopologyMesh:
 	case "":
@@ -291,11 +295,6 @@ type TurnRecord struct {
 	Elapsed            float64 `yaml:"elapsed" json:"elapsed"`
 }
 
-// DeliverableGate describes a topic-required artifact before consensus halt.
-type DeliverableGate struct {
-	MinItems int `yaml:"min_items" json:"min_items"`
-}
-
 // IsInternalAgent reports whether agentID is orchestrator/system, not deliberation cast.
 func IsInternalAgent(agentID string) bool {
 	return agentID == "moderator" || agentID == "synthesizer" || agentID == LedgerAgentID
@@ -337,6 +336,23 @@ type ConsensusEvent struct {
 	Statement string `json:"statement"`
 }
 
+// LegacyConsensusMarker preserves a historical free-text marker without
+// granting it typed consensus authority.
+type LegacyConsensusMarker struct {
+	Turn      int    `json:"turn"`
+	AgentID   string `json:"agent_id"`
+	Statement string `json:"statement,omitempty"`
+	Ignored   bool   `json:"ignored,omitempty"`
+}
+
+// LegacyConsensusData keeps historical marker data separate from typed terminal
+// state. It is display compatibility data only.
+type LegacyConsensusData struct {
+	NonAuthoritative bool                    `json:"non_authoritative"`
+	Markers          []LegacyConsensusMarker `json:"markers"`
+	TrailingStreak   int                     `json:"trailing_streak"`
+}
+
 // DeliberationState tracks the runtime state of an ongoing deliberation.
 type DeliberationState struct {
 	Config      *DeliberationConfig
@@ -359,7 +375,6 @@ type DeliberationState struct {
 	HaltedBy             string
 	Failure              error
 	FinalConsensusStreak int
-	DeliverableGate      *DeliverableGate
 	LedgerUpdateEnabled  *bool
 }
 
@@ -407,6 +422,7 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 	var totalDuration float64
 	var durationCount int
 
+	typedTerminal := TerminalStateFromRecords(records) != nil
 	for _, r := range records {
 		if IsInternalAgent(r.AgentID) {
 			continue
@@ -428,7 +444,7 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 		}
 		stats.PerAgent[r.AgentID] = as
 
-		if r.Consensus {
+		if r.Consensus && !typedTerminal {
 			stats.ConsensusEvents = append(stats.ConsensusEvents, ConsensusEvent{
 				Turn:      r.Turn,
 				AgentID:   r.AgentID,
@@ -442,6 +458,36 @@ func ComputeStats(records []TurnRecord) DeliberationStats {
 	}
 
 	return stats
+}
+
+// LegacyConsensusDataFromRecords returns raw marker data as explicitly
+// non-authoritative compatibility information.
+func LegacyConsensusDataFromRecords(records []TurnRecord) *LegacyConsensusData {
+	data := &LegacyConsensusData{NonAuthoritative: true}
+	for _, record := range records {
+		if !record.Consensus && !record.ConsensusIgnored {
+			continue
+		}
+		data.Markers = append(data.Markers, LegacyConsensusMarker{
+			Turn:      record.Turn,
+			AgentID:   record.AgentID,
+			Statement: record.ConsensusStatement,
+			Ignored:   record.ConsensusIgnored,
+		})
+	}
+	if len(data.Markers) == 0 {
+		return nil
+	}
+	for i := len(records) - 1; i >= 0; i-- {
+		if IsInternalAgent(records[i].AgentID) {
+			continue
+		}
+		if !records[i].Consensus {
+			break
+		}
+		data.TrailingStreak++
+	}
+	return data
 }
 
 // IntVal safely dereferences an *int, returning 0 for nil.

@@ -6,20 +6,42 @@ import (
 	"io"
 	"strings"
 
+	"github.com/jgabor/agora/internal/transcript"
 	"github.com/jgabor/agora/internal/types"
 )
 
 // RenderTranscript displays a stored transcript with the same turn styling used
 // while a deliberation is running.
 func RenderTranscript(w io.Writer, records []types.TurnRecord) {
-	NewOutputManagerWithMode(OutputNormal).RenderTranscript(w, records)
+	compatibility, err := transcript.CompatibilityFromRecords(records)
+	if err != nil {
+		compatibility = transcript.CompatibilityState{}
+	}
+	RenderTranscriptWithCompatibility(w, records, compatibility)
+}
+
+// RenderTranscriptWithCompatibility displays a stored transcript with its
+// loader-authenticated compatibility action.
+func RenderTranscriptWithCompatibility(w io.Writer, records []types.TurnRecord, compatibility transcript.CompatibilityState) {
+	NewOutputManagerWithMode(OutputNormal).RenderTranscriptWithCompatibility(w, records, compatibility)
 }
 
 // RenderTranscript displays a stored transcript with this output manager's mode.
 func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord) {
+	compatibility, err := transcript.CompatibilityFromRecords(records)
+	if err != nil {
+		compatibility = transcript.CompatibilityState{}
+	}
+	o.RenderTranscriptWithCompatibility(w, records, compatibility)
+}
+
+// RenderTranscriptWithCompatibility renders with the protocol classification
+// returned by the strict loader, preserving v1 migration provenance.
+func (o *OutputManager) RenderTranscriptWithCompatibility(w io.Writer, records []types.TurnRecord, compatibility transcript.CompatibilityState) {
 	if metadata := transcriptMetadata(records); metadata != nil {
 		o.registerCastMembers(metadata.Cast, metadata.Config)
 	}
+	terminalState := types.TerminalStateFromRecords(records)
 	maxTurns := transcriptMaxTurn(records)
 	fallbackTurn := 0
 	for i, record := range records {
@@ -33,11 +55,11 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 			continue
 		}
 		if transcriptEventRecord(record) {
-			writeLine(w, o.renderTranscriptEvent(record, i+1))
+			writeLine(w, o.renderTranscriptEvent(record, i+1, terminalState))
 			continue
 		}
 		if record.AgentID == "synthesizer" {
-			writeLine(w, o.renderTranscriptSynthesis(record, i+1))
+			writeLine(w, o.renderTranscriptSynthesis(record, i+1, terminalState))
 			continue
 		}
 
@@ -45,12 +67,22 @@ func (o *OutputManager) RenderTranscript(w io.Writer, records []types.TurnRecord
 		if displayTurn < 0 {
 			displayTurn = fallbackTurn
 		}
-		o.renderTurnProgress(w, record, displayTurn, maxTurns)
+		o.renderTurnProgress(w, record, displayTurn, maxTurns, terminalState)
 		fallbackTurn++
 		if record.Evidence != nil {
 			writeLine(w)
 			writeLine(w, renderTranscriptEvidence(o.renderer, record.Evidence, o.agentColorFor(record.AgentID)))
 		}
+	}
+	if terminalState != nil {
+		if legacyConsensus := types.LegacyConsensusDataFromRecords(records); legacyConsensus != nil {
+			writeLine(w)
+			writeLine(w, o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
+		}
+	}
+	if compatibility.ResumeAction != "" {
+		writeLine(w)
+		writeLine(w, o.renderer.SectionBlock("Protocol compatibility", protocolCompatibilityLines(compatibility), outputWidth()))
 	}
 }
 
@@ -126,19 +158,20 @@ func (o *OutputManager) renderTranscriptLedger(record types.TurnRecord, index in
 	return r.Panel("Ledger Snapshot", body, width, o.agentColorFor(record.AgentID))
 }
 
-func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index int) string {
+func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index int, terminalState *types.TerminalState) string {
 	var result map[string]any
 	if err := json.Unmarshal([]byte(record.Content), &result); err != nil {
-		return o.renderTranscriptEvent(record, index)
+		return o.renderTranscriptEvent(record, index, terminalState)
 	}
 
 	r := o.renderer
 	width := outputWidth()
 	var sections []string
+	labels := LabelsForTerminalState(terminalState)
 
 	if rec, ok := result["recommended_decision"]; ok {
 		if s, ok := rec.(string); ok && s != "" {
-			sections = append(sections, r.ProseSection("Recommended Decision", s, width, "2"))
+			sections = append(sections, r.ProseSection(labels.Recommendation, ModelRecommendationProse(terminalState, s), width, "2"))
 		}
 	}
 
@@ -165,10 +198,10 @@ func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index
 			items := make([]string, len(list))
 			for i, v := range list {
 				if s, ok := v.(string); ok {
-					items[i] = "[CONSENSUS] " + s
+					items[i] = labels.AgreementMark + " " + s
 				}
 			}
-			sections = append(sections, r.ListSection("Points of Agreement", items, width, "2"))
+			sections = append(sections, r.ListSection(labels.Agreements, items, width, "2"))
 		}
 	}
 
@@ -192,7 +225,7 @@ func (o *OutputManager) renderTranscriptSynthesis(record types.TurnRecord, index
 	return r.Panel(title, body, width, "6")
 }
 
-func (o *OutputManager) renderTranscriptEvent(record types.TurnRecord, index int) string {
+func (o *OutputManager) renderTranscriptEvent(record types.TurnRecord, index int, terminalState *types.TerminalState) string {
 	r := o.renderer
 	width := outputWidth()
 	contentWidth := width - 4
@@ -230,13 +263,20 @@ func (o *OutputManager) renderTranscriptEvent(record types.TurnRecord, index int
 			"evidence gaps: "+strings.Join(outcome.EvidenceGapClaimIDs, ", "),
 		)
 		writeSection("Terminal outcome", lines)
-	}
-	if record.Consensus {
-		statement := strings.TrimSpace(record.ConsensusStatement)
-		if statement == "" {
-			statement = "This turn agrees with the emerging decision."
+		if terminalState != nil {
+			writeSection("Terminal state", terminalStateLines(terminalState))
 		}
-		writeSection("Consensus", []string{statement})
+	}
+	if record.Consensus || record.ConsensusIgnored {
+		if terminalState != nil {
+			writeSection("Legacy consensus marker (non-authoritative)", []string{legacyConsensusMarkerText(record)})
+		} else if record.Consensus {
+			statement := strings.TrimSpace(record.ConsensusStatement)
+			if statement == "" {
+				statement = "This turn agrees with the emerging decision."
+			}
+			writeSection("Consensus", []string{statement})
+		}
 	}
 
 	title := "Transcript Event"
@@ -244,4 +284,83 @@ func (o *OutputManager) renderTranscriptEvent(record types.TurnRecord, index int
 		title = "Transcript Evidence"
 	}
 	return r.Panel(title, sb.String(), width, o.agentColorFor(record.AgentID))
+}
+
+func terminalStateLines(state *types.TerminalState) []string {
+	if state == nil {
+		return nil
+	}
+	lines := []string{
+		"phase: " + string(state.Phase),
+		fmt.Sprintf("proposal version: %d", state.ProposalVersion),
+		"halt reason: " + state.HaltReason,
+		"dissenting agents: " + strings.Join(state.DissentingAgentIDs, ", "),
+		"evidence gaps: " + strings.Join(state.EvidenceGapClaimIDs, ", "),
+		fmt.Sprintf("convergence: endorsements %d/%d; minimum rounds %d; unresolved objections %d; evidence gaps %d",
+			state.Convergence.CurrentEndorsements,
+			state.Convergence.RequiredEndorsements,
+			state.Convergence.MinimumRounds,
+			state.Convergence.UnresolvedObjections,
+			state.Convergence.EvidenceGaps,
+		),
+	}
+	if state.CanonicalProposal != nil {
+		lines = append(lines, fmt.Sprintf("canonical proposal: v%d by %s: %s", state.CanonicalProposal.Version, state.CanonicalProposal.AuthorID, state.CanonicalProposal.Content))
+	}
+	if len(state.CurrentVotes) > 0 {
+		votes := make([]string, 0, len(state.CurrentVotes))
+		for _, vote := range state.CurrentVotes {
+			votes = append(votes, fmt.Sprintf("%s=%s", vote.AgentID, vote.Choice))
+		}
+		lines = append(lines, "current votes: "+strings.Join(votes, ", "))
+	}
+	if len(state.Objections) > 0 {
+		objections := make([]string, 0, len(state.Objections))
+		for _, objection := range state.Objections {
+			objections = append(objections, objection.ID)
+		}
+		lines = append(lines, "objections: "+strings.Join(objections, ", "))
+	}
+	if len(state.Dispositions) > 0 {
+		dispositions := make([]string, 0, len(state.Dispositions))
+		for _, disposition := range state.Dispositions {
+			dispositions = append(dispositions, fmt.Sprintf("%s=%s", disposition.ObjectionID, disposition.Status))
+		}
+		lines = append(lines, "dispositions: "+strings.Join(dispositions, ", "))
+	}
+	if state.Evidence != nil {
+		lines = append(lines, fmt.Sprintf("evidence: %s (%d source references)", state.Evidence.Summary, len(state.Evidence.SourceReferences)))
+	}
+	return lines
+}
+
+func protocolCompatibilityLines(compatibility transcript.CompatibilityState) []string {
+	return []string{
+		"resume action: " + compatibility.ResumeAction,
+		fmt.Sprintf("legacy: %t", compatibility.Legacy),
+		fmt.Sprintf("pre-contract active: %t", compatibility.PreContractActive),
+		fmt.Sprintf("terminal: %t", compatibility.Terminal),
+	}
+}
+
+func legacyConsensusLines(data *types.LegacyConsensusData) []string {
+	if data == nil {
+		return nil
+	}
+	lines := []string{
+		fmt.Sprintf("markers: %d", len(data.Markers)),
+		fmt.Sprintf("trailing streak: %d", data.TrailingStreak),
+	}
+	for _, marker := range data.Markers {
+		status := "marker"
+		if marker.Ignored {
+			status = "ignored marker"
+		}
+		line := fmt.Sprintf("turn %d [%s]: %s", marker.Turn, marker.AgentID, status)
+		if marker.Statement != "" {
+			line += ": " + marker.Statement
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }

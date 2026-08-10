@@ -30,6 +30,77 @@ type ProtocolInfo struct {
 	Legacy            bool
 	MigratedFrom      string
 	PreContractActive bool
+	Terminal          bool
+}
+
+const (
+	CompatibilityActionLegacyReadable          = "read_legacy_then_start_typed_run"
+	CompatibilityActionMigrateV1               = "migrate_v1_then_establish_run_contract"
+	CompatibilityActionEstablish               = "establish_run_contract_on_resume"
+	CompatibilityActionPreserveTyped           = "preserve_typed_state"
+	CompatibilityActionPreserveTerminal        = "preserve_terminal_state"
+	CompatibilityActionRejectTerminalConsensus = "reject_unauthenticated_terminal_consensus"
+)
+
+// CompatibilityState describes the compatibility action authorized for a
+// validated transcript. It is presentation metadata only and never controls a
+// run in place of the persisted control state.
+type CompatibilityState struct {
+	ProtocolVersion   string `json:"protocol_version,omitempty"`
+	Legacy            bool   `json:"legacy"`
+	MigratedFrom      string `json:"migrated_from,omitempty"`
+	PreContractActive bool   `json:"pre_contract_active"`
+	Terminal          bool   `json:"terminal"`
+	ResumeAction      string `json:"resume_action"`
+}
+
+// CompatibilityAction returns the established resume action for a validated
+// protocol classification.
+func (info ProtocolInfo) CompatibilityAction() string {
+	switch {
+	case info.Legacy:
+		return CompatibilityActionLegacyReadable
+	case info.PreContractActive && info.MigratedFrom != "":
+		return CompatibilityActionMigrateV1
+	case info.PreContractActive:
+		return CompatibilityActionEstablish
+	case info.Terminal:
+		return CompatibilityActionPreserveTerminal
+	default:
+		return CompatibilityActionPreserveTyped
+	}
+}
+
+// CompatibilityFromRecords reports the display-only compatibility action for
+// records that have passed the same protocol validation as show and resume.
+func CompatibilityFromRecords(records []types.TurnRecord) (CompatibilityState, error) {
+	info, err := ProtocolFromRecords(records)
+	if err != nil {
+		return CompatibilityState{}, err
+	}
+	return CompatibilityFromProtocolInfo(info), nil
+}
+
+// CompatibilityFromProtocolInfo projects a previously validated protocol
+// classification for display without reclassifying migrated records.
+func CompatibilityFromProtocolInfo(info ProtocolInfo) CompatibilityState {
+	return CompatibilityState{
+		ProtocolVersion:   info.Version,
+		Legacy:            info.Legacy,
+		MigratedFrom:      info.MigratedFrom,
+		PreContractActive: info.PreContractActive,
+		Terminal:          info.Terminal,
+		ResumeAction:      info.CompatibilityAction(),
+	}
+}
+
+// CompatibilityActionForError names the established rejection action for a
+// protocol error when one exists.
+func CompatibilityActionForError(err error) string {
+	if err != nil && strings.Contains(err.Error(), terminalConsensusMissingRunContract) {
+		return CompatibilityActionRejectTerminalConsensus
+	}
+	return ""
 }
 
 const terminalConsensusMissingRunContract = "terminal consensus has no established run contract"
@@ -136,7 +207,12 @@ func ProtocolFromRecords(records []types.TurnRecord) (ProtocolInfo, error) {
 		}
 		previous = control
 	}
-	return ProtocolInfo{Version: version, MigratedFrom: migratedFrom, PreContractActive: previous.IsPreContractActive()}, nil
+	return ProtocolInfo{
+		Version:           version,
+		MigratedFrom:      migratedFrom,
+		PreContractActive: previous.IsPreContractActive(),
+		Terminal:          previous != nil && previous.Phase == types.PhaseTerminal,
+	}, nil
 }
 
 func moderatorSnapshotRecordRequired(previous, current *types.DeliberationControlState) bool {
@@ -199,6 +275,13 @@ func migrateLegacyControls(records []types.TurnRecord, evidence *types.EvidenceB
 		control := record.Control
 		control.ProtocolVersion = types.DeliberationProtocolVersion
 		control.SourceReferenceCount = sourceCount
+		// V1 did not persist a v2 run contract. Treat every v1 requirement
+		// field as untrusted, including on a terminal snapshot, so injected
+		// fields cannot authenticate a v1 consensus. Resume is the only path
+		// that may establish a v2 contract boundary from current inputs.
+		control.Convergence.RunContractVersion = 0
+		control.Convergence.MinimumRounds = 0
+		control.Convergence.RequiredDeliverableItems = 0
 		for i := range control.Claims {
 			claim := &control.Claims[i]
 			if !sourceRefsWithinBound(claim.SourceRefs, sourceCount) {
@@ -246,9 +329,17 @@ func sourceRefsWithinBound(refs []int, sourceCount int) bool {
 // must carry a non-nil, valid DebateLedger, mirroring how malformed agent and
 // evidence records already fail loading under the strict contract used by show.
 func LoadFileStrict(path string) ([]types.TurnRecord, error) {
+	loaded, _, err := LoadFileStrictWithProtocol(path)
+	return loaded, err
+}
+
+// LoadFileStrictWithProtocol loads a strict transcript and returns its original
+// protocol classification. The classification is retained even when v1 controls
+// are migrated in memory for current inspection.
+func LoadFileStrictWithProtocol(path string) ([]types.TurnRecord, ProtocolInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("opening transcript file: %w", err)
+		return nil, ProtocolInfo{}, fmt.Errorf("opening transcript file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -263,20 +354,21 @@ func LoadFileStrict(path string) ([]types.TurnRecord, error) {
 		}
 		var r types.TurnRecord
 		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
+			return nil, ProtocolInfo{}, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
 		}
 		if err := validateLedgerSentinel(r); err != nil {
-			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
+			return nil, ProtocolInfo{}, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
 		}
 		loaded = append(loaded, r)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading transcript file: %w", err)
+		return nil, ProtocolInfo{}, fmt.Errorf("reading transcript file: %w", err)
 	}
-	if _, err := ProtocolFromRecords(loaded); err != nil {
-		return nil, fmt.Errorf("malformed transcript protocol %s: %w", path, err)
+	info, err := ProtocolFromRecords(loaded)
+	if err != nil {
+		return nil, ProtocolInfo{}, fmt.Errorf("malformed transcript protocol %s: %w", path, err)
 	}
-	return loaded, nil
+	return loaded, info, nil
 }
 
 // LoadFileLenient loads a JSONL transcript for resume: malformed ledger sentinel
@@ -284,9 +376,16 @@ func LoadFileStrict(path string) ([]types.TurnRecord, error) {
 // best-effort state. Records that fail JSON parsing — including non-ledger
 // malformed records — still fail, matching the existing resume contract.
 func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
+	loaded, _, err := LoadFileLenientWithProtocol(path, w)
+	return loaded, err
+}
+
+// LoadFileLenientWithProtocol loads a transcript for resume and retains the
+// loader-authenticated source protocol classification after migration.
+func LoadFileLenientWithProtocol(path string, w io.Writer) ([]types.TurnRecord, ProtocolInfo, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("opening transcript file: %w", err)
+		return nil, ProtocolInfo{}, fmt.Errorf("opening transcript file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -305,7 +404,7 @@ func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
 				warnf(w, "warning: %s:%d: malformed ledger record: %v (skipping ledger record)\n", path, lineNumber, err)
 				continue
 			}
-			return nil, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
+			return nil, ProtocolInfo{}, fmt.Errorf("malformed transcript record %s:%d: %w", path, lineNumber, err)
 		}
 		if err := validateLedgerSentinel(r); err != nil {
 			warnf(w, "warning: %s:%d: %v (skipping ledger record)\n", path, lineNumber, err)
@@ -314,12 +413,13 @@ func LoadFileLenient(path string, w io.Writer) ([]types.TurnRecord, error) {
 		loaded = append(loaded, r)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading transcript file: %w", err)
+		return nil, ProtocolInfo{}, fmt.Errorf("reading transcript file: %w", err)
 	}
-	if _, err := ProtocolFromRecords(loaded); err != nil {
-		return nil, fmt.Errorf("malformed transcript protocol %s: %w", path, err)
+	info, err := ProtocolFromRecords(loaded)
+	if err != nil {
+		return nil, ProtocolInfo{}, fmt.Errorf("malformed transcript protocol %s: %w", path, err)
 	}
-	return loaded, nil
+	return loaded, info, nil
 }
 
 // warnf writes a formatted warning line to w, ignoring write errors. Resume

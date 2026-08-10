@@ -48,6 +48,9 @@ type RunRequest struct {
 type ResumeRequest struct {
 	RunRequest
 	SourceRecords []types.TurnRecord
+	// SourceProtocol preserves loader-authenticated source provenance for
+	// compatibility display. Resume revalidates SourceRecords for control flow.
+	SourceProtocol *transcript.ProtocolInfo
 }
 
 // Hooks wires orchestrator lifecycle callbacks and the deliberation header.
@@ -60,13 +63,14 @@ type Hooks struct {
 
 // Result reports deliberation outcomes after a session completes.
 type Result struct {
-	Stats      types.DeliberationStats
-	Records    []types.TurnRecord
-	OutputPath string
-	HaltedBy   string
-	Failure    error
-	Synthesis  map[string]any
-	State      *types.DeliberationState
+	Stats         types.DeliberationStats
+	Records       []types.TurnRecord
+	OutputPath    string
+	HaltedBy      string
+	Failure       error
+	Synthesis     map[string]any
+	State         *types.DeliberationState
+	Compatibility *transcript.CompatibilityState
 }
 
 // Run executes a fresh deliberation session.
@@ -94,6 +98,10 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 		return Result{}, err
 	}
 	req.SourceRecords = normalizedRecords
+	compatibilityProtocol := protocol
+	if req.SourceProtocol != nil {
+		compatibilityProtocol = *req.SourceProtocol
+	}
 
 	existingTurns := countAgentTurns(req.SourceRecords)
 	state := buildState(req.RunRequest, existingTurns)
@@ -127,7 +135,13 @@ func Resume(req ResumeRequest, hooks Hooks) (Result, error) {
 		}
 	}
 
-	return execute(state, tm, req.Workdir, req.OutputPath, req.DryRun, req.Synthesize, types.EvidenceRequest{}, hooks)
+	result, err := execute(state, tm, req.Workdir, req.OutputPath, req.DryRun, req.Synthesize, types.EvidenceRequest{}, hooks)
+	if err != nil {
+		return Result{}, err
+	}
+	compatibility := transcript.CompatibilityFromProtocolInfo(compatibilityProtocol)
+	result.Compatibility = &compatibility
+	return result, nil
 }
 
 // ApplyAutoCaps applies auto-level defaults to state. Explicit CLI limits win.
@@ -158,6 +172,7 @@ func buildState(req RunRequest, existingTurns int) *types.DeliberationState {
 	}
 	control := types.NewDeliberationControlState(agentIDs, 0)
 	control.Convergence.RequiredEndorsements = req.Config.ConsensusThreshold
+	control.Convergence.RequiredDeliverableItems = req.Config.RequiredDeliverableItems
 	return &types.DeliberationState{
 		Config:              req.Config,
 		Control:             control,
@@ -169,7 +184,6 @@ func buildState(req RunRequest, existingTurns int) *types.DeliberationState {
 		FullContext:         req.FullContext,
 		Turn:                turn,
 		Evidence:            req.Evidence,
-		DeliverableGate:     orchestrator.ParseDeliverableGate(req.Topic),
 		LedgerUpdateEnabled: req.Ledger,
 	}
 }
@@ -318,11 +332,7 @@ func establishResumedRunContract(previous *types.DeliberationControlState, state
 	boundary.Convergence.RunContractVersion = types.RunContractVersion
 	boundary.Convergence.RequiredEndorsements = state.Config.ConsensusThreshold
 	boundary.Convergence.MinimumRounds = state.Config.EffectiveMinRounds()
-	if state.DeliverableGate != nil {
-		boundary.Convergence.RequiredDeliverableItems = state.DeliverableGate.MinItems
-	} else {
-		boundary.Convergence.RequiredDeliverableItems = 0
-	}
+	boundary.Convergence.RequiredDeliverableItems = state.Config.RequiredDeliverableItems
 	if err := types.ValidateDeliberationTransition(previous, boundary); err != nil {
 		return nil, fmt.Errorf("establishing pre-contract run contract: %w", err)
 	}

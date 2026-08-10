@@ -375,10 +375,9 @@ func TestCanonicalProposalContentControlsTypedConsensus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agents := []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}}
-			state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents, ConsensusThreshold: 2})
+			state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents, ConsensusThreshold: 2, RequiredDeliverableItems: 3})
 			state.MaxTurns = 8
 			state.Control = types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
-			state.DeliverableGate = &types.DeliverableGate{MinItems: 3}
 			path := t.TempDir() + "/canonical-deliverable.jsonl"
 			tm := transcript.NewTranscriptManager(path)
 			runner := &recordingRunner{responses: typedProposalDeliverableResponses(tt.finalText)}

@@ -131,3 +131,96 @@ func TestSynthesizeAttachesCanonicalClaimEvidence(t *testing.T) {
 		t.Fatalf("synthesis retained non-canonical claims: %#v", claims)
 	}
 }
+
+func TestSynthesizeSuppliesCanonicalTerminalState(t *testing.T) {
+	tests := []struct {
+		name      string
+		kind      types.TerminalOutcomeKind
+		wantScope string
+		votes     []types.ProposalVote
+		dissents  []string
+	}{
+		{
+			name:      "consensus",
+			kind:      types.OutcomeConsensus,
+			wantScope: "group_consensus",
+			votes: []types.ProposalVote{
+				{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
+				{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteEndorse},
+			},
+		},
+		{
+			name:      "no consensus",
+			kind:      types.OutcomeNoConsensus,
+			wantScope: "independent",
+			votes: []types.ProposalVote{
+				{AgentID: "alpha", ProposalVersion: 1, Choice: types.VoteEndorse},
+				{AgentID: "beta", ProposalVersion: 1, Choice: types.VoteReject},
+			},
+			dissents: []string{"beta"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			control := types.NewDeliberationControlState([]string{"alpha", "beta"}, 1)
+			control.Phase = types.PhaseTerminal
+			control.CurrentProposalVersion = 1
+			control.Proposals = []types.CanonicalProposal{{Version: 1, AuthorID: "alpha", Content: "canonical proposal"}}
+			control.Objections = []types.Objection{{ID: "obj-1", AgentID: "beta", ProposalVersion: 1, Summary: "needs evidence"}}
+			control.Dispositions = []types.ObjectionDisposition{{ObjectionID: "obj-1", AgentID: "alpha", Status: types.DispositionSustained, Rationale: "not resolved"}}
+			control.Claims = []types.ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: types.ClaimFact, Decisive: true, Status: types.EvidenceUnverified}}
+			control.Votes = tt.votes
+			control.Convergence = types.ConvergenceSignals{RunContractVersion: types.RunContractVersion, CurrentEndorsements: 1, RequiredEndorsements: 2, MinimumRounds: 1, UnresolvedObjections: 1, EvidenceGaps: 1}
+			if tt.kind == types.OutcomeConsensus {
+				control.Convergence.CurrentEndorsements = 2
+				control.Convergence.UnresolvedObjections = 0
+				control.Convergence.EvidenceGaps = 0
+				control.Objections = nil
+				control.Dispositions = nil
+				control.Claims = nil
+			}
+			control.Outcome = types.TerminalOutcome{
+				Kind:                   tt.kind,
+				ProposalVersion:        1,
+				Reason:                 "max_turns (4)",
+				DissentingAgentIDs:     tt.dissents,
+				UnresolvedObjectionIDs: []string{"obj-1"},
+				EvidenceGapClaimIDs:    []string{"claim-1"},
+			}
+			if tt.kind == types.OutcomeConsensus {
+				control.Outcome.UnresolvedObjectionIDs = []string{}
+				control.Outcome.EvidenceGapClaimIDs = []string{}
+			}
+			records := []types.TurnRecord{
+				{Turn: -2, AgentID: "moderator", Evidence: &types.EvidenceBundle{Summary: "trusted evidence", SourceReferences: []types.SourceReference{{Title: "spec", URL: "https://example.test/spec"}}}},
+				{Turn: -1, AgentID: "moderator", Control: control},
+			}
+			mock := &mockRunner{content: `{"key_arguments":[],"points_of_agreement":["model observation"],"unresolved_tensions":[],"recommended_decision":"ship independently","confidence":"medium"}`}
+
+			result := Synthesize(mock, records, "topic", "model")
+			state, ok := mock.envelope["terminal_state"].(*types.TerminalState)
+			if !ok || state == nil {
+				t.Fatalf("terminal_state envelope: %#v", mock.envelope["terminal_state"])
+			}
+			if state.CanonicalProposal == nil || state.CanonicalProposal.Content != "canonical proposal" || len(state.CurrentVotes) != 2 {
+				t.Fatalf("proposal and current votes: %#v", state)
+			}
+			if len(state.Objections) != len(control.Objections) || len(state.Dispositions) != len(control.Dispositions) || len(state.Claims) != len(control.Claims) {
+				t.Fatalf("objections, dispositions, or claims missing: %#v", state)
+			}
+			if state.Evidence == nil || len(state.Evidence.SourceReferences) != 1 || state.HaltReason != "max_turns (4)" {
+				t.Fatalf("evidence or halt reason missing: %#v", state)
+			}
+			if got := result["recommendation_scope"]; got != tt.wantScope {
+				t.Fatalf("recommendation_scope: got %v, want %s", got, tt.wantScope)
+			}
+			if tt.kind == types.OutcomeNoConsensus && result["model_recommendation_non_authoritative"] != true {
+				t.Fatalf("no-consensus recommendation authority: %#v", result)
+			}
+			resultState, ok := result["terminal_state"].(*types.TerminalState)
+			if !ok || resultState.Outcome.Kind != tt.kind || len(resultState.DissentingAgentIDs) != len(tt.dissents) {
+				t.Fatalf("result terminal state: %#v", result["terminal_state"])
+			}
+		})
+	}
+}

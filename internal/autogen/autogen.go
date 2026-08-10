@@ -8,7 +8,6 @@ import (
 	"github.com/jgabor/agora/internal/agent"
 	"github.com/jgabor/agora/internal/config"
 	"github.com/jgabor/agora/internal/llmutil"
-	"github.com/jgabor/agora/internal/orchestrator"
 	"github.com/jgabor/agora/internal/types"
 )
 
@@ -89,22 +88,18 @@ func GenerateConfig(topic string, level types.AutoLevel, model string, runner ag
 	if err := validateCaps(cfg, caps); err != nil {
 		return nil, fmt.Errorf("auto config generation failed: %w", err)
 	}
-	applyAutoDefaults(cfg, topic)
+	applyAutoDefaults(cfg)
 	agent.ApplyReadOnlyPromptGuard(cfg)
 
 	return cfg, nil
 }
 
-func applyAutoDefaults(cfg *types.DeliberationConfig, topic string) {
+func applyAutoDefaults(cfg *types.DeliberationConfig) {
 	if cfg.ConsensusThreshold <= 0 && len(cfg.Agents) > 0 {
 		cfg.ConsensusThreshold = len(cfg.Agents)
 	}
 	if cfg.MinRounds <= 0 {
-		if orchestrator.ParseDeliverableGate(topic) != nil {
-			cfg.MinRounds = 2
-		} else {
-			cfg.MinRounds = 1
-		}
+		cfg.MinRounds = 1
 	}
 }
 
@@ -132,9 +127,9 @@ func buildSystemPrompt(topic string, level types.AutoLevel, model string, caps t
 	b.WriteString("- System prompts should be 2-4 sentences each, describing a distinct perspective or role\n")
 	b.WriteString("- Choose a topology that creates meaningful adversarial tension\n")
 	b.WriteString("- Include at least one adversarial or critic role when the topic involves synthesis, rewriting, or merging frameworks\n")
-	b.WriteString("- Include a finalist or linguistic_architect role that produces the canonical draft; agents must not mark CONSENSUS until the draft is endorsed verbatim\n")
+	b.WriteString("- Include a finalist or linguistic_architect role that produces the canonical draft\n")
 	b.WriteString("- Set consensus_threshold to match the number of agents\n")
-	b.WriteString("- Set min_rounds to 2 for synthesis or rewrite topics, otherwise 1; consensus only halts after min_rounds full rounds\n\n")
+	b.WriteString("- Set min_rounds to the number of complete rounds required before typed consensus can halt\n\n")
 	fmt.Fprintf(&b, "The model to use for all agents: %s\n", model)
 	fmt.Fprintf(&b, "Topic: %s\n", topic)
 

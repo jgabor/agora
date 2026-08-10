@@ -5,7 +5,7 @@ record:
   depends_on:
     - ufcqaxphcx
     - frlozgqbmw
-  status: pending
+  status: complete
   acceptance:
     - GIVEN synthesis receives terminal state WHEN it runs THEN canonical proposal, votes, objections and dispositions, evidence, dissents, and halt reason are supplied.
     - GIVEN terminal state is no-consensus WHEN synthesis and output are produced THEN neither presents an independent recommendation as group consensus.
@@ -13,3 +13,13 @@ record:
     - GIVEN typed state owns new runs WHEN obsolete markers, patterns, streaks, heuristics, and hints are checked THEN none controls execution.
     - "Test proportionality target: one pass and one fail per synthesis, output, compatibility, unresolved-evidence, and no-consensus contract."
   plan: ogdtuxdwhi
+  evaluation:
+    attempt_count: 2
+    failure_count: 1
+    last_verdict: pass
+    last_failure_evidence: Typed-v1 active records can smuggle nonzero v2 requirement fields through migration and authenticate a following terminal consensus. Typed no-consensus output still reports legacy consensus events/streak metrics and can display contradictory recommendation prose claiming group consensus.
+    provenance:
+      attempt_id: audit-2
+      source: Audit re-review ses_015d1032cffed7WXCrkIgZyX6B
+      recorded_at: 2026-08-10 08:32
+      writer_command: agentera state plan record-evaluation

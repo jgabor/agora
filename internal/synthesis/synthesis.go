@@ -12,7 +12,11 @@ import (
 
 // DefaultSystemPrompt instructs the synthesis model to return structured JSON.
 const DefaultSystemPrompt = `You are a deliberation synthesis agent. Your job is to read the full transcript
-of a multi-agent deliberation and produce a structured summary.
+of a multi-agent deliberation and produce a structured summary. The supplied
+terminal_state is the sole authority for the outcome, proposal, votes,
+objections, evidence, dissents, and halt reason. Do not infer an outcome from
+transcript prose. When terminal_state.outcome.kind is no_consensus, describe a
+recommendation only as independent analysis, never as a group consensus.
 
 Your output must be valid JSON with this exact structure:
 {
@@ -47,9 +51,10 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 	}
 
 	envelope := map[string]any{
-		"topic":       topic,
-		"transcript":  transcriptText,
-		"total_turns": totalTurns,
+		"topic":          topic,
+		"transcript":     transcriptText,
+		"total_turns":    totalTurns,
+		"terminal_state": types.TerminalStateFromRecords(records),
 	}
 
 	synthAgent := types.AgentConfig{
@@ -80,7 +85,27 @@ func (se *synthesisEngine) synthesize(records []types.TurnRecord, topic, model s
 		}
 	}
 
-	return attachCanonicalClaims(result, records)
+	result = attachCanonicalClaims(result, records)
+	terminalState := types.TerminalStateFromRecords(records)
+	result["terminal_state"] = terminalState
+	result["recommendation_scope"] = recommendationScope(terminalState)
+	if terminalState != nil && terminalState.Outcome.Kind == types.OutcomeNoConsensus {
+		result["model_recommendation_non_authoritative"] = true
+	}
+	return result
+}
+
+func recommendationScope(state *types.TerminalState) string {
+	if state == nil {
+		return "unverified"
+	}
+	if state.Outcome.Kind == types.OutcomeNoConsensus {
+		return "independent"
+	}
+	if state.Outcome.Kind == types.OutcomeConsensus {
+		return "group_consensus"
+	}
+	return "unverified"
 }
 
 func attachCanonicalClaims(result map[string]any, records []types.TurnRecord) map[string]any {

@@ -52,11 +52,7 @@ func NewOrchestrator(state *types.DeliberationState, tm *transcript.TranscriptMa
 		state.Control.Convergence.RequiredEndorsements = state.Config.ConsensusThreshold
 		state.Control.Convergence.MinimumRounds = state.Config.EffectiveMinRounds()
 		state.Control.Convergence.RunContractVersion = types.RunContractVersion
-		if state.DeliverableGate != nil {
-			state.Control.Convergence.RequiredDeliverableItems = state.DeliverableGate.MinItems
-		} else {
-			state.Control.Convergence.RequiredDeliverableItems = 0
-		}
+		state.Control.Convergence.RequiredDeliverableItems = state.Config.RequiredDeliverableItems
 	}
 	return &Orchestrator{
 		state:          state,
@@ -409,7 +405,7 @@ func (o *Orchestrator) checkConsensusCondition() bool {
 	}
 	evaluation := o.state.Control.EvaluateConsensus(
 		o.state.Control.Convergence.MinimumRounds,
-		DeliverablePresentForState(o.transcript.Records(), o.state.Control, &types.DeliverableGate{MinItems: o.state.Control.Convergence.RequiredDeliverableItems}),
+		o.state.Control.DeliverablePresent(o.state.Control.Convergence.RequiredDeliverableItems),
 	)
 	if !evaluation.Ready {
 		return false
@@ -429,7 +425,7 @@ func (o *Orchestrator) haltNoConsensus(reason string) {
 	if o.state.Control != nil {
 		evaluation = o.state.Control.EvaluateConsensus(
 			o.state.Control.Convergence.MinimumRounds,
-			DeliverablePresentForState(o.transcript.Records(), o.state.Control, &types.DeliverableGate{MinItems: o.state.Control.Convergence.RequiredDeliverableItems}),
+			o.state.Control.DeliverablePresent(o.state.Control.Convergence.RequiredDeliverableItems),
 		)
 	}
 	o.recordTerminal(types.OutcomeNoConsensus, evaluation.ProposalVersion, reason, evaluation)
@@ -581,9 +577,6 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	}
 
 	var cleanedContent string
-	var hasConsensus bool
-	var consensusStmt string
-	var consensusIgnored bool
 	var nextControl *types.DeliberationControlState
 	if o.state.Control != nil {
 		var err error
@@ -599,9 +592,9 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		}
 		cleanedContent = nextControl.Contributions[len(nextControl.Contributions)-1].Position
 	} else {
-		// Legacy transcripts may still display the old marker, but it is not
-		// available to typed runs and never controls halting.
-		cleanedContent, hasConsensus, consensusStmt, consensusIgnored = agent.ExtractConsensus(content)
+		// Existing legacy records retain their persisted display fields. New
+		// execution never parses response prose into a consensus signal.
+		cleanedContent = content
 	}
 
 	var tokens types.TokenUsage
@@ -612,18 +605,15 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	}
 
 	return types.TurnRecord{
-		Turn:               o.state.Turn,
-		AgentID:            ag.ID,
-		Model:              &ag.Model,
-		Timestamp:          float64(time.Now().UnixNano()) / 1e9,
-		Content:            cleanedContent,
-		Control:            nextControl,
-		Tokens:             tokens,
-		Cost:               cost,
-		Consensus:          hasConsensus,
-		ConsensusStatement: consensusStmt,
-		ConsensusIgnored:   consensusIgnored,
-		Elapsed:            float64(time.Now().UnixNano())/1e9 - turnStart,
+		Turn:      o.state.Turn,
+		AgentID:   ag.ID,
+		Model:     &ag.Model,
+		Timestamp: float64(time.Now().UnixNano()) / 1e9,
+		Content:   cleanedContent,
+		Control:   nextControl,
+		Tokens:    tokens,
+		Cost:      cost,
+		Elapsed:   float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
 }
 
@@ -709,9 +699,9 @@ func (o *Orchestrator) buildHaltingRule() map[string]any {
 	} else {
 		rule["budget_cap"] = float64(0)
 	}
-	if o.state.DeliverableGate != nil && o.state.DeliverableGate.MinItems > 0 {
+	if o.state.Control != nil && o.state.Control.Convergence.RequiredDeliverableItems > 0 {
 		rule["deliverable_gate"] = map[string]any{
-			"min_items": o.state.DeliverableGate.MinItems,
+			"min_items": o.state.Control.Convergence.RequiredDeliverableItems,
 		}
 	}
 	return rule

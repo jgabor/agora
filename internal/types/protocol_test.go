@@ -95,6 +95,67 @@ func TestNewDeliberationControlState(t *testing.T) {
 	}
 }
 
+func TestTerminalStateFromRecordsUsesCanonicalTerminalFields(t *testing.T) {
+	control := protocolStateWithProposal()
+	control.Phase = PhaseTerminal
+	control.Objections = []Objection{{ID: "obj-1", AgentID: "beta", ProposalVersion: 1, Summary: "needs rollback evidence"}}
+	control.Dispositions = []ObjectionDisposition{{ObjectionID: "obj-1", AgentID: "alpha", Status: DispositionSustained, Rationale: "evidence is incomplete"}}
+	control.Votes = []ProposalVote{
+		{AgentID: "alpha", ProposalVersion: 1, Choice: VoteEndorse},
+		{AgentID: "beta", ProposalVersion: 1, Choice: VoteReject},
+	}
+	control.Claims = []ClaimEvidence{{ID: "claim-1", AgentID: "alpha", ProposalVersion: 1, Kind: ClaimFact, Decisive: true, Status: EvidenceUnverified}}
+	control.Convergence = ConvergenceSignals{RunContractVersion: RunContractVersion, CurrentEndorsements: 1, RequiredEndorsements: 2, MinimumRounds: 1, UnresolvedObjections: 1, EvidenceGaps: 1}
+	control.Outcome = TerminalOutcome{
+		Kind:                   OutcomeNoConsensus,
+		ProposalVersion:        1,
+		Reason:                 "max_turns (4)",
+		DissentingAgentIDs:     []string{"beta"},
+		UnresolvedObjectionIDs: []string{"obj-1"},
+		EvidenceGapClaimIDs:    []string{"claim-1"},
+	}
+	records := []TurnRecord{
+		{Turn: -2, AgentID: "moderator", Evidence: &EvidenceBundle{
+			Summary:          "one trusted source",
+			SourceReferences: []SourceReference{{Title: "spec", URL: "https://example.test/spec"}},
+			ContextDocuments: []ContextDocument{{Path: "private.md", Content: "must not escape"}},
+		}},
+		{Turn: -1, AgentID: "moderator", Control: control},
+	}
+
+	state := TerminalStateFromRecords(records)
+	if state == nil {
+		t.Fatal("terminal state missing")
+	}
+	if state.Phase != PhaseTerminal || state.ProposalVersion != 1 || state.CanonicalProposal == nil || state.CanonicalProposal.Content != "proposal one" {
+		t.Fatalf("canonical proposal state: %#v", state)
+	}
+	if len(state.CurrentVotes) != 2 || state.CurrentVotes[1].Choice != VoteReject {
+		t.Fatalf("current votes: %#v", state.CurrentVotes)
+	}
+	if len(state.Objections) != 1 || len(state.Dispositions) != 1 || len(state.Claims) != 1 {
+		t.Fatalf("terminal debate fields: %#v", state)
+	}
+	if state.Evidence == nil || len(state.Evidence.SourceReferences) != 1 || len(state.Evidence.ContextDocuments) != 0 {
+		t.Fatalf("references-only evidence: %#v", state.Evidence)
+	}
+	if state.HaltReason != "max_turns (4)" || len(state.DissentingAgentIDs) != 1 || state.DissentingAgentIDs[0] != "beta" || len(state.EvidenceGapClaimIDs) != 1 {
+		t.Fatalf("terminal outcome: %#v", state)
+	}
+
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal terminal state: %v", err)
+	}
+	var decoded TerminalState
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal terminal state: %v", err)
+	}
+	if decoded.HaltReason != state.HaltReason || len(decoded.CurrentVotes) != len(state.CurrentVotes) || len(decoded.EvidenceGapClaimIDs) != 1 {
+		t.Fatalf("terminal state round trip: %#v", decoded)
+	}
+}
+
 func TestValidateRejectsMalformedStructuredModeratorActions(t *testing.T) {
 	state := protocolStateWithProposal()
 	state.Phase = PhaseDrafting
