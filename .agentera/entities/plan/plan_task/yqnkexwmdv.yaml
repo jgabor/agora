@@ -1,0 +1,23 @@
+id: yqnkexwmdv
+artifact: plan
+record:
+  name: Document the workflow and retire experiment-only surfaces
+  depends_on:
+    - mcrpjqlwfh
+  status: complete
+  acceptance:
+    - GIVEN a contributor reads maintainer guidance WHEN evaluating discovery THEN purpose, metric, prerequisites, cost, commands, outputs, and sensitivity are clear.
+    - GIVEN flags or defaults change WHEN guidance is checked THEN one executable help surface owns exact usage without duplicated contracts.
+    - GIVEN experiment artifacts are searched WHEN cleanup completes THEN one-off names, status text, observation tables, and local-exclude assumptions are gone.
+    - GIVEN product docs and release notes are checked WHEN this tooling lands THEN they remain unchanged because shipped behavior did not change.
+  plan: cdpjpaatae
+  evaluation:
+    attempt_count: 1
+    failure_count: 0
+    last_verdict: pass
+    last_failure_evidence: null
+    provenance:
+      attempt_id: audit-2
+      source: "independent Audit re-review: score guidance, canonical prerequisites, prototype and shared-exclude cleanup, product parity"
+      recorded_at: 2026-08-09 22:20
+      writer_command: agentera state plan record-evaluation

@@ -1,0 +1,14 @@
+id: pcrgoiicnj
+artifact: progress
+record:
+  timestamp: 2026-08-09 20:27
+  type: feat
+  phase: build
+  what: "mcrpjqlwfh: integrated the CLI-discovery evaluator into maintainer entrypoints and provider-free CI."
+  context:
+    intent: Integrate the evaluator into explicit maintainer tooling without changing Agora product behavior.
+    constraints: Keep live execution opt-in, retain terminal E2E behavior, and avoid default gates.
+    scope: Mage, CI, ignore policy, evaluator help, provider-free checks, and Agentera progress only.
+  verified: Mage now exposes eval:cliDiscovery plus offline and full self-test targets while Default and Check.All remain unchanged. .github/workflows/ci.yml runs scripts/check-eval-cli-discovery.sh, which performs Bash syntax, ShellCheck, the offline deterministic scoring self-test, and the existing byte-exact quiet-output coverage without OpenCode, auth, network, or a live nested run. Its .agora-evaluator/cli-discovery probe creates result, event, transcript, log, boundary, config, and auth artifacts; git status hides them while showing an unrelated sibling, and the probe cleans up. The full evaluator self-test passed 63 boundary and 57 analysis checks. e2e-termctrl.sh passed dry-run before and after integration and remains byte-identical to HEAD. Restricted-PATH Go test -race, vet, build, golangci-lint, workflow YAML parsing, and diff checks passed. No live evaluator or provider execution occurred.
+  next: Keep mcrpjqlwfh in_progress pending independent task evaluation.
+  publication_order: 8

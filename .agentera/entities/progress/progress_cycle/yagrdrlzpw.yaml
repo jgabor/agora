@@ -1,0 +1,15 @@
+id: yagrdrlzpw
+artifact: progress
+record:
+  timestamp: 2026-08-09 19:56
+  type: fix
+  phase: build
+  what: "vwhcvrbwdm: corrected OpenCode tool-part lifecycle scoring and transcript model/research state analysis."
+  context:
+    intent: vwhcvrbwdm requires deterministic provider-free analysis of isolated OpenCode and Agora discovery evidence.
+    constraints: Preserve task1 isolation, checkout-rooted build, credential hygiene, forced nested dry-run, stable result paths/schema/checklist/trace, and quiet output. Do not change product code, help, CI, release artifacts, task evaluation, or task completion.
+    unknowns: No blocking gap. Lifecycle snapshots compare score-relevant structured state, not raw tool output; unknown transcript fields remain null rather than being inferred. This cycle supersedes the earlier first-record identity assumption in practical evidence without editing immutable cycle zrmzxwjaey.
+    scope: Maintainer evaluator scripts, synthetic evidence, and local OpenCode 1.18.11 loopback only.
+  discovered: Audit session ses_018759d09ffeNPF6LmgqO5Q7fY found that provider callID can be reused across distinct OpenCode parts and that the earlier zrmzxwjaey practical assumption treated first records as terminal. The corrected analyzer keys only on part.id, updates lifecycle state, and fails closed for ID-less tool events.
+  verified: bash -n and shellcheck passed for both evaluator scripts. ./scripts/eval-cli-discovery.sh --analysis-self-test passed 56 offline checks; full --self-test preserved 63 boundary checks and passed 57 analysis checks, including an OpenCode 1.18.11 local loopback that emitted reused callID call_1 across distinct part.id values and scored the qualifying second part. Fixtures cover pending/failed to completed success, exact duplicate snapshots, completion-before-start, later qualifiers, compound/spoof/missing-status/missing-exit denial, and ID-less fail-closed traces. Field matrices verify missing, empty, and positive requested/turn/config models; cast/persona lists; enabled/performed/reference research states; zero/partial turns, tokens, and cost. Repeated result SHA-256, strict quiet stdout and failure silence, restricted PATH Go test/vet/build with -buildvcs=false, diff check, and artifact/credential hygiene passed. No live provider call or non-dry nested run occurred.
+  publication_order: 7

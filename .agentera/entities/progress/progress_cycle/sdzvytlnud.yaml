@@ -1,0 +1,15 @@
+id: sdzvytlnud
+artifact: progress
+record:
+  timestamp: 2026-08-09 22:14
+  type: fix
+  phase: build
+  what: "yqnkexwmdv: corrected audited evaluator guidance and retired residual experiment residue."
+  context:
+    intent: Correct the accepted Audit findings while keeping the evaluator and Agora product behavior unchanged.
+    constraints: Keep the task in_progress and unevaluated, preserve immutable progress history, retain opt-in live execution, and commit no credentials or generated results.
+    scope: CONTRIBUTING.md, evaluator help and regression tests, exact prototype-directory and shared-exclude cleanup, and progress only.
+  discovered: Audit ses_017e90181ffeg7o2xEc0M7jOtP found an incorrect metric exclusion, residual empty one-off run trees hidden by shared info/exclude, and incomplete canonical-help prerequisites.
+  verified: "CONTRIBUTING.md now says every first valid, unique OpenCode part.id tool call receives an ordinal; the score freezes at the first completed qualifying checkout-wrapper run, so failed, denied, and spoofing attempts before it count, exact duplicate lifecycle snapshots do not, lifecycle updates retain their ordinal, and later calls cannot change the score. scripts/eval-cli-discovery.sh repeats that contract and adds self-contained live prerequisites: go, jq, GNU timeout, grep, setsid, a resolvable OpenCode executable, selected-provider authentication, and the tested 1.18.11 boundary. It also states that analyze and analysis-self-test do not launch OpenCode or need auth, while the full self-test is provider-free with a local 1.18.11 loopback. CONTRIBUTING delegates exact prerequisites, options, defaults, and version details to mage eval:cliDiscoveryHelp. The provider-free Mage regression now asserts the corrected contributor metric, absence of the contradicted wording, help prerequisites, mode boundaries, and fake OpenCode forwarding. After inspection confirmed only the three empty plan-owned prototype runs, removed .experiment/agent-steps/20260807T153123Z-1468415/trial-01, .experiment/agent-steps/20260807T153517Z-1493155/trial-01, .experiment/agent-steps/20260807T155123Z-1550805/trial-01, all empty parents, and exactly the one-off info/exclude comment plus /.experiment/ rule. A recreated .experiment/agent-steps/audit-probe/probe was visible as untracked and had no info/exclude attribution before removal. Canonical help, checker, offline and full provider-free self-tests, local Mage help, terminal E2E dry run with unchanged script hash, restricted Go race tests, vet, and build passed. Product, release, CI, Mage integration, and terminal E2E paths have no diff. This cycle supersedes the earlier practical claims in immutable ixzfzzihma without rewriting that history. No live provider call, non-dry nested run, credential, or result artifact occurred."
+  next: Keep yqnkexwmdv in_progress pending independent task evaluation.
+  publication_order: 12

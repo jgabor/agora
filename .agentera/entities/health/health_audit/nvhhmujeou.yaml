@@ -1,0 +1,27 @@
+id: nvhhmujeou
+artifact: health
+record:
+  dimensions:
+    - artifact_freshness
+  findings_summary:
+    critical: 0
+    warning: 0
+    info: 0
+    filtered_by_confidence: 0
+  trajectory: stable — terminal closure artifacts and evidence are current
+  grades:
+    artifact_freshness: A
+  overall_grade: A
+  scope: Limited terminal-task artifact freshness for plan cdpjpaatae; not a codebase-wide audit.
+  dimension_details:
+    - name: artifact_freshness
+      grade: A
+      summary: All 39 delegated artifacts are current at or after plan creation. The lifecycle-open plan has five complete tasks and five latest PASS evaluations. Canonical TODO reconciliation has 11 managed items, zero drift, and zero conflicts. The clean 39-path scoped branch passes residue, diff, and ref-only merge checks against stable authoritative local main.
+      findings:
+        []
+  trends:
+    stable: Plan-owned artifacts and terminal closure evidence are current; no stale artifact remains.
+  patterns:
+    - Terminal closure uses typed task evaluations and ref-only merge proof while preserving unrelated local-main state.
+  date: 2026-08-10
+  appended_at: 2026-08-10T10:08:41.105Z

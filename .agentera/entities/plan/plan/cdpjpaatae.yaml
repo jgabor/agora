@@ -1,0 +1,47 @@
+id: cdpjpaatae
+artifact: plan
+record:
+  header:
+    level: full
+    created: 2026-08-09
+    status: complete
+    reviewed: 2026-08-09
+    critic_issues: 6 found, 6 addressed, 0 dismissed
+    title: "Plan: Promote Agent CLI Discovery Evaluation"
+  what: Turn the worktree-only agent experiment into maintained evaluation tooling for Agora CLI discoverability. The evaluator runs the current checkout through an isolated OpenCode trial, counts tool calls through the first qualifying Agora run, emits schema-versioned evidence and a deterministic checklist, and supports a provider-free self-test. The completed branch is reviewable as one conceptual pull request and ready for local integration into main without opening or pushing a remote PR.
+  why: The experiment exposed useful behavior and concrete harness defects, but its one-off script, broad Bash access, local ignore rules, embedded analysis, and non-committable documentation are not a durable repository surface. A bounded maintainer evaluator makes future CLI discovery changes measurable while preserving Agora's focused product interface, protecting credentials and user state, and keeping live evaluation outside CI.
+  constraints: Do not change Agora help, command behavior, or product contracts in this plan. Build and test the checkout binary, never an installed Agora copy. Keep only the outer evaluation-agent call live by default and force nested Agora execution to dry-run. Preserve authentication without retaining credentials. Add no production dependency or shipped binary. Keep the termctrl E2E behavior unchanged. Commit no generated results, transcripts, secrets, or observation logs. Treat this as maintainer tooling with no product version bump or changelog entry. Do not open, push, or publish a PR. Reconcile authoritative main ancestry before final integration.
+  scope:
+    included:
+      - Maintained agent CLI discoverability evaluator with a stable maintainer interface
+      - Temporary model, configuration, authentication, session, and output isolation
+      - Granular command permissions and contamination diagnostics
+      - Robust target detection, ordered event deduplication, transcript checks, usage accounting, and checklist output
+      - Schema-versioned result provenance and provider-free self-test coverage
+      - Ignored result storage, CI-safe script checks, maintainer entrypoints, and contributor documentation
+      - Removal of experiment-only names, status text, observation state, and local-exclude assumptions
+      - Final branch hygiene, Agentera state sync, and local merge readiness
+    excluded:
+      - Changes to Agora help, prime, flags, or runtime behavior
+      - Live nested-agent evaluation or provider calls in CI
+      - Committed benchmark results
+      - A generic multi-scenario evaluation framework
+      - A new production command, runtime dependency, or shipped binary
+      - Actual PR creation, remote push, or remote-main mutation
+      - Implementation of unfinished ledger-control tasks
+    deferred:
+      - Help-surface improvements driven by evaluator evidence
+      - Multi-model comparisons and statistical benchmarking
+      - Generalization beyond the current discovery scenario
+      - Live confirmation workflows beyond an explicitly authorized bounded run
+  design: Establish one authoritative trial boundary that builds the checkout, isolates user state, preserves only required authentication, constrains executable commands, and guarantees dry nested execution. Separate deterministic evidence analysis from process orchestration and prove it with an offline self-test. Integrate the validated evaluator into maintainer entrypoints and CI-safe checks without joining normal build, release, or terminal-E2E paths. Document cost, output, limitations, and sensitivity beside existing maintainer workflows. Finish by reconciling generated artifacts, structured project state, branch ancestry, and the full verification gate before local integration.
+  unknowns:
+    - question: Will the installed OpenCode version honor temporary XDG state, auth-only credential transfer, and granular compound-command permissions together?
+      affects_task: 1
+      resolve_by: Run the provider-free permission self-test first, then one bounded outer-agent smoke trial; inherit no normal config or sessions if auth isolation needs correction.
+    - question: Which main history is authoritative when local main is eight commits ahead of origin/main?
+      affects_task: 5
+      resolve_by: Resolve the intended main ancestry before integration and require the evaluator diff to contain only this plan's coherent change set.
+  overall_acceptance: The branch contains a maintained, documented agent CLI discovery evaluator that tests the newly built checkout under isolated state, uses one selected model across layers, prevents live nested execution, accepts success only from a qualifying Agora run, and emits schema-versioned JSON plus a deterministic checklist. A provider-free self-test proves marker integrity and failure handling. Generated and sensitive artifacts remain untracked. Existing Agora behavior and terminal E2E remain unchanged. Static script checks, self-test, restricted-PATH Go tests, vet, build, and authorized smoke evidence pass. The final diff is limited to evaluator tooling, tests, maintainer integration, documentation, ignore policy, and required Agentera state, and it integrates cleanly into authoritative main without opening or pushing a PR.
+  surprises:
+    []

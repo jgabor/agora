@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+# Provider-free Mage entrypoint checks for scripts/eval-cli-discovery.sh.
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/eval-cli-discovery.sh
+source "$ROOT/scripts/eval-cli-discovery.sh"
+
+# Mage forwarding checks use only their synthetic auth-file fixtures.
+unset OPENCODE_API_KEY OPENCODE_AUTH_CONTENT
+
+checks=0
+TEST_TMP=""
+
+pass() {
+	printf 'ok %s\n' "$1"
+	checks=$((checks + 1))
+}
+
+fail() {
+	printf 'not ok %s\n' "$1" >&2
+	exit 1
+}
+
+check() {
+	local name="$1"
+	shift
+
+	if "$@"; then
+		pass "$name"
+	else
+		fail "$name"
+	fi
+}
+
+write_fake_opencode() {
+	local path="$1"
+	local args_file="$2"
+	local invoked_file="$3"
+	local auth_file="$4"
+	local args_file_q
+	local invoked_file_q
+	local auth_file_q
+
+	printf -v args_file_q '%q' "$args_file"
+	printf -v invoked_file_q '%q' "$invoked_file"
+	printf -v auth_file_q '%q' "$auth_file"
+	cat >"$path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "\${1:-}" == "--version" ]]; then
+	printf 'fake-opencode 1.0\\n'
+	exit 0
+fi
+
+: >$invoked_file_q
+[[ ! -v OPENCODE_API_KEY && ! -v OPENCODE_AUTH_CONTENT ]]
+printf '%s\\0' "\$@" >$args_file_q
+jq -e 'keys == ["opencode"] and .opencode == {type: "api", key: "mage-forward-token"}' \\
+	"\$XDG_DATA_HOME/opencode/auth.json" >/dev/null
+[[ "\$(stat -c '%a:%F' "\$XDG_DATA_HOME/opencode/auth.json")" == '600:regular file' ]]
+: >$auth_file_q
+cat >"\$AGORA_EVALUATOR_TRANSCRIPT" <<'TRANSCRIPT'
+{"turn":-2,"agent_id":"moderator","transcript":{"cast":[],"config":{"research":false,"agents":[]}},"evidence":{"source_references":[]}}
+TRANSCRIPT
+jq -nc --arg model "\$AGORA_EVALUATOR_MODEL" '{turn: 0, agent_id: "agent", model: \$model, tokens: {total: 0, input: 0, output: 0, reasoning: 0, cache: {read: 0, write: 0}}, cost: 0}' >>"\$AGORA_EVALUATOR_TRANSCRIPT"
+cat <<'EVENTS'
+{"type":"tool_use","timestamp":1,"part":{"id":"mage-forwarding","callID":"call-mage","tool":"bash","state":{"status":"completed","input":{"command":"agora run --auto quick --research --yes --topic mage-forwarding"},"metadata":{"exit":0},"output":"completed"}}}
+{"type":"step_finish","timestamp":2,"part":{"tokens":{"total":0,"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"cost":0}}
+EVENTS
+EOF
+	chmod 700 "$path"
+}
+
+write_fake_timeout() {
+	local path="$1"
+	local args_file="$2"
+	local args_file_q
+
+	printf -v args_file_q '%q' "$args_file"
+	cat >"$path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\\0' "\$@" >$args_file_q
+shift
+exec "\$@"
+EOF
+	chmod 700 "$path"
+}
+
+build_mage() {
+	go -C "$ROOT" build -buildvcs=false -o "$TEST_TMP/mage" github.com/magefile/mage
+}
+
+mage_is_repo_pinned() {
+	local version
+
+	version="$(go -C "$ROOT" list -m -f '{{.Version}}' github.com/magefile/mage)"
+	"$TEST_TMP/mage" --version | grep -Fq "Mage Build Tool $version"
+}
+
+contributor_metric_matches_analyzer() {
+	grep -Fq 'It assigns an ordinal to every first' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq "valid, unique OpenCode \`part.id\` tool call. The score is the ordinal at the" "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'first completed qualifying checkout-wrapper Agora run. Failed, denied, and' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'spoofing attempts before that run also receive ordinals. Exact duplicate' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'lifecycle snapshots add no ordinal; lifecycle updates retain their original' "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'ordinal, and later calls cannot change the frozen score.' "$ROOT/CONTRIBUTING.md" \
+		&& ! grep -Fq 'Failed, denied, duplicate, spoofed, and later calls do not end or change that score.' "$ROOT/CONTRIBUTING.md"
+}
+
+contributor_prerequisites_delegate_to_help() {
+	grep -Fq "For a live trial, use \`mage eval:cliDiscoveryHelp\` for the current local-tool" "$ROOT/CONTRIBUTING.md" \
+		&& grep -Fq 'requirements and tested OpenCode boundary.' "$ROOT/CONTRIBUTING.md" \
+		&& ! grep -Fq 'The supported OpenCode boundary is behavior exercised at version 1.18.11.' "$ROOT/CONTRIBUTING.md" \
+		&& ! grep -Fq 'A live trial needs Go, Mage, Bash,' "$ROOT/CONTRIBUTING.md"
+}
+
+listing_and_help_are_safe() {
+	local stdout="$TEST_TMP/list.stdout"
+	local stderr="$TEST_TMP/list.stderr"
+
+	rm -f -- "$TEST_TMP/opencode-invoked"
+	MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" -l >"$stdout" 2>"$stderr" \
+		&& grep -Fq 'eval:cliDiscovery' "$stdout" \
+		&& grep -Fq 'eval:cliDiscoveryHelp' "$stdout" \
+		&& grep -Fq 'eval:cliDiscoveryOfflineSelfTest' "$stdout" \
+		&& grep -Fq 'eval:cliDiscoverySelfTest' "$stdout" \
+		&& test ! -e "$TEST_TMP/opencode-invoked"
+}
+
+target_help_is_safe() {
+	local stdout="$TEST_TMP/help.stdout"
+	local stderr="$TEST_TMP/help.stderr"
+
+	rm -f -- "$TEST_TMP/opencode-invoked"
+	MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" -h eval:cliDiscovery >"$stdout" 2>"$stderr" \
+		&& grep -Fq '<output>' "$stdout" \
+		&& test ! -e "$TEST_TMP/opencode-invoked" \
+		&& MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" eval:cliDiscoveryHelp >"$stdout" 2>"$stderr" \
+		&& grep -Fq 'scripts/eval-cli-discovery.sh --output DIR' "$stdout" \
+		&& grep -Fq 'DIR must be new and its parent must exist.' "$stdout" \
+		&& grep -Fq 'agora.cli-discovery.result v1' "$stdout" \
+		&& grep -Fq 'Every first valid, unique OpenCode part.id tool call gets an ordinal. Failed,' "$stdout" \
+		&& grep -Fq 'denied, and spoofing attempts before the first qualifying run also get one.' "$stdout" \
+		&& grep -Fq 'The first completed qualifying wrapper run freezes the score; later calls do' "$stdout" \
+		&& grep -Fq 'not change it.' "$stdout" \
+		&& grep -Fq 'Live trial prerequisites:' "$stdout" \
+		&& grep -Fq -- '--output requires go, jq, GNU timeout, grep, setsid, a resolvable OpenCode' "$stdout" \
+		&& grep -Fq 'OpenCode boundary is 1.18.11; validate other versions separately.' "$stdout" \
+		&& grep -Fq -- '--analyze and --analysis-self-test do not launch OpenCode or need provider' "$stdout" \
+		&& grep -Fq 'a local OpenCode 1.18.11 loopback; it does not need provider authentication.' "$stdout" \
+		&& grep -Fq 'nonempty inherited OPENCODE_API_KEY takes precedence.' "$stdout" \
+		&& grep -Fq 'temporary auth state and removed after the outer process.' "$stdout" \
+		&& grep -Fq 'AGORA_EVALUATOR_MODEL changes the default model.' "$stdout" \
+		&& test ! -e "$TEST_TMP/opencode-invoked"
+}
+
+invalid_arguments_are_safe() {
+	local stdout="$TEST_TMP/invalid.stdout"
+	local stderr="$TEST_TMP/invalid.stderr"
+
+	rm -f -- "$TEST_TMP/opencode-invoked"
+	if MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" eval:cliDiscovery >"$stdout" 2>"$stderr"; then
+		return 1
+	fi
+	grep -Fq 'not enough arguments for target "Eval:CliDiscovery"' "$stderr" \
+		&& test ! -e "$TEST_TMP/opencode-invoked" \
+		&& ! test -e "$TEST_TMP/missing-output" \
+		|| return 1
+
+	if MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" eval:cliDiscovery "$TEST_TMP/invalid-output" -quiet=not-a-bool >"$stdout" 2>"$stderr"; then
+		return 1
+	fi
+	grep -Fq "can't convert option \"quiet\" value \"not-a-bool\" to bool" "$stderr" \
+		&& test ! -e "$TEST_TMP/opencode-invoked" \
+		&& ! test -e "$TEST_TMP/invalid-output" \
+		|| return 1
+
+	if MAGEFILE_CACHE="$TEST_TMP/mage-cache" "$TEST_TMP/mage" eval:cliDiscovery '' >"$stdout" 2>"$stderr"; then
+		return 1
+	fi
+	grep -Fq 'output is required' "$stderr" \
+		&& test ! -e "$TEST_TMP/opencode-invoked"
+}
+
+forwarded_trial_is_exact() {
+	# shellcheck disable=SC2016 # Intentional literal exercises Mage's former os.Expand behavior.
+	local literal_sentinel='$MAGE_FORWARD_SENTINEL'
+	local expanded_sentinel='EXPANDED_VALUE_MUST_NOT_APPEAR'
+	local decoration=" $literal_sentinel \"double quote\" 'single quote'"
+	local output="$TEST_TMP/output$decoration"
+	local expanded_output="$TEST_TMP/output ${expanded_sentinel} \"double quote\" 'single quote'"
+	local auth="$TEST_TMP/auth$decoration.json"
+	local model="opencode/test-model$decoration"
+	local timeout_value="37s$decoration"
+	local stdout="$TEST_TMP/trial.stdout"
+	local stderr="$TEST_TMP/trial.stderr"
+	local expected="$TEST_TMP/trial.expected"
+	local -a opencode_args
+	local -a timeout_args
+
+	jq -n '{opencode: {type: "api", key: "mage-forward-token"}, unrelated: {type: "api", key: "unrelated-token"}}' >"$auth"
+	rm -f -- "$TEST_TMP/opencode-invoked"
+	PATH="$TEST_TMP/tools:$PATH" \
+		BASH_ENV=/dev/null \
+		MAGE_FORWARD_SENTINEL="$expanded_sentinel" \
+		MAGEFILE_CACHE="$TEST_TMP/mage-cache" \
+		AGORA_EVALUATOR_OPENCODE_BIN="$TEST_TMP/fake-opencode" \
+		"$TEST_TMP/mage" eval:cliDiscovery "$output" \
+			-model="$model" \
+			-authFile="$auth" \
+			-timeout="$timeout_value" \
+			-quiet >"$stdout" 2>"$stderr" || return 1
+	printf '%s\n' "$output/result.json" >"$expected"
+	cmp "$expected" "$stdout" \
+		&& test ! -s "$stderr" \
+		&& test -f "$output/result.json" \
+		&& test ! -e "$expanded_output" \
+		&& test -e "$TEST_TMP/opencode-invoked" \
+		&& test -e "$TEST_TMP/auth-accepted" \
+		&& ! grep -RFq -- 'mage-forward-token' "$stdout" "$stderr" "$output" \
+		|| return 1
+
+	mapfile -d '' -t opencode_args <"$TEST_TMP/opencode.args"
+	((${#opencode_args[@]} == 13)) \
+		&& [[ "${opencode_args[0]}" == run ]] \
+		&& [[ "${opencode_args[1]}" == --pure ]] \
+		&& [[ "${opencode_args[2]}" == --format ]] \
+		&& [[ "${opencode_args[3]}" == json ]] \
+		&& [[ "${opencode_args[4]}" == --model ]] \
+		&& [[ "${opencode_args[5]}" == "$model" ]] \
+		&& [[ "${opencode_args[6]}" == --agent ]] \
+		&& [[ "${opencode_args[7]}" == "$EVALUATOR_AGENT" ]] \
+		&& [[ "${opencode_args[8]}" == --title ]] \
+		&& [[ "${opencode_args[9]}" == 'Agora CLI discovery evaluation' ]] \
+		&& [[ "${opencode_args[10]}" == --dir ]] \
+		&& [[ "${opencode_args[11]}" == */work ]] \
+		&& [[ "${opencode_args[12]}" == "$PROMPT" ]] \
+		&& ! grep -aFq -- "$expanded_sentinel" "$TEST_TMP/opencode.args" \
+		|| return 1
+
+	mapfile -d '' -t timeout_args <"$TEST_TMP/timeout.args"
+	((${#timeout_args[@]} == 42)) \
+		&& [[ "${timeout_args[0]}" == "$timeout_value" ]] \
+		&& [[ "${timeout_args[1]}" == env ]] \
+		&& [[ "${timeout_args[2]}" == -i ]] \
+		&& [[ "${timeout_args[26]}" == */opencode-auth-bootstrap ]] \
+		&& [[ "${timeout_args[27]}" == auth_file ]] \
+		&& [[ "${timeout_args[28]}" == "$TEST_TMP/fake-opencode" ]] \
+		&& ! grep -aFq -- "$expanded_sentinel" "$TEST_TMP/timeout.args" \
+		&& ! grep -aFq -- 'mage-forward-token' "$TEST_TMP/timeout.args" \
+		&& ! grep -aFq -- "$auth" "$TEST_TMP/timeout.args"
+}
+
+failed_trial_redacts_mage_error() {
+	local output="$TEST_TMP/failure output 'private'"
+	local auth="$TEST_TMP/failure auth \"private\".json"
+	local model='opencode/failure-private-model'
+	local stdout="$TEST_TMP/failure.stdout"
+	local stderr="$TEST_TMP/failure.stderr"
+	local status
+
+	jq -n '{opencode: {type: "api", key: "mage-failure-token"}}' >"$auth"
+	rm -f -- "$TEST_TMP/opencode-invoked"
+	set +e
+	MAGEFILE_CACHE="$TEST_TMP/mage-cache" \
+		AGORA_EVALUATOR_OPENCODE_BIN="$TEST_TMP/fake-opencode" \
+		"$TEST_TMP/mage" eval:cliDiscovery "$output" \
+			-model="$model" \
+			-authFile="$auth" \
+			-timeout=not-a-duration \
+			-quiet >"$stdout" 2>"$stderr"
+	status=$?
+	set -e
+
+	[[ "$status" == 125 ]] \
+		&& test ! -s "$stdout" \
+		&& test ! -e "$TEST_TMP/opencode-invoked" \
+		&& test ! -e "$output" \
+		&& grep -Fq 'evaluator failed with exit code 125' "$stderr" \
+		&& ! grep -Fq -- "$auth" "$stdout" "$stderr" \
+		&& ! grep -Fq -- 'mage-failure-token' "$stdout" "$stderr" \
+		&& ! grep -Fq -- "$model" "$stdout" "$stderr" \
+		&& ! grep -Fq -- "$output" "$stdout" "$stderr" \
+		&& ! grep -Fq -- '--auth-file' "$stdout" "$stderr"
+}
+
+main() {
+	TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/agora-cli-evaluator-mage-test.XXXXXX")"
+	trap 'rm -rf -- "$TEST_TMP"' EXIT
+	mkdir -p -- "$TEST_TMP/tools"
+	write_fake_opencode "$TEST_TMP/fake-opencode" "$TEST_TMP/opencode.args" "$TEST_TMP/opencode-invoked" "$TEST_TMP/auth-accepted"
+	write_fake_timeout "$TEST_TMP/tools/timeout" "$TEST_TMP/timeout.args"
+	build_mage
+
+	check 'Mage binary matches the repository-pinned version' mage_is_repo_pinned
+	check 'Contributor metric matches analyzer ordinal semantics' contributor_metric_matches_analyzer
+	check 'Contributor prerequisites delegate exact details to help' contributor_prerequisites_delegate_to_help
+	check 'Mage listing exposes live, help, offline, and full evaluator targets without evaluation' listing_and_help_are_safe
+	check 'Mage evaluator help does not start evaluation' target_help_is_safe
+	check 'Mage rejects missing, invalid, and empty live target arguments before evaluation' invalid_arguments_are_safe
+	check 'Mage preserves evaluator failure status without reproducing sensitive argv' failed_trial_redacts_mage_error
+	check 'Mage forwards adversarial output, model, auth, timeout, and quiet values literally' forwarded_trial_is_exact
+	printf 'provider-free Mage evaluator self-test passed (%d checks)\n' "$checks"
+}
+
+main "$@"

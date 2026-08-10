@@ -1,0 +1,23 @@
+id: ciwxctzwzx
+artifact: plan
+record:
+  name: Establish the isolated evaluation boundary
+  depends_on:
+    []
+  status: complete
+  acceptance:
+    - GIVEN a trial starts WHEN OpenCode launches THEN it uses the built checkout, selected model, empty user state, and fresh outputs.
+    - GIVEN commands execute WHEN permissions apply THEN Agora commands work while unrelated shell, source, network, and write access is denied.
+    - GIVEN authentication and an Agora run are needed WHEN the trial ends THEN nested execution stayed dry and no credential copy remains.
+    - "Test proportionality target: one pass and one fail for isolation, permission, executable-path, nested-dry-run, and cleanup rules."
+  plan: cdpjpaatae
+  evaluation:
+    attempt_count: 1
+    failure_count: 0
+    last_verdict: pass
+    last_failure_evidence: null
+    provenance:
+      attempt_id: audit-3
+      source: "independent Audit: pre-shell launcher, public signal cleanup, rooted build, provider-free boundary tests"
+      recorded_at: 2026-08-09 18:30
+      writer_command: agentera state plan record-evaluation

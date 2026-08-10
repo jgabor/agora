@@ -1,5 +1,7 @@
 .env
 build/
+# Maintainer-only CLI-discovery evaluator evidence.
+/.agora-evaluator/cli-discovery/
 *.log
 *.jsonl
 !internal/transcript/testdata/*.jsonl
