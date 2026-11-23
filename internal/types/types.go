@@ -155,6 +155,7 @@ type DeliberationConfig struct {
 	MetaModel                *string       `yaml:"meta_model,omitempty" json:"meta_model,omitempty"`
 	ResearchEnabled          bool          `yaml:"research" json:"research"`
 	Ledger                   *bool         `yaml:"ledger,omitempty" json:"ledger,omitempty"`
+	Scoring                  bool          `yaml:"scoring,omitempty" json:"scoring,omitempty"`
 	ContextPaths             []string      `yaml:"context,omitempty" json:"context,omitempty"`
 	ContextConfigured        bool          `yaml:"-" json:"-"`
 }

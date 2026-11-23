@@ -338,6 +338,7 @@ type transcriptMetadataOutput struct {
 	Workdir                  string             `json:"workdir,omitempty"`
 	SynthesisModel           *string            `json:"synthesis_model,omitempty"`
 	Research                 bool               `json:"research"`
+	Scoring                  bool               `json:"scoring,omitempty"`
 	ContextPaths             []string           `json:"context_paths,omitempty"`
 }
 
@@ -406,6 +407,7 @@ func transcriptMetadataData(metadata *types.TranscriptMetadata) transcriptMetada
 		out.Workdir = metadata.Config.Workdir
 		out.SynthesisModel = metadata.Config.SynthesisModel
 		out.Research = metadata.Config.ResearchEnabled
+		out.Scoring = metadata.Config.Scoring
 		out.ContextPaths = append([]string(nil), metadata.Config.ContextPaths...)
 	}
 	return out
@@ -715,6 +717,13 @@ func writeTranscriptSynthesisMarkdown(sb *strings.Builder, record transcriptReco
 	}
 	fmt.Fprintf(sb, "\n### Synthesis\n\n")
 	fmt.Fprintf(sb, "- **Record:** %d\n", record.RecordIndex)
+	writeSynthesisBodyMarkdown(sb, result, terminalState)
+}
+
+// writeSynthesisBodyMarkdown renders a parsed synthesis result. Terminal state
+// decides whether the recommendation reads as a group decision or as
+// independent analysis.
+func writeSynthesisBodyMarkdown(sb *strings.Builder, result map[string]any, terminalState *types.TerminalState) {
 	labels := output.LabelsForTerminalState(terminalState)
 	if rec, ok := result["recommended_decision"]; ok {
 		if s, ok := rec.(string); ok && s != "" {
@@ -810,6 +819,7 @@ func configSummaryData(cfg *types.DeliberationConfig) map[string]any {
 		"workdir":                    cfg.Workdir,
 		"synthesis_model":            cfg.SynthesisModel,
 		"research":                   cfg.ResearchEnabled,
+		"scoring":                    cfg.Scoring,
 		"context":                    cfg.ContextPaths,
 	}
 }
@@ -830,6 +840,9 @@ func configMarkdownRows(cfg *types.DeliberationConfig) [][]string {
 	}
 	if cfg.SynthesisModel != nil {
 		rows = append(rows, []string{"Synthesis model", *cfg.SynthesisModel})
+	}
+	if cfg.Scoring {
+		rows = append(rows, []string{"Scoring", "true"})
 	}
 	return rows
 }
@@ -910,6 +923,7 @@ func writeValidationMarkdown(w io.Writer, title string, result validationResult)
 			ConsensusThreshold:       intFromAny(result.Summary["consensus_threshold"]),
 			RequiredDeliverableItems: intFromAny(result.Summary["required_deliverable_items"]),
 			SynthesisModel:           stringPtrFromAny(result.Summary["synthesis_model"]),
+			Scoring:                  result.Summary["scoring"] == true,
 		})
 		fmt.Fprintln(&sb)
 		fmt.Fprintln(&sb, "## Summary")
@@ -1124,6 +1138,7 @@ func primeCommandData() (map[string]any, error) {
 		"config_keys":         configKeyMetadata(),
 		"config":              map[string]any{"path": cfgPath, "values": configValues, "redaction": "secret-like config keys and values are reported as [redacted] when set"},
 		"transcript_metadata": transcriptMetadataContract(),
+		"run_report":          runReportContract(),
 	}, nil
 }
 
@@ -1172,6 +1187,7 @@ func writePrimeText(w io.Writer, data map[string]any) error {
 		fmt.Fprintf(&sb, "- %s: %s (%s)\n", value.Key, value.Value, value.Source)
 	}
 	fmt.Fprintln(&sb, "Transcript metadata: first JSONL record may include transcript.schema_version, cast, and config.")
+	fmt.Fprintf(&sb, "Run report: run and resume with --format json|markdown print one %s on stdout; live output moves to stderr.\n", runReportDocumentType)
 	_, err := fmt.Fprint(w, sb.String())
 	return err
 }
@@ -1229,6 +1245,16 @@ func writePrimeMarkdown(w io.Writer, data map[string]any) error {
 	fmt.Fprintln(&sb, "## Transcript Metadata")
 	fmt.Fprintln(&sb, "- Storage: JSONL turn records; transcript metadata appears on the first record `transcript` field.")
 	fmt.Fprintln(&sb, "- Fields: `schema_version`, `cast`, `config`.")
+	if report, ok := data["run_report"].(map[string]any); ok {
+		fmt.Fprintln(&sb)
+		fmt.Fprintln(&sb, "## Run Report")
+		fmt.Fprintf(&sb, "- Commands: `%s` with `--format %s`.\n", strings.Join(anyStringSlice(report["commands"]), "`, `"), strings.Join(anyStringSlice(report["formats"]), "|"))
+		fmt.Fprintf(&sb, "- Document: `%v` version %v.\n", report["document_type"], report["document_schema_version"])
+		fmt.Fprintf(&sb, "- Streams: %v\n", report["streams"])
+		fmt.Fprintf(&sb, "- Exit status: %v\n", report["exit_status"])
+		fmt.Fprintf(&sb, "- Fields: `%s`.\n", strings.Join(anyStringSlice(report["fields"]), "`, `"))
+		fmt.Fprintf(&sb, "- Agent fields: `%s`.\n", strings.Join(anyStringSlice(report["agent_fields"]), "`, `"))
+	}
 	_, err := fmt.Fprint(w, sb.String())
 	return err
 }
@@ -1301,7 +1327,7 @@ func transcriptMetadataContract() map[string]any {
 		"fields": []map[string]any{
 			{"name": "schema_version", "type": "integer", "default": 1},
 			{"name": "cast", "type": "array", "items": []string{"id", "name", "persona", "provider_model", "color"}},
-			{"name": "config", "type": "object", "fields": []string{"agents", "topology", "consensus_threshold", "min_rounds", "required_deliverable_items", "workdir", "synthesis_model", "research", "context"}},
+			{"name": "config", "type": "object", "fields": []string{"agents", "topology", "consensus_threshold", "min_rounds", "required_deliverable_items", "workdir", "synthesis_model", "research", "scoring", "context"}},
 			{"name": "terminal_state", "type": "object", "fields": []string{"phase", "proposal_version", "canonical_proposal", "current_votes", "objections", "dispositions", "claims", "evidence", "dissenting_agent_ids", "evidence_gap_claim_ids", "convergence", "outcome", "halt_reason"}},
 		},
 	}
@@ -1339,6 +1365,7 @@ func metadataMarkdownRows(data map[string]any) [][]string {
 		{"Default format", formatText},
 		{"Valid formats", strings.Join(validFormats, ", ")},
 		{"Supported inspection commands", "list, stats, show, validate, config get --all, metadata"},
+		{"Run report commands", "run, resume (json and markdown print one " + runReportDocumentType + " on stdout; live output moves to stderr)"},
 		{"Config keys", fmt.Sprintf("%d", len(configKeyDefs))},
 		{"Transcript metadata", "schema_version, cast, config, terminal_state"},
 	}

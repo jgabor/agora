@@ -3,6 +3,7 @@ package output
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -13,8 +14,12 @@ import (
 	"github.com/jgabor/agora/internal/types"
 )
 
-var stdoutIsTerminal = func() bool {
-	info, err := os.Stdout.Stat()
+var writerIsTerminal = func(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	if !ok || file == nil {
+		return false
+	}
+	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
@@ -55,6 +60,9 @@ type StatsDict = map[string]any
 
 // OutputManager manages terminal output for deliberation progress.
 type OutputManager struct {
+	// w receives every line this manager prints. Nil means the process
+	// stdout, resolved at write time.
+	w               io.Writer
 	mode            OutputMode
 	renderer        Renderer
 	cast            *cast.Cast
@@ -81,6 +89,34 @@ func NewOutputManagerWithMode(mode OutputMode) *OutputManager {
 		mode:     mode,
 		renderer: detectRenderer(mode),
 	}
+}
+
+// NewOutputManagerWithWriter creates an OutputManager that prints to w instead
+// of stdout. Commands use it to move live progress to stderr when stdout is
+// reserved for a structured document.
+func NewOutputManagerWithWriter(mode OutputMode, w io.Writer) *OutputManager {
+	manager := NewOutputManagerWithMode(mode)
+	manager.w = w
+	return manager
+}
+
+func (o *OutputManager) out() io.Writer {
+	if o.w != nil {
+		return o.w
+	}
+	return os.Stdout
+}
+
+func (o *OutputManager) print(args ...any) {
+	_, _ = fmt.Fprint(o.out(), args...)
+}
+
+func (o *OutputManager) println(args ...any) {
+	_, _ = fmt.Fprintln(o.out(), args...)
+}
+
+func (o *OutputManager) printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(o.out(), format, args...)
 }
 
 func (o *OutputManager) registerCast(cfg *types.DeliberationConfig) {
@@ -174,8 +210,8 @@ func (o *OutputManager) Activity(activity string) func() {
 		activity = "Working"
 	}
 	label := fmt.Sprintf("Working: %s", activity)
-	if !stdoutIsTerminal() {
-		fmt.Printf("[INFO] %s\n", label)
+	if !writerIsTerminal(o.out()) {
+		o.printf("[INFO] %s\n", label)
 		return func() {}
 	}
 
@@ -189,11 +225,11 @@ func (o *OutputManager) Activity(activity string) func() {
 		defer ticker.Stop()
 		idx := 0
 		for {
-			fmt.Printf("\r%s %s", o.renderer.Styled(frames[idx%len(frames)], "6"), label)
+			o.printf("\r%s %s", o.renderer.Styled(frames[idx%len(frames)], "6"), label)
 			idx++
 			select {
 			case <-done:
-				fmt.Print("\r\033[2K")
+				o.print("\r\033[2K")
 				return
 			case <-ticker.C:
 			}
@@ -210,22 +246,22 @@ func (o *OutputManager) Activity(activity string) func() {
 
 // Info prints an informational message.
 func (o *OutputManager) Info(message string) {
-	fmt.Printf("%s %s\n", o.renderer.StatusLabel("INFO", "i", "4"), message)
+	o.printf("%s %s\n", o.renderer.StatusLabel("INFO", "i", "4"), message)
 }
 
 // Error prints an error message.
 func (o *OutputManager) Error(message string) {
-	fmt.Printf("%s %s\n", o.renderer.StatusLabel("ERROR", "✗", "1"), message)
+	o.printf("%s %s\n", o.renderer.StatusLabel("ERROR", "✗", "1"), message)
 }
 
 // Success prints a success message.
 func (o *OutputManager) Success(message string) {
-	fmt.Printf("%s %s\n", o.renderer.StatusLabel("SUCCESS", "✓", "2"), message)
+	o.printf("%s %s\n", o.renderer.StatusLabel("SUCCESS", "✓", "2"), message)
 }
 
 // Warning prints a warning message.
 func (o *OutputManager) Warning(message string) {
-	fmt.Printf("%s %s\n", o.renderer.StatusLabel("WARNING", "!", "3"), message)
+	o.printf("%s %s\n", o.renderer.StatusLabel("WARNING", "!", "3"), message)
 }
 
 // Delimiter prints a horizontal rule.
@@ -236,5 +272,5 @@ func (o *OutputManager) Delimiter() {
 	} else {
 		line = strings.Repeat("-", 60)
 	}
-	fmt.Println(line)
+	o.println(line)
 }

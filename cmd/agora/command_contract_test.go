@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -30,15 +31,15 @@ var commandContract = struct {
 		"agora list":        {"format", "verbose"},
 		"agora metadata":    {"format"},
 		"agora prime":       {"format"},
-		"agora run":         {"auto", "budget", "config", "context", "dry-run", "full-context", "max-turns", "model", "no-context", "no-ledger", "no-research", "output", "quiet", "research", "synthesize", "time", "topic", "verbose", "window", "workdir", "yes"},
-		"agora resume":      {"auto", "budget", "config", "context", "dry-run", "file", "full-context", "max-turns", "model", "no-context", "no-ledger", "no-research", "output", "quiet", "research", "synthesize", "time", "topic", "verbose", "window", "workdir", "yes"},
+		"agora run":         {"auto", "budget", "config", "context", "dry-run", "format", "full-context", "max-turns", "model", "no-context", "no-ledger", "no-research", "output", "quiet", "research", "synthesize", "time", "topic", "verbose", "window", "workdir", "yes"},
+		"agora resume":      {"auto", "budget", "config", "context", "dry-run", "file", "format", "full-context", "max-turns", "model", "no-context", "no-ledger", "no-research", "output", "quiet", "research", "synthesize", "time", "topic", "verbose", "window", "workdir", "yes"},
 		"agora stats":       {"format"},
 		"agora show":        {"format"},
 		"agora validate":    {"format"},
 	},
 	gconf:       []string{"default_auto_level", "default_ledger_enabled", "default_model", "default_output_dir", "default_topology", "context_max_bytes", "context_max_depth", "research_max_sources"},
 	schema:      1,
-	readmeMarks: 11,
+	readmeMarks: 12,
 }
 
 func TestCommandContractMatchesLiveCLIBehavior(t *testing.T) {
@@ -100,7 +101,7 @@ func TestCommandContractMatchesLiveCLIBehavior(t *testing.T) {
 	if !ok || len(enums) == 0 {
 		t.Fatalf("metadata commands have unexpected shape: %#v", metadata["commands"])
 	}
-	for _, name := range []string{"agora list", "agora stats", "agora show", "agora validate", "agora config get", "agora metadata", "agora prime"} {
+	for _, name := range []string{"agora list", "agora stats", "agora show", "agora validate", "agora config get", "agora metadata", "agora prime", "agora run", "agora resume"} {
 		flag := findMetadataFlag(t, metadataCommands[name], "format")
 		assertEnumValues(t, flag, commandContract.formats)
 	}
@@ -197,6 +198,26 @@ func TestCommandContractExpectedUseAndFailurePaths(t *testing.T) {
 		{name: "config set", success: func() error { _, err := executeConfigCommand(t, "set", "default_auto_level", "quick"); return err }, failure: func() error { _, err := executeConfigCommand(t, "set", "default_auto_level", "maximum"); return err }},
 		{name: "metadata", success: func() error { return runMetadata(formatJSON) }, failure: func() error { return runMetadata("xml") }},
 		{name: "prime", success: func() error { runPrimeCommand(t, formatJSON); return nil }, failure: invalidPrimeFormat},
+		{name: "run", success: func() error {
+			outputPath := filepath.Join(dir, "contract-run.jsonl")
+			restore := configureRunGlobals(configPath, outputPath)
+			defer restore()
+			runFlags.Format = formatJSON
+			cmd := artifactCommand(t, outputPath)
+			var stdout bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(io.Discard)
+			if err := runCmd.RunE(cmd, nil); err != nil {
+				return err
+			}
+			assertJSONNoANSI(t, stdout.String())
+			return nil
+		}, failure: func() error {
+			restore := configureRunGlobals(configPath, filepath.Join(dir, "contract-run-invalid.jsonl"))
+			defer restore()
+			runFlags.Format = "xml"
+			return runCmd.PreRunE(runCmd, nil)
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

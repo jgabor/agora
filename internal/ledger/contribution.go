@@ -48,12 +48,43 @@ var OpeningContributionContract = map[string]any{
 	},
 }
 
+// scoreField is the optional contribution rating enabled by the `scoring`
+// configuration key. Like vote, it must be present and may be null.
+const scoreField = "score"
+
+var scoreShape = fmt.Sprintf("integer 0-%d rating of the subject under deliberation; null when you cannot score it", types.MaxContributionScore)
+
 // ContributionContractForPhase returns the action schema applicable to phase.
-func ContributionContractForPhase(phase types.DeliberationPhase) map[string]any {
+// With scoring enabled, the schema additionally requires a nullable score in
+// every phase, including the otherwise position-only opening.
+func ContributionContractForPhase(phase types.DeliberationPhase, scoring bool) map[string]any {
+	contract := ContributionContract
 	if phase == types.PhaseOpening {
-		return OpeningContributionContract
+		contract = OpeningContributionContract
 	}
-	return ContributionContract
+	if !scoring {
+		return contract
+	}
+	return withScore(contract)
+}
+
+// withScore returns a copy of contract that requires the score field. The
+// shared contract maps are never mutated.
+func withScore(contract map[string]any) map[string]any {
+	scored := make(map[string]any, len(contract))
+	for key, value := range contract {
+		scored[key] = value
+	}
+	required, _ := contract["required"].([]string)
+	scored["required"] = append(append(make([]string, 0, len(required)+1), required...), scoreField)
+	shape, _ := contract["shape"].(map[string]any)
+	scoredShape := make(map[string]any, len(shape)+1)
+	for key, value := range shape {
+		scoredShape[key] = value
+	}
+	scoredShape[scoreField] = scoreShape
+	scored["shape"] = scoredShape
+	return scored
 }
 
 type contributionPayload struct {
@@ -64,6 +95,7 @@ type contributionPayload struct {
 	Objections     []contributionObjection          `json:"objections"`
 	Vote           *contributionVote                `json:"vote"`
 	Claims         []contributionClaim              `json:"claims"`
+	Score          *int                             `json:"score"`
 }
 
 type contributionObjection struct {
@@ -91,8 +123,12 @@ type contributionClaim struct {
 // one agent's structured output and atomically advances a cloned control
 // state. Any error returns nil and leaves current untouched, so malformed
 // output cannot endorse a proposal or dispose an objection.
-func ProcessContribution(current *types.DeliberationControlState, agentID string, turn int, output string) (*types.DeliberationControlState, error) {
-	payload, err := parseContribution(output, current != nil && current.Phase == types.PhaseOpening)
+//
+// scoring selects the scored contract: the output must then carry a score
+// key, which may be null. Without scoring, a score is not part of the
+// contract and is never recorded.
+func ProcessContribution(current *types.DeliberationControlState, agentID string, turn int, output string, scoring bool) (*types.DeliberationControlState, error) {
+	payload, err := parseContribution(output, current != nil && current.Phase == types.PhaseOpening, scoring)
 	if err != nil {
 		return nil, fmt.Errorf("contribution from %q at turn %d: %w", agentID, turn, err)
 	}
@@ -103,9 +139,9 @@ func ProcessContribution(current *types.DeliberationControlState, agentID string
 	return next, nil
 }
 
-func parseContribution(output string, opening bool) (contributionPayload, error) {
+func parseContribution(output string, opening, scoring bool) (contributionPayload, error) {
 	if opening {
-		return parseOpeningContribution(output)
+		return parseOpeningContribution(output, scoring)
 	}
 	cleaned := llmutil.StripCodeFences(output)
 	var fields map[string]json.RawMessage
@@ -121,6 +157,13 @@ func parseContribution(output string, opening bool) (contributionPayload, error)
 		if bytes.Equal(bytes.TrimSpace(fields[field]), []byte("null")) {
 			return contributionPayload{}, fmt.Errorf("incomplete output: %q must not be null", field)
 		}
+	}
+
+	if _, ok := fields[scoreField]; ok != scoring {
+		if scoring {
+			return contributionPayload{}, fmt.Errorf("incomplete output: missing %q", scoreField)
+		}
+		return contributionPayload{}, fmt.Errorf("parsing JSON: json: unknown field %q", scoreField)
 	}
 
 	var payload contributionPayload
@@ -139,7 +182,7 @@ func parseContribution(output string, opening bool) (contributionPayload, error)
 // field. Older or nonconforming model output can include generic contribution
 // fields, but those fields are deliberately discarded so a proposal action
 // cannot mutate canonical state or interrupt the opening schedule.
-func parseOpeningContribution(output string) (contributionPayload, error) {
+func parseOpeningContribution(output string, scoring bool) (contributionPayload, error) {
 	cleaned := llmutil.StripCodeFences(output)
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(cleaned), &fields); err != nil {
@@ -156,7 +199,18 @@ func parseOpeningContribution(output string) (contributionPayload, error) {
 	if err := json.Unmarshal(position, &value); err != nil {
 		return contributionPayload{}, fmt.Errorf("parsing JSON: %w", err)
 	}
+	var score *int
+	if scoring {
+		raw, ok := fields[scoreField]
+		if !ok {
+			return contributionPayload{}, fmt.Errorf("incomplete output: missing %q", scoreField)
+		}
+		if err := json.Unmarshal(raw, &score); err != nil {
+			return contributionPayload{}, fmt.Errorf("parsing JSON: %w", err)
+		}
+	}
 	return contributionPayload{
+		Score:          score,
 		Position:       value,
 		Responses:      []types.ContributionResponse{},
 		Concessions:    []string{},
@@ -207,6 +261,9 @@ func applyContribution(current *types.DeliberationControlState, agentID string, 
 	if strings.TrimSpace(payload.Position) == "" {
 		return nil, fmt.Errorf("position must be non-empty")
 	}
+	if payload.Score != nil && !types.ValidContributionScore(*payload.Score) {
+		return nil, fmt.Errorf("score must be between 0 and %d", types.MaxContributionScore)
+	}
 
 	next, err := cloneControlState(current)
 	if err != nil {
@@ -218,6 +275,7 @@ func applyContribution(current *types.DeliberationControlState, agentID string, 
 		Concessions:    append(make([]string, 0, len(payload.Concessions)), payload.Concessions...),
 		ProposalAction: payload.ProposalAction,
 		Objections:     []types.Objection{}, Claims: []types.ClaimEvidence{},
+		Score: payload.Score,
 	}
 
 	if err := applyProposalAction(next, agentID, payload.ProposalAction); err != nil {

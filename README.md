@@ -81,8 +81,9 @@ The `examples/` directory contains ready-to-use configs demonstrating different 
 | `quick-sanity-check.yaml` | ring | 2 | Minimal 2-agent setup — fastest possible deliberation |
 | `ethical-debate.yaml` | mesh | 5 | Ethical deliberation with mesh topology, consensus, and synthesis |
 | `startup-validation.yaml` | star | 5 | Startup idea validation panel with synthesis model |
+| `council.yaml` | star | 3 | Council review — three reviewers from three model providers with contribution scoring |
 
-All configs use `opencode-go/deepseek-v4-flash` as the default agent model.
+All configs except `council.yaml` use `opencode-go/deepseek-v4-flash` as the default agent model. `council.yaml` names one flagship model per provider; replace them with IDs from `opencode models`.
 
 ## CLI Reference
 
@@ -96,10 +97,10 @@ Required:
   -t, --topic TEXT         Topic or goal for deliberation
 
 Optional (all have sensible defaults):
-  -T, --time SECONDS       Time limit in seconds (default: 60)
-  -w, --window N           Number of predecessor messages each agent sees (default: 2)
-  -m, --max-turns N        Maximum total turns (default: 10)
-  -o, --output PATH        JSONL transcript output path (default: transcript.jsonl)
+  -T, --time SECONDS       Time limit in seconds (default: 90 per agent with --config)
+  -w, --window N           Number of predecessor messages each agent sees (default: cast size, at most 8, with --config)
+  -m, --max-turns N        Maximum total turns (default: 3 per agent with --config)
+  -o, --output PATH        JSONL transcript output path (default: a new file in the managed transcript store)
   -q, --quiet              Suppress live response bodies; show metadata/progress only
   -v, --verbose            Print response bodies plus diagnostics and metrics
   --budget FLOAT           Cost cap in dollars
@@ -108,15 +109,19 @@ Optional (all have sensible defaults):
   --research               Enable topic-inferred web research before deliberation
   --no-research            Disable config-enabled web research for this run
   --no-context             Disable config-enabled local context for this run
+  --no-ledger              Disable per-round debate ledger injection for this run
   --context PATH           Local text context path to include before deliberation (repeatable)
   --workdir PATH           Base directory for agent execution and relative context paths
   --dry-run                Run with simulated agent responses (no LLM calls)
   --auto LEVEL             Auto-generate agent config (quick, normal, deep, yolo)
   -M, --model MODEL        Model for auto config generation and deliberation agents
   --yes                    Skip auto config preview confirmation
+  --format FORMAT          Final report format: text, json, or markdown (default: text)
 ```
 
-With `--auto`, the level supplies default time and max-turn caps. Explicit `--time` or `--max-turns` values override those caps.
+With `--config`, unset limits scale with a cast of N agents so a run has room for three full rounds: time is 3 × N × 30 seconds, max turns is 3 × N, and window is the smaller of N and 8. A five-agent config runs with 450 seconds, 15 turns, and window 5. `--help` and `agora metadata` report the static flag defaults (60 seconds, 10 turns, window 2), which these values replace. An explicit `--time`, `--max-turns`, or `--window` always wins.
+
+With `--auto`, the level supplies default time and max-turn caps, and window stays at 2. Explicit `--time` or `--max-turns` values override those caps.
 
 ### Scripting and CI
 
@@ -132,9 +137,116 @@ Example:
 agora run --auto normal --yes --topic "Should we adopt feature X?"
 ```
 
+#### Run reports
+
+<!-- agora-contract: agora run --format json -->
+
+`agora run` and `agora resume` accept `--format text|json|markdown`. `text` is the default and prints the live presentation on stdout. With `json` or `markdown`, stdout carries exactly one `agora.run.report` document and every live line (header, turns, final stats, synthesis, status lines, and the auto-mode preview and prompt) moves to stderr, where `--quiet` and `--verbose` still apply.
+
+The report holds the latest state per agent, not every record; `agora show` remains the full transcript view.
+
+| Field | Content |
+|---|---|
+| `topic`, `transcript_path` | The run topic and the JSONL transcript written by this run |
+| `failure` | Failure text when the session failed, otherwise `null` |
+| `outcome` | `kind` (`consensus`, `no_consensus`, or `pending` when the session failed before a terminal outcome), `halt_reason`, and `proposal_version` |
+| `scoring` | Whether the run's config enabled contribution scores |
+| `agents[]` | `id`, `model`, latest `score` (or `null`), `vote` on the current proposal (or `null`), latest `position`, `turns`, `tokens`, and `cost` |
+| `canonical_proposal` | The current proposal, or `null` |
+| `unresolved_objections[]` | Objections still open at the terminal outcome |
+| `dissenting_agent_ids`, `evidence_gap_claim_ids` | Typed terminal references |
+| `synthesis` | The synthesis result with its `recommendation_scope`, or `null` when synthesis did not run |
+| `totals` | `turns`, `tokens`, `cost`, and `duration_seconds`, counted the same way as `agora stats` |
+
+Exit status does not encode the outcome: it is 0 for both `consensus` and `no_consensus`, and non-zero when the session fails. A failed session still prints its report before returning the error. A command that fails before the session starts (for example an unreadable config) prints no report, and an interrupted run (Ctrl-C, exit 130) prints none either. To gate a script on consensus, test the report:
+
+```bash
+agora run --config panel.yaml --topic "..." --format json --quiet \
+  | jq -e '.data.outcome.kind == "consensus"'
+```
+
 Large `--window` values multiply per-turn context cost: evidence is delivered once per agent on first turn, and each turn includes up to `window` prior messages in history.
 
 By default, live output includes agent response bodies as turns complete. Use `--quiet` for the lower-noise metadata/progress-only stream, or `--verbose` to keep response bodies and add diagnostics such as token, cost, timing, and consensus metrics when available.
+
+### Council review
+
+A council is three reviewers from three model providers who review the same subject independently and read-only, and each give a score. `examples/council.yaml` is that cast with `scoring: true`.
+
+```bash
+git diff main...HEAD > /tmp/change.diff
+
+agora run \
+  --config examples/council.yaml \
+  --topic "Review this change for correctness. Score it out of 10." \
+  --context /tmp/change.diff --workdir . \
+  --max-turns 3 --time 900 --budget 2.00 \
+  --synthesize --quiet --format markdown \
+  --output /tmp/council.jsonl > council.md
+```
+
+- `--max-turns 3` stops after one round: three independent openings, each with a score, then the synthesis. Raise it to add cross-examination and a typed vote on a shared proposal.
+- Agents cannot run commands, so the diff arrives through `--context`. `--workdir .` lets them read the surrounding files. Pass `--context` explicitly: with `--workdir` and no context, Agora includes the whole directory. A diff larger than `context_max_bytes` is truncated and the evidence summary says so.
+- The cast-scaled default time for three agents is 270 seconds. Strong models reading a repository can need more, so set `--time`.
+- Agora never edits files. Each run is one review round; the caller applies fixes and runs again, and keeps the scores from earlier rounds if it wants a round-by-round table.
+- Model IDs in the example are whatever `opencode models` listed when it was written. Replace them with the ones your providers offer.
+
+#### In GitHub Actions
+
+This sample posts the report to the job summary when a maintainer adds a `council` label to a pull request. It is a starting point and has not been run against live providers from this repository. Pin the Agora and OpenCode versions you have tested, and check OpenCode's provider documentation for the environment variable each of your providers reads.
+
+```yaml
+name: Council
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  council:
+    if: github.event.label.name == 'council' && !github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: stable
+
+      - name: Install Agora and OpenCode
+        run: |
+          go install github.com/jgabor/agora/cmd/agora@AGORA_VERSION
+          npm install -g @opencode/cli@OPENCODE_VERSION
+
+      - name: Run council
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/change.diff"
+          agora run \
+            --config .agora/council.yaml \
+            --topic "Review this pull request for correctness. Score it out of 10." \
+            --context "$RUNNER_TEMP/change.diff" --workdir . \
+            --max-turns 3 --time 900 --budget 2.00 \
+            --synthesize --quiet --format markdown \
+            --output "$RUNNER_TEMP/council.jsonl" >> "$GITHUB_STEP_SUMMARY"
+```
+
+The job is advisory: it succeeds on both `consensus` and `no_consensus`, and fails only when the session fails. To make it a gate, switch to `--format json` and test `.data.outcome.kind` or the agent scores with `jq` (see [Run reports](#run-reports)).
+
+Before enabling it:
+
+- A pull request diff is untrusted input to the reviewers. They cannot edit files or run commands, but they can read the checkout and they keep web fetch and search enabled; there is no per-run switch to deny those yet. Do not run a council on code you could not share with the model providers.
+- Pull requests from forks get no secrets, so the sample skips them. Do not move it to `pull_request_target`, which would hand secrets to untrusted code.
+- Every labeled run calls three flagship models. `--budget` and `--time` are checked between model calls, so one slow or costly call can pass a cap before the next check.
+- The transcript holds the reviewers' full output. Treat it like the code it discusses before uploading it as an artifact.
 
 ### `agora prime` — Inspect agent-operating context
 
@@ -158,6 +270,8 @@ Supported inspection commands accept one shared output selector:
 
 `text` is the default and preserves the human CLI presentation. `json` emits schema-versioned, non-ANSI data. `markdown` emits non-ANSI prose/tables for agents and humans. Invalid format values are rejected with the valid values named.
 
+`agora run` and `agora resume` take the same selector for their final report; see [Run reports](#run-reports).
+
 | Command | Formats |
 |---|---|
 | `agora prime` | `--format text|json|markdown` |
@@ -167,6 +281,7 @@ Supported inspection commands accept one shared output selector:
 | `agora stats TRANSCRIPT|SLUG` | `--format text|json|markdown` |
 | `agora validate CONFIG|SLUG` | `--format text|json|markdown` |
 | `agora config get --all` | `--format text|json|markdown` |
+| `agora run`, `agora resume` | `--format text|json|markdown` (final report) |
 
 ### Transcript slugs and paths
 
@@ -209,7 +324,7 @@ agora resume --config PATH --topic TEXT TRANSCRIPT|SLUG [flags]
 agora resume --config PATH --topic TEXT --file PATH/TO/transcript.jsonl [flags]
 ```
 
-Same optional flags as run, except evidence flags are rejected on resume. Loads prior records from a transcript slug, explicit positional path, or `--file` override and continues from the last turn. Live output uses the same modes as `run`: default shows response bodies, `--quiet` suppresses live response bodies for metadata/progress only, and `--verbose` shows response bodies plus diagnostics/metrics. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context.
+Same optional flags as run, except evidence flags are rejected on resume. Loads prior records from a transcript slug, explicit positional path, or `--file` override and continues from the last turn. Live output uses the same modes as `run`: default shows response bodies, `--quiet` suppresses live response bodies for metadata/progress only, and `--verbose` shows response bodies plus diagnostics/metrics. If the transcript already contains research/context evidence, Agora reuses that evidence and does not refresh web research or local context. `--format json|markdown` prints the same single report document as `run`, with `command` set to `resume`.
 
 ### `agora stats` — Show transcript statistics
 
@@ -251,23 +366,27 @@ agora config get KEY
 agora config set KEY VALUE
 ```
 
-Reads and writes the global `config.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. `agora config get --all --format json|markdown` reports every supported setting with value, source, type, default/effective-value policy, allowed values, and redaction behavior. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
+Reads and writes the global `config.yaml` file. `agora config init` creates it with Agora's effective defaults and refuses to overwrite unless `--force` is passed. `agora config get --all --format json|markdown` reports every supported setting with value, source, type, default/effective-value policy, allowed values, and redaction behavior. Supported keys are `default_model`, `default_auto_level`, `default_topology`, `default_output_dir`, `default_ledger_enabled`, `research_max_sources`, `context_max_bytes`, and `context_max_depth`.
 
 ## Configuration
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `topology` | string | `ring` | `ring`, `star`, or `mesh` |
-| `consensus_threshold` | int | `0` | Unique current endorsements required for typed consensus halt (0 = disabled) |
-| `min_rounds` | int | `1` | Minimum complete agent rounds before typed consensus halt |
+| `consensus_threshold` | int | cast size | Unique current endorsements required for typed consensus halt. Omitted or `0` means every agent; a config file cannot disable consensus |
+| `min_rounds` | int | `3` | Minimum complete agent rounds before typed consensus halt. Omitted or `0` means `3` |
 | `required_deliverable_items` | int | `0` | Explicit canonical deliverable item count required before consensus halt |
 | `workdir` | string | caller directory | Base directory for agent execution and relative local-context paths |
 | `synthesis_model` | string | — | Override model for final synthesis (defaults to first agent's model) |
 | `research` | bool | `false` | Enable topic-inferred web research before deliberation for runs using this config |
+| `scoring` | bool | `false` | Require a nullable `score` (integer 0 to 10) in every agent contribution, including openings |
+| `ledger` | bool | `default_ledger_enabled`, else `true` | Inject the per-round debate ledger into agent turns after the opening |
 | `context` | list | `.` with explicit workdir; otherwise `[]` | Local text files or directories to include before deliberation |
 | `agents` | list | required | Agent configs with `id`, `model`, and optional `system_prompt` |
 
-CLI flags override project config. `--workdir` overrides config `workdir`; a relative CLI value is based on the caller directory, while a relative config value is based on the config file's directory. Relative `context` paths are then based on the effective workdir. When a workdir is explicitly selected and `context` is omitted, Agora includes `.` by default. Use `context: []` or `--no-context` to opt out. For evidence, `--research` enables web research, `--no-research` disables config-enabled web research, and any `--context` flags replace config `context` paths for that run.
+The `consensus_threshold` and `min_rounds` defaults apply to config files. Casts generated by `--auto` carry their own values.
+
+CLI flags override project config. `--no-ledger` overrides config `ledger`. `--workdir` overrides config `workdir`; a relative CLI value is based on the caller directory, while a relative config value is based on the config file's directory. Relative `context` paths are then based on the effective workdir. When a workdir is explicitly selected and `context` is omitted, Agora includes `.` by default. Use `context: []` or `--no-context` to opt out. For evidence, `--research` enables web research, `--no-research` disables config-enabled web research, and any `--context` flags replace config `context` paths for that run.
 
 Global `config.yaml` can be managed with `agora config`. It may set CLI defaults and evidence caps, but does not silently enable web access:
 
@@ -277,6 +396,7 @@ Global `config.yaml` can be managed with `agora config`. It may set CLI defaults
 | `default_auto_level` | — | Auto level used when `--auto` and `--config` are omitted: `quick`, `normal`, `deep`, or `yolo` |
 | `default_topology` | `ring` | Topology used when a YAML config omits `topology` |
 | `default_output_dir` | platform data dir | Directory for managed transcript output |
+| `default_ledger_enabled` | — (enabled) | Whether runs inject the debate ledger when neither `--no-ledger` nor config `ledger` decides |
 | `research_max_sources` | `20` | Maximum web sources, generated web queries, and local context file references |
 | `context_max_bytes` | `1048576` | Maximum total bytes of local context |
 | `context_max_depth` | `5` | Maximum directory traversal depth for local context |
@@ -294,11 +414,17 @@ When these evidence caps are unset in `config.yaml`, auto mode raises their fall
 
 Research and context run once before the first deliberation turn. Web research derives bounded queries from the topic, then uses the normal OpenCode-backed agent runtime to collect source references. Local context reads bounded safe text from readable files and directories and delivers it to each agent once; transcripts store source references only, not full local file contents. Directory traversal respects `.gitignore`, skips VCS directories, binary files, secret-looking files such as `.env` and private key names, and unreadable nested entries, but does not blanket-skip hidden project directories. An unreadable explicit context root remains an error.
 
-All model calls are given this read-only filesystem guard: `CRITICAL: DO NOT MODIFY OR WRITE TO ANY FILES! You are only permitted to read and explore files.` Agora also supplies the matching OpenCode permission policy through `OPENCODE_CONFIG_CONTENT`, so it does not create or replace `opencode.json` in the launch or project directory. Project OpenCode configuration still loads, with Agora's inline permission policy taking later precedence. Agora avoids OpenCode's dangerous auto-approval flag when launching agents.
+All model calls are given this read-only hint: `You are operating in a read-only sandbox. Your tools are limited to reading, searching, and exploring files.` The hint is not the enforcement. Agora also supplies the matching OpenCode permission policy through `OPENCODE_CONFIG_CONTENT`, so it does not create or replace `opencode.json` in the launch or project directory. Project OpenCode configuration still loads, with Agora's inline permission policy taking later precedence. Agora avoids OpenCode's dangerous auto-approval flag when launching agents.
 
 Agora prints a pre-deliberation evidence summary before agent turns. Web query/source limits and local file, byte, and depth limits are soft caps: Agora includes what fits, truncates local text at the byte cap, skips paths beyond caps, and warns in the evidence summary when a cap is hit. Agora still halts before any agent response if enabled research or context cannot produce usable source references, if web evidence is malformed, or if explicit local context paths cannot be resolved. Such evidence failures are reported as failures and return a non-zero process status. `--dry-run --research` reports deterministic planned research behavior without live web tool calls. `--dry-run --context` still validates local paths without model cost.
 
 Current limitations: local context is text-only; PDF, DOCX, binary parsing, browser rendering, source/domain allowlists, persistent source caching, and replay-perfect research refresh are not implemented.
+
+### Contribution scores
+
+With `scoring: true`, every contribution contract adds a required `score` field: an integer from 0 to 10 rating the subject under deliberation, or `null` when the agent cannot judge it. The field follows the same rule as `vote`: it must be present, and it may be null. A missing key, a non-integer, or a value outside the range fails the turn like any other contract violation. Openings stay independent and otherwise position-only; the score is the one extra field they carry.
+
+Scores are stored with each contribution in the typed control state (`control.contributions[].score`) and are never invented: a dry run records `null`, and a report shows `no score`. A score is not a halt gate and is not part of the run contract, so consensus still depends only on typed votes, objections, and evidence. On resume, the resume config decides whether later turns are scored. Without `scoring`, a `score` in agent output is rejected as an unknown field after the opening and discarded in an opening.
 
 ## Topologies
 
@@ -378,7 +504,7 @@ When `--synthesize` is enabled, a final agent call produces a structured JSON su
 JSONL, one turn per line. The first written record embeds a `transcript` metadata block with schema version, full run config, and the durable cast used for replay. Cast members include numeric ID, generated display name, persona, provider/model, and a theme-adaptive ANSI color slot so `agora show` can replay the same `[A1 persona]` labels and styling as the original run without reloading the config file. Research/context runs add an orchestrator evidence summary before agent turns. Transcript evidence stores source references and a readable summary, not full source content; the same evidence bundle is delivered to each agent exactly once on that agent's first turn. User-facing transcript commands (`show`, `stats`, and `resume`) load transcripts strictly: malformed non-blank records fail with an error instead of being ignored.
 
 ```json
-{"turn": 0, "agent_id": "skeptic", "model": "openai/gpt-4o", "transcript": {"schema_version": 1, "cast": [{"id": 1, "name": "Solon", "persona": "skeptic", "provider_model": "openai/gpt-4o", "color": "6"}], "config": {"agents": [{"id": "skeptic", "model": "openai/gpt-4o", "system_prompt": "..."}], "topology": "ring", "consensus_threshold": 0}}, "timestamp": 1715000000.0, "content": "...", "tokens": {"total": 150, "input": 100, "output": 50}, "cost": 0.001, "consensus": false, "consensus_statement": "", "elapsed": 2.5}
+{"turn": 0, "agent_id": "skeptic", "model": "openai/gpt-4o", "transcript": {"schema_version": 1, "cast": [{"id": 1, "name": "Solon", "persona": "skeptic", "provider_model": "openai/gpt-4o", "color": "6"}], "config": {"agents": [{"id": "skeptic", "model": "openai/gpt-4o", "system_prompt": "..."}], "topology": "ring", "consensus_threshold": 1, "min_rounds": 3}}, "timestamp": 1715000000.0, "content": "...", "tokens": {"total": 150, "input": 100, "output": 50}, "cost": 0.001, "consensus": false, "consensus_statement": "", "elapsed": 2.5}
 ```
 
 ## Development

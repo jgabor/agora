@@ -456,7 +456,7 @@ func TestPrimeCommandJSONOutputIncludesContractSections(t *testing.T) {
 	if envelope.Command != "prime" || envelope.SchemaVersion != schemaVersion {
 		t.Fatalf("prime envelope: %#v", envelope)
 	}
-	for _, key := range []string{"commands", "flags", "defaults", "enum_values", "config_keys", "config", "transcript_metadata", "context_boundary"} {
+	for _, key := range []string{"commands", "flags", "defaults", "enum_values", "config_keys", "config", "transcript_metadata", "context_boundary", "run_report"} {
 		if _, ok := envelope.Data[key]; !ok {
 			t.Fatalf("prime json missing %q: %#v", key, envelope.Data)
 		}
@@ -464,6 +464,16 @@ func TestPrimeCommandJSONOutputIncludesContractSections(t *testing.T) {
 	assertStringContains(t, out, "agora prime")
 	assertStringContains(t, out, "--context PATH")
 	assertStringContains(t, out, "[redacted]")
+
+	report, ok := envelope.Data["run_report"].(map[string]any)
+	if !ok || report["document_type"] != runReportDocumentType {
+		t.Fatalf("prime run report contract: %#v", envelope.Data["run_report"])
+	}
+	fields := strings.Join(anyStringSlice(report["fields"]), ",")
+	for _, field := range []string{"outcome", "agents", "unresolved_objections", "synthesis", "totals", "failure"} {
+		assertStringContains(t, fields, field)
+	}
+	assertStringContains(t, strings.Join(anyStringSlice(report["agent_fields"]), ","), "score")
 }
 
 func TestPrimeCommandMarkdownOutputIncludesAgentBriefing(t *testing.T) {
@@ -551,6 +561,18 @@ func TestFormatContractInvalidFormats(t *testing.T) {
 			primeFormat = "xml"
 			defer func() { primeFormat = old }()
 			return primeCmd.RunE(&cobra.Command{}, nil)
+		}},
+		{name: "run", run: func() error {
+			old := runFlags.Format
+			runFlags.Format = "xml"
+			defer func() { runFlags.Format = old }()
+			return runCmd.PreRunE(runCmd, nil)
+		}},
+		{name: "resume", run: func() error {
+			old := resumeFlags.Format
+			resumeFlags.Format = "xml"
+			defer func() { resumeFlags.Format = old }()
+			return resumeCmd.PreRunE(resumeCmd, []string{"missing"})
 		}},
 	}
 
@@ -1480,6 +1502,168 @@ func TestRunCommandDefaultShowsResponseAndQuietHidesIt(t *testing.T) {
 	assertStringContains(t, quiet, "Deliberation complete")
 	assertStringNotContains(t, quiet, "AGENT CONTENT")
 	assertStringNotContains(t, quiet, "[DRY RUN] Agent 'a' responds")
+}
+
+func TestRunCommandStructuredFormatsReserveStdoutForOneReport(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeConfig(t, "")
+	configPath := filepath.Join(dir, "scored.yaml")
+	if err := os.WriteFile(configPath, []byte("scoring: true\nagents:\n  - id: a\n    model: test/model\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Chdir(dir)
+
+	run := func(format string) (stdout, stderr, processStdout string) {
+		t.Helper()
+		outputPath := filepath.Join(dir, "run-"+format+".jsonl")
+		restore := configureRunGlobals(configPath, outputPath)
+		defer restore()
+		runFlags.Format = format
+		cmd := artifactCommand(t, outputPath)
+		var out, errOut bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&errOut)
+		processStdout = captureStdout(t, func() {
+			if err := runCmd.RunE(cmd, nil); err != nil {
+				t.Fatalf("run %s: %v", format, err)
+			}
+		})
+		return out.String(), errOut.String(), processStdout
+	}
+
+	jsonOut, jsonLive, leaked := run(formatJSON)
+	if leaked != "" {
+		t.Fatalf("json run wrote live output to stdout: %q", leaked)
+	}
+	assertJSONNoANSI(t, jsonOut)
+	var report struct {
+		Command string `json:"command"`
+		Data    struct {
+			DocumentType string `json:"document_type"`
+			Topic        string `json:"topic"`
+			Scoring      bool   `json:"scoring"`
+			Outcome      struct {
+				Kind string `json:"kind"`
+			} `json:"outcome"`
+			Agents []struct {
+				ID       string `json:"id"`
+				Score    *int   `json:"score"`
+				Position string `json:"position"`
+			} `json:"agents"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &report); err != nil {
+		t.Fatalf("decode run report: %v\n%s", err, jsonOut)
+	}
+	if report.Command != "run" || report.Data.DocumentType != "agora.run.report" || report.Data.Topic != "artifact resolution" {
+		t.Fatalf("report identity: %#v", report)
+	}
+	if !report.Data.Scoring || report.Data.Outcome.Kind != "no_consensus" {
+		t.Fatalf("report outcome: %#v", report.Data)
+	}
+	// A dry run judges nothing, so its score is null rather than invented.
+	if len(report.Data.Agents) != 1 || report.Data.Agents[0].ID != "a" || report.Data.Agents[0].Score != nil ||
+		!strings.Contains(report.Data.Agents[0].Position, "[DRY RUN] Agent 'a' responds") {
+		t.Fatalf("report agents: %#v", report.Data.Agents)
+	}
+	for _, live := range []string{"AGENT CONTENT", "Deliberation complete", "[SUCCESS] Transcript:"} {
+		assertStringContains(t, jsonLive, live)
+		assertStringNotContains(t, jsonOut, live)
+	}
+
+	markdownOut, markdownLive, leaked := run(formatMarkdown)
+	if leaked != "" {
+		t.Fatalf("markdown run wrote live output to stdout: %q", leaked)
+	}
+	if !strings.HasPrefix(markdownOut, "# Agora run report\n") {
+		t.Fatalf("markdown report must start the document:\n%s", markdownOut)
+	}
+	for _, want := range []string{"- **Outcome:** no_consensus", "| a | `test/model` | no score | no vote |", "## Latest positions"} {
+		assertStringContains(t, markdownOut, want)
+	}
+	assertStringNotContains(t, markdownOut, "\x1b[")
+	assertStringNotContains(t, markdownOut, "Deliberation complete")
+	assertStringContains(t, markdownLive, "Deliberation complete")
+}
+
+func TestRunCommandStructuredFormatReportsSessionFailure(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeConfig(t, "")
+	configPath := filepath.Join(dir, "panel.yaml")
+	configYAML := "context:\n  - missing.md\nagents:\n  - id: a\n    model: test/model\n"
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Chdir(dir)
+	outputPath := filepath.Join(dir, "run.jsonl")
+	restore := configureRunGlobals(configPath, outputPath)
+	defer restore()
+	runFlags.Format = formatJSON
+	cmd := artifactCommand(t, outputPath)
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+
+	runErr := runCmd.RunE(cmd, nil)
+	if runErr == nil || !strings.Contains(runErr.Error(), "Evidence failed") {
+		t.Fatalf("error: got %v, want evidence failure", runErr)
+	}
+	assertJSONNoANSI(t, out.String())
+	var report struct {
+		Data struct {
+			Failure *string `json:"failure"`
+			Outcome struct {
+				Kind       string `json:"kind"`
+				HaltReason string `json:"halt_reason"`
+			} `json:"outcome"`
+			Scoring bool `json:"scoring"`
+			Agents  []struct {
+				Score *int `json:"score"`
+			} `json:"agents"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode failure report: %v\n%s", err, out.String())
+	}
+	if report.Data.Failure == nil || *report.Data.Failure == "" || report.Data.Outcome.Kind != "pending" || report.Data.Outcome.HaltReason == "" {
+		t.Fatalf("failure report: %#v", report.Data)
+	}
+	assertStringNotContains(t, errOut.String(), "SUCCESS")
+	assertStringContains(t, errOut.String(), "[INFO] Transcript:")
+}
+
+func TestValidateReportsScoring(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	dir := t.TempDir()
+	writeConfig(t, "")
+	path := filepath.Join(dir, "scored.yaml")
+	if err := os.WriteFile(path, []byte("scoring: true\nagents:\n  - id: a\n    model: test/model\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	jsonOut, err := runValidateCommand(t, formatJSON, path)
+	if err != nil {
+		t.Fatalf("validate json: %v", err)
+	}
+	assertStringContains(t, jsonOut, "\"scoring\": true")
+	markdownOut, err := runValidateCommand(t, formatMarkdown, path)
+	if err != nil {
+		t.Fatalf("validate markdown: %v", err)
+	}
+	assertStringContains(t, markdownOut, "**Scoring:** true")
+
+	plain := filepath.Join(dir, "plain.yaml")
+	writeValidConfig(t, plain)
+	jsonOut, err = runValidateCommand(t, formatJSON, plain)
+	if err != nil {
+		t.Fatalf("validate plain json: %v", err)
+	}
+	assertStringContains(t, jsonOut, "\"scoring\": false")
 }
 
 func TestRunCommandPersistsTranscriptCastMetadata(t *testing.T) {
@@ -2936,6 +3120,8 @@ func configureRunGlobals(configPath, outputPath string) func() {
 	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext := runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext
 	oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir := runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoContext, runFlags.NoLedger, runFlags.Context, runFlags.Workdir
 
+	oldFormat := runFlags.Format
+	runFlags.Format = formatText
 	runFlags.Config = configPath
 	runFlags.Topic = "artifact resolution"
 	runFlags.TimeLimit = 60
@@ -2960,6 +3146,7 @@ func configureRunGlobals(configPath, outputPath string) func() {
 	runFlags.Workdir = ""
 
 	return func() {
+		runFlags.Format = oldFormat
 		runFlags.Config, runFlags.Topic, runFlags.TimeLimit, runFlags.Window, runFlags.MaxTurns, runFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
 		runFlags.Verbose, runFlags.Quiet, runFlags.Budget, runFlags.BudgetSet, runSynthesize, runFlags.FullContext = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldSynthesize, oldFullContext
 		runFlags.DryRun, runFlags.Auto, runFlags.Model, runFlags.Yes, runFlags.Research, runFlags.NoResearch, runFlags.NoContext, runFlags.NoLedger, runFlags.Context, runFlags.Workdir = oldDryRun, oldAuto, oldModel, oldYes, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir
@@ -2971,6 +3158,8 @@ func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
 	oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun := resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun
 	oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir := resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoContext, resumeFlags.NoLedger, resumeFlags.Context, resumeFlags.Workdir
 
+	oldFormat := resumeFlags.Format
+	resumeFlags.Format = formatText
 	resumeFlags.Config = configPath
 	resumeFlags.Topic = "artifact resolution"
 	resumeFlags.TimeLimit = 60
@@ -2995,6 +3184,7 @@ func configureResumeGlobals(configPath, sourcePath, outputPath string) func() {
 	resumeFlags.Workdir = ""
 
 	return func() {
+		resumeFlags.Format = oldFormat
 		resumeFlags.Config, resumeFlags.Topic, resumeFlags.TimeLimit, resumeFlags.Window, resumeFlags.MaxTurns, resumeFlags.Output = oldConfig, oldTopic, oldTimeLimit, oldWindow, oldMaxTurns, oldOutput
 		resumeFlags.Verbose, resumeFlags.Quiet, resumeFlags.Budget, resumeFlags.BudgetSet, resumeFlags.FullContext, resumeFlags.DryRun = oldVerbose, oldQuiet, oldBudget, oldBudgetSet, oldFullContext, oldDryRun
 		resumeFlags.Auto, resumeFlags.Model, resumeFlags.Yes, resumeFile, resumeFlags.Research, resumeFlags.NoResearch, resumeFlags.NoContext, resumeFlags.NoLedger, resumeFlags.Context, resumeFlags.Workdir = oldAuto, oldModel, oldYes, oldFile, oldResearch, oldNoResearch, oldNoContext, oldNoLedger, oldContext, oldWorkdir

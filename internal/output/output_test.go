@@ -913,9 +913,9 @@ func TestActivityRedirectedStdoutRichTermEmitsPlainStatus(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("CI", "")
 	t.Setenv("TERM", "xterm-256color")
-	old := stdoutIsTerminal
-	stdoutIsTerminal = func() bool { return false }
-	t.Cleanup(func() { stdoutIsTerminal = old })
+	old := writerIsTerminal
+	writerIsTerminal = func(io.Writer) bool { return false }
+	t.Cleanup(func() { writerIsTerminal = old })
 
 	got := captureOutput(t, func() {
 		stop := NewOutputManager(false).Activity("Generation: optimist")
@@ -935,9 +935,9 @@ func TestActivityRichModeCleansLineBeforeFinalOutput(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("CI", "")
 	t.Setenv("TERM", "xterm-256color")
-	old := stdoutIsTerminal
-	stdoutIsTerminal = func() bool { return true }
-	t.Cleanup(func() { stdoutIsTerminal = old })
+	old := writerIsTerminal
+	writerIsTerminal = func(io.Writer) bool { return true }
+	t.Cleanup(func() { writerIsTerminal = old })
 
 	got := captureOutput(t, func() {
 		stop := NewOutputManager(false).Activity("Generation: strategist")
@@ -953,9 +953,9 @@ func TestActivityStopsBeforeVerboseTurnContent(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("CI", "")
 	t.Setenv("TERM", "xterm-256color")
-	old := stdoutIsTerminal
-	stdoutIsTerminal = func() bool { return true }
-	t.Cleanup(func() { stdoutIsTerminal = old })
+	old := writerIsTerminal
+	writerIsTerminal = func(io.Writer) bool { return true }
+	t.Cleanup(func() { writerIsTerminal = old })
 	model := "opencode/test"
 	record := types.TurnRecord{AgentID: "strategist", Model: &model, Elapsed: 0.4, Content: "# Decision\n\nKeep metadata readable."}
 
@@ -1214,5 +1214,47 @@ func TestRichRendererContract(t *testing.T) {
 	// Width
 	if r.Width() <= 0 {
 		t.Fatalf("RichRenderer.Width should be positive, got %d", r.Width())
+	}
+}
+
+func TestOutputManagerWithWriterKeepsStdoutClean(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("TERM", "dumb")
+	model := "opencode/test"
+	cfg := &types.DeliberationConfig{Agents: []types.AgentConfig{{ID: "strategist", Model: model}}}
+	state := &types.DeliberationState{Config: cfg, Topic: "stream split", MaxTurns: 1, TimeLimit: 60}
+	record := types.TurnRecord{AgentID: "strategist", Model: &model, Elapsed: 0.4, Content: "Keep stdout for the document."}
+
+	var progress bytes.Buffer
+	manager := NewOutputManagerWithWriter(OutputVerbose, &progress)
+	stdout := captureOutput(t, func() {
+		manager.DeliberationHeader(state)
+		stop := manager.Activity("Generation: strategist")
+		stop()
+		manager.TurnProgress(record, 0, 1)
+		manager.EvidenceSummary(types.EvidenceBundle{Summary: "one source"})
+		manager.FinalStats([]types.TurnRecord{record}, state)
+		manager.SynthesizeHeader()
+		manager.SynthesisResult(map[string]any{"recommended_decision": "ship it", "confidence": "high"})
+		manager.Info("thinking")
+		manager.Success("done")
+		manager.Warning("careful")
+		manager.Error("failed")
+		manager.Delimiter()
+	})
+
+	if stdout != "" {
+		t.Fatalf("writer-bound manager wrote to stdout: %q", stdout)
+	}
+	got := progress.String()
+	for _, want := range []string{
+		"stream split", "[INFO] Working: Generation: strategist", "Keep stdout for the document.",
+		"one source", "Deliberation Summary", "Synthesis", "ship it",
+		"[INFO] thinking", "[SUCCESS] done", "[WARNING] careful", "[ERROR] failed",
+	} {
+		assertContains(t, got, want)
+	}
+	if strings.Contains(got, "\r") {
+		t.Fatalf("non-terminal writer received spinner artifacts: %q", got)
 	}
 }

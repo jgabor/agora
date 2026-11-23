@@ -535,3 +535,35 @@ func TestNewAgentRunnerAtRecordsWorkdir(t *testing.T) {
 		t.Fatalf("workdir: got %q, want %q", runner.workdir, dir)
 	}
 }
+
+func TestAgentRunnerDryRunScoresNullOnlyWhenContractRequiresScore(t *testing.T) {
+	runner := NewAgentRunner(true)
+	full := []string{"position", "responses", "concessions", "proposal_action", "objections", "vote", "claims"}
+	for _, tt := range []struct {
+		name     string
+		contract map[string]any
+		scored   bool
+	}{
+		{name: "opening unscored", contract: map[string]any{"mode": "position_only", "required": []string{"position"}}},
+		{name: "opening scored", contract: map[string]any{"mode": "position_only", "required": []string{"position", "score"}}, scored: true},
+		{name: "later unscored", contract: map[string]any{"required": full}},
+		{name: "later scored", contract: map[string]any{"required": append(append([]string(nil), full...), "score")}, scored: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			content, _, err := runner.Run(types.AgentConfig{ID: "alpha", Model: "test-model"}, map[string]any{
+				"topic": "scoring topic", "contribution_contract": tt.contract,
+			})
+			if err != nil {
+				t.Fatalf("dry run: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(content), &payload); err != nil {
+				t.Fatalf("payload: %v", err)
+			}
+			score, present := payload["score"]
+			if present != tt.scored || score != nil {
+				t.Fatalf("score key: present=%v value=%#v, want present=%v and null", present, score, tt.scored)
+			}
+		})
+	}
+}

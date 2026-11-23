@@ -47,7 +47,7 @@ func stateWithOpenProposal(t *testing.T) *types.DeliberationControlState {
 			map[string]any{"id": "obj-2", "proposal_version": 1, "summary": "retain compatibility"},
 		},
 		"vote": map[string]any{"proposal_version": 1, "choice": "endorse"},
-	}))
+	}), false)
 	if err != nil {
 		t.Fatalf("seed contribution: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestProcessContributionBindsEveryFamilyAndRevisesAtomically(t *testing.T) {
 			map[string]any{"id": "obj-3", "proposal_version": 2, "claim_id": "claim-2", "summary": "test the inference"},
 		},
 		"vote": map[string]any{"proposal_version": 2, "choice": "endorse"},
-	}))
+	}), false)
 	if err != nil {
 		t.Fatalf("ProcessContribution: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestProcessContributionRecordsEveryVerificationOutcome(t *testing.T) {
 				"claims": []any{map[string]any{
 					"id": "claim-1", "status": string(tt.status), "source_refs": tt.refs,
 				}},
-			}))
+			}), false)
 			if err != nil {
 				t.Fatalf("verification: %v", err)
 			}
@@ -167,7 +167,7 @@ func TestProcessContributionRecordsEveryVerificationOutcome(t *testing.T) {
 				"claims": []any{map[string]any{
 					"id": "claim-1", "status": string(tt.status), "source_refs": []int{2},
 				}},
-			}))
+			}), false)
 			if err == nil || !strings.Contains(err.Error(), "unknown source") {
 				t.Fatalf("invented source accepted: %v", err)
 			}
@@ -182,7 +182,7 @@ func TestProcessContributionRequiresExplicitUnverifiedClaimsAndTypedVerification
 		next, err := ProcessContribution(state, "alpha", 0, contributionJSON(t, map[string]any{
 			"proposal_action": map[string]any{"kind": "create", "content": "proposal"},
 			"claims":          []any{fields},
-		}))
+		}), false)
 		return next, err
 	}
 	if _, err := newClaim(map[string]any{"id": "missing-refs", "proposal_version": 1, "kind": "fact", "decisive": true}); err == nil || !strings.Contains(err.Error(), "source_refs is required") {
@@ -204,7 +204,7 @@ func TestProcessContributionRequiresExplicitUnverifiedClaimsAndTypedVerification
 	state.Directive = types.TurnDirective{Kind: types.DirectiveVerify, TargetAgentID: "beta", ClaimID: "claim-1"}
 	if _, err := ProcessContribution(state, "beta", 0, contributionJSON(t, map[string]any{
 		"claims": []any{map[string]any{"id": "claim-1", "source_refs": []int{}}},
-	})); err == nil || !strings.Contains(err.Error(), "typed outcome") {
+	}), false); err == nil || !strings.Contains(err.Error(), "typed outcome") {
 		t.Fatalf("verification without outcome accepted: %v", err)
 	}
 }
@@ -230,7 +230,7 @@ func TestProcessContributionRejectsEachInvalidFamilyWithoutMutation(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			next, err := ProcessContribution(state, "beta", i+1, contributionJSON(t, tc.fields))
+			next, err := ProcessContribution(state, "beta", i+1, contributionJSON(t, tc.fields), false)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error: got %v, want containing %q", err, tc.want)
 			}
@@ -251,7 +251,7 @@ func TestProcessContributionMalformedCannotEndorseOrResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	malformed := `{"position":"looks complete","responses":[{"objection_id":"obj-1","response":"done","disposition":"resolved","rationale":"claimed"}],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":{"proposal_version":1,"choice":"endorse"}}`
-	next, err := ProcessContribution(state, "beta", 1, malformed)
+	next, err := ProcessContribution(state, "beta", 1, malformed, false)
 	if err == nil || !strings.Contains(err.Error(), `missing "claims"`) {
 		t.Fatalf("malformed error: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestProcessContributionRejectsNullFamiliesAndOmittedDecisiveWithoutMutation
 			if err != nil {
 				t.Fatal(err)
 			}
-			next, err := ProcessContribution(state, "beta", i+1, contributionJSON(t, fields))
+			next, err := ProcessContribution(state, "beta", i+1, contributionJSON(t, fields), false)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error: got %v, want containing %q", err, tc.want)
 			}
@@ -328,13 +328,13 @@ func TestProcessContributionIsDeterministicForIdenticalInput(t *testing.T) {
 	})
 	firstState := types.NewDeliberationControlState([]string{"alpha"}, 0)
 	firstState.Phase = types.PhaseRebuttal
-	first, err := ProcessContribution(firstState, "alpha", 0, output)
+	first, err := ProcessContribution(firstState, "alpha", 0, output, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondState := types.NewDeliberationControlState([]string{"alpha"}, 0)
 	secondState.Phase = types.PhaseRebuttal
-	second, err := ProcessContribution(secondState, "alpha", 0, output)
+	second, err := ProcessContribution(secondState, "alpha", 0, output, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestProcessContributionRejectsUnknownAndTrailingFields(t *testing.T) {
 		`{"position":"p","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[],"endorse":true}`,
 		`{"position":"p","responses":[],"concessions":[],"proposal_action":{"kind":"none"},"objections":[],"vote":null,"claims":[]} {}`,
 	} {
-		if next, err := ProcessContribution(state, "alpha", 0, output); err == nil || next != nil {
+		if next, err := ProcessContribution(state, "alpha", 0, output, false); err == nil || next != nil {
 			t.Fatalf("strict parse accepted %q: next=%+v err=%v", output, next, err)
 		}
 	}
@@ -359,11 +359,11 @@ func TestProcessContributionRejectsUnknownAndTrailingFields(t *testing.T) {
 func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
 	opening := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
 	openingOutput := `{"position":"opening position"}`
-	first, err := ProcessContribution(opening, "alpha", 0, openingOutput)
+	first, err := ProcessContribution(opening, "alpha", 0, openingOutput, false)
 	if err != nil {
 		t.Fatalf("first opening contribution: %v", err)
 	}
-	if _, err := ProcessContribution(first, "alpha", 1, openingOutput); err == nil || !strings.Contains(err.Error(), "one contribution per agent") {
+	if _, err := ProcessContribution(first, "alpha", 1, openingOutput, false); err == nil || !strings.Contains(err.Error(), "one contribution per agent") {
 		t.Fatalf("duplicate opening contribution error: %v", err)
 	}
 
@@ -374,10 +374,10 @@ func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
 	directed.Objections = []types.Objection{{ID: "obj-1", AgentID: "alpha", ProposalVersion: 1, Summary: "challenge"}}
 	directed.Directive = types.TurnDirective{Kind: types.DirectiveRespond, TargetAgentID: "beta", ObjectionID: "obj-1"}
 	directedOutput := contributionJSON(t, nil)
-	if _, err := ProcessContribution(directed, "alpha", 0, directedOutput); err == nil || !strings.Contains(err.Error(), "directed to agent") {
+	if _, err := ProcessContribution(directed, "alpha", 0, directedOutput, false); err == nil || !strings.Contains(err.Error(), "directed to agent") {
 		t.Fatalf("wrong directed agent error: %v", err)
 	}
-	if _, err := ProcessContribution(directed, "beta", 0, directedOutput); err != nil {
+	if _, err := ProcessContribution(directed, "beta", 0, directedOutput, false); err != nil {
 		t.Fatalf("directed agent contribution: %v", err)
 	}
 
@@ -389,7 +389,7 @@ func TestProcessContributionHonorsOpeningAndDirectiveTargets(t *testing.T) {
 	revisionOutput := contributionJSON(t, map[string]any{
 		"proposal_action": map[string]any{"kind": "revise", "content": "revised proposal", "supersedes": 1},
 	})
-	next, err := ProcessContribution(revision, "beta", 0, revisionOutput)
+	next, err := ProcessContribution(revision, "beta", 0, revisionOutput, false)
 	if err != nil {
 		t.Fatalf("directed proposal revision: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestProcessContributionOpeningRetainsOnlyPosition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
-			next, err := ProcessContribution(state, "alpha", 0, tt.output)
+			next, err := ProcessContribution(state, "alpha", 0, tt.output, false)
 			if err != nil {
 				t.Fatalf("opening contribution: %v", err)
 			}
@@ -457,7 +457,7 @@ func TestProcessContributionOpeningRetainsOnlyPosition(t *testing.T) {
 }
 
 func TestOpeningContributionContractIsPositionOnly(t *testing.T) {
-	contract := ContributionContractForPhase(types.PhaseOpening)
+	contract := ContributionContractForPhase(types.PhaseOpening, false)
 	if contract["mode"] != "position_only" {
 		t.Fatalf("opening mode: got %#v", contract["mode"])
 	}
@@ -474,9 +474,117 @@ func TestOpeningContributionContractIsPositionOnly(t *testing.T) {
 		}
 	}
 
-	postOpening := ContributionContractForPhase(types.PhaseRebuttal)
+	postOpening := ContributionContractForPhase(types.PhaseRebuttal, false)
 	kinds, ok := postOpening["proposal_action_kinds"].([]string)
 	if !ok || !reflect.DeepEqual(kinds, []string{"none", "create", "revise"}) {
 		t.Fatalf("post-opening proposal actions: %#v", postOpening["proposal_action_kinds"])
+	}
+}
+
+func TestScoredContributionContractRequiresScoreInEveryPhase(t *testing.T) {
+	for _, phase := range []types.DeliberationPhase{types.PhaseOpening, types.PhaseRebuttal} {
+		plain := ContributionContractForPhase(phase, false)
+		plainRequired := append([]string(nil), plain["required"].([]string)...)
+		scored := ContributionContractForPhase(phase, true)
+
+		required := scored["required"].([]string)
+		if want := append(append([]string(nil), plainRequired...), "score"); !reflect.DeepEqual(required, want) {
+			t.Fatalf("%s scored required fields: got %#v, want %#v", phase, required, want)
+		}
+		shape := scored["shape"].(map[string]any)
+		if text, ok := shape["score"].(string); !ok || !strings.Contains(text, "0-10") || !strings.Contains(text, "null") {
+			t.Fatalf("%s scored shape: %#v", phase, shape["score"])
+		}
+		if scored["mode"] != plain["mode"] || scored["instruction"] != plain["instruction"] {
+			t.Fatalf("%s scored contract changed unrelated fields: %#v", phase, scored)
+		}
+
+		// The shared contracts must stay unscored for runs without scoring.
+		if !reflect.DeepEqual(plain["required"], plainRequired) {
+			t.Fatalf("%s shared contract was mutated: %#v", phase, plain["required"])
+		}
+		if _, present := plain["shape"].(map[string]any)["score"]; present {
+			t.Fatalf("%s shared contract shape was mutated: %#v", phase, plain["shape"])
+		}
+	}
+}
+
+func TestProcessContributionRecordsScores(t *testing.T) {
+	score := func(value int) *int { return &value }
+	tests := []struct {
+		name    string
+		opening bool
+		scoring bool
+		score   string // raw JSON for the score key; empty omits the key
+		want    *int
+		wantErr string
+	}{
+		{name: "pass: opening score", opening: true, scoring: true, score: "7", want: score(7)},
+		{name: "pass: opening zero", opening: true, scoring: true, score: "0", want: score(0)},
+		{name: "pass: opening null", opening: true, scoring: true, score: "null"},
+		{name: "fail: opening missing", opening: true, scoring: true, wantErr: `missing "score"`},
+		{name: "fail: opening above range", opening: true, scoring: true, score: "11", wantErr: "score must be between 0 and 10"},
+		{name: "fail: opening below range", opening: true, scoring: true, score: "-1", wantErr: "score must be between 0 and 10"},
+		{name: "fail: opening fraction", opening: true, scoring: true, score: "7.5", wantErr: "parsing JSON"},
+		{name: "fail: opening string", opening: true, scoring: true, score: `"7"`, wantErr: "parsing JSON"},
+		{name: "pass: opening discards score when off", opening: true, score: "7"},
+		{name: "pass: later score", scoring: true, score: "10", want: score(10)},
+		{name: "pass: later null", scoring: true, score: "null"},
+		{name: "fail: later missing", scoring: true, wantErr: `missing "score"`},
+		{name: "fail: later above range", scoring: true, score: "11", wantErr: "score must be between 0 and 10"},
+		{name: "fail: later fraction", scoring: true, score: "7.5", wantErr: "parsing JSON"},
+		{name: "fail: later score when off", score: "7", wantErr: `unknown field "score"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := types.NewDeliberationControlState([]string{"alpha", "beta"}, 0)
+			fields := map[string]any{"position": "scored position"}
+			if !tt.opening {
+				state.Phase = types.PhaseRebuttal
+			}
+			if tt.score != "" {
+				fields["score"] = json.RawMessage(tt.score)
+			}
+			output := contributionJSON(t, fields)
+			if tt.opening {
+				data, err := json.Marshal(fields)
+				if err != nil {
+					t.Fatalf("marshal opening: %v", err)
+				}
+				output = string(data)
+			}
+
+			next, err := ProcessContribution(state, "alpha", 0, output, tt.scoring)
+			if tt.wantErr != "" {
+				if err == nil || next != nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got next=%+v err=%v, want error containing %q", next, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ProcessContribution: %v", err)
+			}
+			got := next.Contributions[len(next.Contributions)-1].Score
+			if (got == nil) != (tt.want == nil) || (got != nil && *got != *tt.want) {
+				t.Fatalf("recorded score: got %v, want %v", got, tt.want)
+			}
+
+			// A recorded zero must survive the JSON round trip used by transcripts.
+			data, err := json.Marshal(next)
+			if err != nil {
+				t.Fatalf("marshal state: %v", err)
+			}
+			var restored types.DeliberationControlState
+			if err := json.Unmarshal(data, &restored); err != nil {
+				t.Fatalf("unmarshal state: %v", err)
+			}
+			restoredScore := restored.Contributions[len(restored.Contributions)-1].Score
+			if (restoredScore == nil) != (tt.want == nil) || (restoredScore != nil && *restoredScore != *tt.want) {
+				t.Fatalf("round-tripped score: got %v, want %v", restoredScore, tt.want)
+			}
+			if tt.want == nil && strings.Contains(string(data), `"score"`) {
+				t.Fatalf("absent score was persisted: %s", data)
+			}
+		})
 	}
 }
