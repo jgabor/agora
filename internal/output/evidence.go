@@ -2,7 +2,6 @@ package output
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/jgabor/agora/internal/types"
@@ -10,7 +9,7 @@ import (
 
 // EvidenceSummary prints the pre-deliberation evidence summary and source list.
 func (o *OutputManager) EvidenceSummary(evidence types.EvidenceBundle) {
-	writeLine(os.Stdout, renderTranscriptEvidence(o.renderer, &evidence, "6"))
+	writeLine(o.out(), renderTranscriptEvidence(o.renderer, &evidence, "6"))
 }
 
 func renderTranscriptEvidence(r Renderer, evidence *types.EvidenceBundle, color string) string {

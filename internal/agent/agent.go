@@ -361,6 +361,10 @@ func (r *AgentRunner) dryRunResponse(agent types.AgentConfig, envelope map[strin
 			}
 			applyDryRunDirective(payload, envelope)
 		}
+		if contributionContractRequiresScore(envelope) {
+			// No model judged anything in a dry run, so the score stays null.
+			payload["score"] = nil
+		}
 		content, err := json.Marshal(payload)
 		if err != nil {
 			return "", nil, err
@@ -419,6 +423,17 @@ func applyDryRunDirective(payload map[string]any, envelope map[string]any) {
 			"proposal_version": directive.ProposalVersion, "choice": "endorse",
 		}
 	}
+}
+
+func contributionContractRequiresScore(envelope map[string]any) bool {
+	contract, _ := envelope["contribution_contract"].(map[string]any)
+	required, _ := contract["required"].([]string)
+	for _, field := range required {
+		if field == "score" {
+			return true
+		}
+	}
+	return false
 }
 
 func positionOnlyContributionContract(envelope map[string]any) bool {

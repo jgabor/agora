@@ -84,19 +84,19 @@ func terminalStateFromSynthesis(result map[string]any) *types.TerminalState {
 
 // SynthesizeHeader prints the synthesis section header.
 func (o *OutputManager) SynthesizeHeader() {
-	fmt.Println()
-	fmt.Println(o.renderer.SectionTitle("Synthesis", "6"))
+	o.println()
+	o.println(o.renderer.SectionTitle("Synthesis", "6"))
 }
 
 // SynthesisResult displays the synthesis result.
 func (o *OutputManager) SynthesisResult(result map[string]any) {
-	fmt.Println()
+	o.println()
 	width := outputWidth()
 	labels := LabelsForTerminalState(terminalStateFromSynthesis(result))
 
 	if rec, ok := result["recommended_decision"]; ok {
 		if s, ok := rec.(string); ok && s != "" {
-			fmt.Println(o.renderer.ProseSection(labels.Recommendation, ModelRecommendationProse(terminalStateFromSynthesis(result), s), width, "2"))
+			o.println(o.renderer.ProseSection(labels.Recommendation, ModelRecommendationProse(terminalStateFromSynthesis(result), s), width, "2"))
 		}
 	}
 
@@ -115,49 +115,49 @@ func (o *OutputManager) SynthesisResult(result map[string]any) {
 	case "low":
 		confColor = "1"
 	}
-	fmt.Println(o.renderer.Table("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", confidence}}, []string{"", ""}, width, confColor))
+	o.println(o.renderer.Table("Synthesis Confidence", []string{"Metric", "Value"}, [][]string{{"Confidence", confidence}}, []string{"", ""}, width, confColor))
 
 	if args, ok := result["key_arguments"]; ok {
 		if list, ok := args.([]any); ok && len(list) > 0 {
-			fmt.Println()
+			o.println()
 			items := make([]string, len(list))
 			for i, v := range list {
 				if s, ok := v.(string); ok {
 					items[i] = "* " + s
 				}
 			}
-			fmt.Println(o.renderer.ListSection("Key Arguments", items, width, "6"))
+			o.println(o.renderer.ListSection("Key Arguments", items, width, "6"))
 		}
 	}
 
 	if agrs, ok := result["points_of_agreement"]; ok {
 		if list, ok := agrs.([]any); ok && len(list) > 0 {
-			fmt.Println()
+			o.println()
 			items := make([]string, len(list))
 			for i, v := range list {
 				if s, ok := v.(string); ok {
 					items[i] = labels.AgreementMark + " " + s
 				}
 			}
-			fmt.Println(o.renderer.ListSection(labels.Agreements, items, width, "2"))
+			o.println(o.renderer.ListSection(labels.Agreements, items, width, "2"))
 		}
 	}
 
 	if tens, ok := result["unresolved_tensions"]; ok {
 		if list, ok := tens.([]any); ok && len(list) > 0 {
-			fmt.Println()
+			o.println()
 			items := make([]string, len(list))
 			for i, v := range list {
 				if s, ok := v.(string); ok {
 					items[i] = "[WARNING] " + s
 				}
 			}
-			fmt.Println(o.renderer.ListSection("Unresolved Tensions", items, width, "3"))
+			o.println(o.renderer.ListSection("Unresolved Tensions", items, width, "3"))
 		}
 	}
 
 	if claims := ClaimEvidenceLines(result["claims"]); len(claims) > 0 {
-		fmt.Println()
-		fmt.Println(o.renderer.ListSection("Claim Evidence", claims, width, "4"))
+		o.println()
+		o.println(o.renderer.ListSection("Claim Evidence", claims, width, "4"))
 	}
 }

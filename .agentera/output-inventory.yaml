@@ -87,6 +87,10 @@ surfaces:
         renderer: OutputManager.Success; OutputManager.Info
         classification: status
         notes: short run-completion and transcript-location messages
+      - surface: run report document
+        renderer: cmd/agora/run_report.go writeRunReport
+        classification: structured_metadata
+        notes: only with --format json|markdown; one agora.run.report document, and every other stdout surface listed here moves to stderr
     stderr:
       - surface: cobra command errors and returned RunE errors
         renderer: cobra default error handling
@@ -132,6 +136,10 @@ surfaces:
         renderer: OutputManager.Success
         classification: status
         notes: resume-specific completion copy and output transcript location
+      - surface: run report document
+        renderer: cmd/agora/run_report.go writeRunReport
+        classification: structured_metadata
+        notes: only with --format json|markdown; same document and stream split as agora run, with command set to resume
     stderr:
       - surface: cobra command errors and returned RunE errors
         classification: status

@@ -538,7 +538,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		}
 		envelope["control_state"] = controlState
 		envelope["directive"] = o.state.Control.Directive
-		envelope["contribution_contract"] = ledger.ContributionContractForPhase(o.state.Control.Phase)
+		envelope["contribution_contract"] = ledger.ContributionContractForPhase(o.state.Control.Phase, o.scoring())
 	}
 	verifyTurn := o.state.Control != nil && o.state.Control.Directive.Kind == types.DirectiveVerify
 	if o.sharedEvidence != nil && (!o.evidenceSent[ag.ID] || verifyTurn) {
@@ -580,7 +580,7 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 	var nextControl *types.DeliberationControlState
 	if o.state.Control != nil {
 		var err error
-		nextControl, err = ledger.ProcessContribution(o.state.Control, ag.ID, o.state.Turn, content)
+		nextControl, err = ledger.ProcessContribution(o.state.Control, ag.ID, o.state.Turn, content, o.scoring())
 		if err != nil {
 			o.fail("contribution_error:", err)
 			return types.TurnRecord{}, false
@@ -615,6 +615,11 @@ func (o *Orchestrator) executeTurn(ag types.AgentConfig) (types.TurnRecord, bool
 		Cost:      cost,
 		Elapsed:   float64(time.Now().UnixNano())/1e9 - turnStart,
 	}, true
+}
+
+// scoring reports whether this run's configuration asks agents to score.
+func (o *Orchestrator) scoring() bool {
+	return o.state.Config != nil && o.state.Config.Scoring
 }
 
 func openingControlStateView(state *types.DeliberationControlState) map[string]any {

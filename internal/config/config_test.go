@@ -670,3 +670,31 @@ agents:
 		t.Errorf("hyphenated mesh-network should parse as mesh: got %q", cfg.Topology)
 	}
 }
+
+func TestLoadConfigScoring(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		key  string
+		want bool
+	}{
+		{name: "explicit true", key: "scoring: true\n", want: true},
+		{name: "explicit false", key: "scoring: false\n"},
+		{name: "unset", key: ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempYAML(t, tt.key+"agents:\n  - id: a\n    model: m\n")
+			cfg, err := LoadConfig(path)
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.Scoring != tt.want {
+				t.Fatalf("Scoring: got %v, want %v", cfg.Scoring, tt.want)
+			}
+		})
+	}
+
+	path := writeTempYAML(t, "scoring: sometimes\nagents:\n  - id: a\n    model: m\n")
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("malformed scoring value: expected error")
+	}
+}

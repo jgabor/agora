@@ -162,6 +162,17 @@ type AgentContribution struct {
 	Objections     []Objection                `yaml:"objections" json:"objections"`
 	Vote           *ProposalVote              `yaml:"vote,omitempty" json:"vote,omitempty"`
 	Claims         []ClaimEvidence            `yaml:"claims" json:"claims"`
+	// Score is the agent's optional rating of the subject under deliberation.
+	// It is nil when scoring is off or the agent declined to score.
+	Score *int `yaml:"score,omitempty" json:"score,omitempty"`
+}
+
+// MaxContributionScore is the upper bound of an optional contribution score.
+const MaxContributionScore = 10
+
+// ValidContributionScore reports whether score is within the accepted range.
+func ValidContributionScore(score int) bool {
+	return score >= 0 && score <= MaxContributionScore
 }
 
 // DirectiveKind identifies the required work for the next directed turn.
@@ -641,6 +652,9 @@ func (s *DeliberationControlState) Validate() error {
 		}
 		if !validProposalAction(contribution.ProposalAction.Kind) {
 			return fmt.Errorf("contribution at turn %d has invalid proposal action %q", contribution.Turn, contribution.ProposalAction.Kind)
+		}
+		if contribution.Score != nil && !ValidContributionScore(*contribution.Score) {
+			return fmt.Errorf("contribution at turn %d score must be between 0 and %d", contribution.Turn, MaxContributionScore)
 		}
 	}
 	proposals := make(map[int]CanonicalProposal, len(s.Proposals))

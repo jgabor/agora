@@ -3,7 +3,6 @@ package output
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -19,8 +18,8 @@ import (
 // before deliberation begins, including topology, agents, and level caps.
 func (o *OutputManager) ConfigPreview(cfg *types.DeliberationConfig, level types.AutoLevel, caps types.LevelCaps) {
 	o.registerCast(cfg)
-	fmt.Println()
-	fmt.Println(drawAutoConfigPanel(o.renderer, cfg, o.cast, level, caps))
+	o.println()
+	o.println(drawAutoConfigPanel(o.renderer, cfg, o.cast, level, caps))
 }
 
 func drawAutoConfigPanel(r Renderer, cfg *types.DeliberationConfig, c *cast.Cast, level types.AutoLevel, caps types.LevelCaps) string {
@@ -148,9 +147,9 @@ func (o *OutputManager) DeliberationHeader(state *types.DeliberationState) {
 	o.totalCost = 0
 	o.consensusStreak = 0
 	o.registerCast(state.Config)
-	fmt.Println()
-	fmt.Println(drawDeliberationHeaderAtWidth(o.renderer, state, outputWidth()))
-	fmt.Println()
+	o.println()
+	o.println(drawDeliberationHeaderAtWidth(o.renderer, state, outputWidth()))
+	o.println()
 }
 
 func drawDeliberationHeaderAtWidth(r Renderer, state *types.DeliberationState, width int) string {
@@ -219,7 +218,7 @@ func (o *OutputManager) TurnProgress(record types.TurnRecord, turn int, maxTurns
 	if record.AgentID != "moderator" {
 		o.turnDurations = append(o.turnDurations, record.Elapsed)
 	}
-	o.renderTurnProgress(os.Stdout, record, turn, maxTurns, nil)
+	o.renderTurnProgress(o.out(), record, turn, maxTurns, nil)
 }
 
 func (o *OutputManager) renderTurnProgress(w io.Writer, record types.TurnRecord, turn int, maxTurns int, terminalState *types.TerminalState) {
@@ -415,7 +414,7 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 
 	actualTurns := transcript.AgentTurnCount(records)
 
-	fmt.Println()
+	o.println()
 	rows := [][]string{
 		{"Turns completed", finalTurnsValue(o.renderer, actualTurns, state.MaxTurns)},
 		{"Duration", finalDurationValue(o.renderer, duration, state.TimeLimit)},
@@ -441,19 +440,19 @@ func (o *OutputManager) FinalStats(records []types.TurnRecord, state *types.Deli
 		haltedBy = terminalState.HaltReason
 	}
 	rows = append(rows, []string{"Halted by", o.renderer.Styled(formatHaltedBy(haltedBy), haltColor(haltedBy))})
-	fmt.Println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
+	o.println(o.renderer.Table("Deliberation Summary", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 	if terminalState != nil {
-		fmt.Println()
-		fmt.Println(o.renderer.SectionBlock("Terminal state", terminalStateLines(terminalState), outputWidth()))
+		o.println()
+		o.println(o.renderer.SectionBlock("Terminal state", terminalStateLines(terminalState), outputWidth()))
 		if legacyConsensus := types.LegacyConsensusDataFromRecords(records); legacyConsensus != nil {
-			fmt.Println()
-			fmt.Println(o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
+			o.println()
+			o.println(o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
 		}
 	}
 
 	if len(stats.PerAgent) > 0 {
-		fmt.Println()
-		fmt.Println(o.renderer.Table("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, finalAgentRows(stats.PerAgent, state.Config), []string{"", "right", "right", "right"}, outputWidth(), "4"))
+		o.println()
+		o.println(o.renderer.Table("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, finalAgentRows(stats.PerAgent, state.Config), []string{"", "right", "right", "right"}, outputWidth(), "4"))
 	}
 }
 
@@ -618,7 +617,7 @@ func agentStatsRow(label string, s types.AgentTurnStats) []string {
 
 // PrintStats displays standalone statistics without requiring a live deliberation state.
 func (o *OutputManager) PrintStats(stats map[string]any) {
-	fmt.Println()
+	o.println()
 
 	var rows [][]string
 	rows = append(rows, []string{"Total turns", fmt.Sprintf("%v", stats["total_turns"])})
@@ -633,14 +632,14 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 	}
 	rows = append(rows, []string{"Avg turn duration", fmt.Sprintf("%vs", stats["avg_turn_duration_seconds"])})
 
-	fmt.Println(o.renderer.Table("Transcript Statistics", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
+	o.println(o.renderer.Table("Transcript Statistics", []string{"Metric", "Value"}, rows, []string{"", ""}, outputWidth(), "6"))
 	terminalState, _ := stats["terminal_state"].(*types.TerminalState)
 	if terminalState != nil {
-		fmt.Println()
-		fmt.Println(o.renderer.SectionBlock("Terminal state", terminalStateLines(terminalState), outputWidth()))
+		o.println()
+		o.println(o.renderer.SectionBlock("Terminal state", terminalStateLines(terminalState), outputWidth()))
 		if legacyConsensus, ok := stats["legacy_consensus"].(*types.LegacyConsensusData); ok && legacyConsensus != nil {
-			fmt.Println()
-			fmt.Println(o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
+			o.println()
+			o.println(o.renderer.SectionBlock("Legacy consensus compatibility (non-authoritative)", legacyConsensusLines(legacyConsensus), outputWidth()))
 		}
 	}
 	if compatibility, ok := stats["compatibility"].(transcript.CompatibilityState); ok {
@@ -649,7 +648,7 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 
 	if perAgent, ok := stats["per_agent"]; ok {
 		if pa, ok := perAgent.(map[string]any); ok && len(pa) > 0 {
-			fmt.Println()
+			o.println()
 			agentIDs := sortedKeys(pa)
 			agentRows := make([][]string, 0, len(agentIDs))
 			for _, agentID := range agentIDs {
@@ -666,21 +665,21 @@ func (o *OutputManager) PrintStats(stats map[string]any) {
 					})
 				}
 			}
-			fmt.Println(o.renderer.Table("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, agentRows, []string{"", "right", "right", "right"}, outputWidth(), "4"))
+			o.println(o.renderer.Table("Per-Agent Stats", []string{"Agent", "Turns", "Tokens", "Cost"}, agentRows, []string{"", "right", "right", "right"}, outputWidth(), "4"))
 		}
 	}
 
 	if terminalState == nil {
 		if ce, ok := stats["consensus_events"]; ok {
 			if events, ok := ce.([]any); ok && len(events) > 0 {
-				fmt.Println()
+				o.println()
 				lines := make([]string, 0, len(events))
 				for _, evt := range events {
 					if em, ok := evt.(map[string]any); ok {
 						lines = append(lines, fmt.Sprintf("[CONSENSUS] Turn %v [%v]: %v", em["turn"], em["agent_id"], em["statement"]))
 					}
 				}
-				fmt.Println(o.renderer.ListSection("Consensus Events:", lines, outputWidth(), "2"))
+				o.println(o.renderer.ListSection("Consensus Events:", lines, outputWidth(), "2"))
 			}
 		}
 	}
@@ -692,6 +691,6 @@ func (o *OutputManager) ProtocolCompatibility(compatibility transcript.Compatibi
 	if compatibility.ResumeAction == "" {
 		return
 	}
-	fmt.Println()
-	fmt.Println(o.renderer.SectionBlock("Protocol compatibility", protocolCompatibilityLines(compatibility), outputWidth()))
+	o.println()
+	o.println(o.renderer.SectionBlock("Protocol compatibility", protocolCompatibilityLines(compatibility), outputWidth()))
 }

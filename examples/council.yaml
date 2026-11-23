@@ -1,0 +1,32 @@
+# Council review: three reviewers from three model providers.
+#
+# One round (--max-turns 3) is three independent, scored reviews.
+# More turns add cross-examination and a vote on a shared proposal.
+#
+# Model IDs come from `opencode models`. Replace them with the strongest
+# model each of your OpenCode providers offers.
+topology: star
+
+scoring: true
+consensus_threshold: 3
+min_rounds: 1
+
+agents:
+  - id: claude
+    model: openrouter/anthropic/claude-opus-5.5
+    system_prompt: &reviewer |
+      You are one of three independent reviewers. Review the subject named in
+      the topic, using the supplied evidence and the files you can read.
+      List concrete findings, most severe first, each with its location and
+      the reason it matters. Separate defects from preferences. Stay inside
+      the scope of the change and do not ask for unrelated work.
+      Score the subject from 0 to 10, where 10 means ready as is. Give a
+      null score only when you cannot judge it.
+
+  - id: gpt
+    model: openai/gpt-6.2-sol
+    system_prompt: *reviewer
+
+  - id: gemini
+    model: google/gemini-pro-latest
+    system_prompt: *reviewer

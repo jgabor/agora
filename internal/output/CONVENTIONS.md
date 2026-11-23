@@ -56,7 +56,7 @@ Plain/no-color output keeps the bracketed labels. Rich terminals may add color a
 ## Terminal Fallback
 
 - Treat `NO_COLOR` as a hard request for no color.
-- Treat `TERM=dumb`, unset `TERM`, non-TTY stdout, and CI as plain-first modes: no required meaning depends on ANSI color, Unicode borders, or dim text.
+- Treat `TERM=dumb`, unset `TERM`, a non-TTY output stream (stdout, or stderr when `run`/`resume` reserve stdout for a report), and CI as plain-first modes: no required meaning depends on ANSI color, Unicode borders, or dim text.
 - Low-color terminals may use bold and a small color palette only after the plain labels are present.
 - Plain mode uses ASCII-safe structure: `+`, `-`, `|`, `*`, `!`, and bracketed labels. Avoid ambiguous glyph-only markers.
 - Unicode ornamentation is optional. If width measurement or terminal capability is uncertain, prefer ASCII borders and text labels over box drawing or symbol-heavy output.

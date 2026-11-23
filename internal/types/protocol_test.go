@@ -1128,3 +1128,25 @@ func TestValidateDeliberationTransitionRejectsUnauthenticatedConsensus(t *testin
 		t.Fatal("transition accepted consensus terminal state without current votes")
 	}
 }
+
+func TestValidateRejectsOutOfRangeContributionScore(t *testing.T) {
+	for _, tt := range []struct {
+		score int
+		valid bool
+	}{{0, true}, {10, true}, {-1, false}, {11, false}} {
+		state := NewDeliberationControlState([]string{"alpha"}, 0)
+		score := tt.score
+		state.Contributions = []AgentContribution{{
+			AgentID: "alpha", Turn: 0, Position: "scored",
+			ProposalAction: ContributionProposalAction{Kind: ProposalActionNone},
+			Score:          &score,
+		}}
+		err := state.Validate()
+		if tt.valid && err != nil {
+			t.Fatalf("score %d should validate: %v", tt.score, err)
+		}
+		if !tt.valid && (err == nil || !strings.Contains(err.Error(), "score must be between 0 and 10")) {
+			t.Fatalf("score %d: got %v, want range error", tt.score, err)
+		}
+	}
+}

@@ -22,6 +22,7 @@ type rawConfig struct {
 	SynthesisModel           *string             `yaml:"synthesis_model"`
 	Research                 *bool               `yaml:"research"`
 	Ledger                   *bool               `yaml:"ledger"`
+	Scoring                  bool                `yaml:"scoring"`
 	Context                  *[]string           `yaml:"context"`
 }
 
@@ -83,6 +84,7 @@ func loadConfigFromBytes(data []byte, gconf Config, applyNonAutoDefaults bool) (
 		Workdir:                  raw.Workdir,
 		SynthesisModel:           raw.SynthesisModel,
 		Ledger:                   raw.Ledger,
+		Scoring:                  raw.Scoring,
 	}
 	if raw.Context != nil {
 		cfg.ContextConfigured = true

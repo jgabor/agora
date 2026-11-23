@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- `scoring: true` in a project config adds a required, nullable `score` (integer 0 to 10) to every agent contribution, including the otherwise position-only opening. Scores are stored with each contribution in the typed control state, validated on load, and never invented: dry runs record `null`. Scoring is not a halt gate and is not part of the run contract. `agora validate` and transcript metadata report the setting.
+- `agora run` and `agora resume` accept `--format text|json|markdown`. `json` and `markdown` print exactly one `agora.run.report` document on stdout (outcome, per-agent score, vote, and latest position, unresolved objections, synthesis, and totals) and move all live output to stderr. A session that fails still prints its report before returning the error. `agora prime` and `agora metadata` describe the report contract.
+- `examples/council.yaml` runs three reviewers from three model providers with contribution scoring. The README documents the council workflow, including a GitHub Actions sample.
+
+### Changed
+- `internal/output.OutputManager` writes through a configurable writer (`NewOutputManagerWithWriter`). The default remains the process stdout, so `text` output is unchanged.
+
+### Fixed
+- README corrections to match shipped behavior: config runs use cast-scaled time, max-turn, and window defaults; an omitted or zero `consensus_threshold` means the cast size and `min_rounds` defaults to 3; an omitted `--output` writes to the managed transcript store; the read-only hint text is quoted as sent. The README now also lists `--no-ledger`, the `ledger` config key, and `default_ledger_enabled`.
+
+### Caveats
+- Exit status does not encode the deliberation outcome. Gate scripts on `.data.outcome.kind` from the JSON report.
+- An interrupted run exits 130 without a report.
+- Deliberation agents keep web fetch and search enabled, including in CI. There is no per-run switch to deny them yet.
+
 ## [0.4.3] - 2026-08-10
 
 ### Added

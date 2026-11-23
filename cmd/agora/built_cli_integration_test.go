@@ -55,46 +55,12 @@ func TestBuiltCLIAuthenticatesConsensusAndPreservesTerminalOutcomes(t *testing.T
 		t.Skip("the fake opencode uses a temporary executable symlink")
 	}
 
-	root := builtCLIRepositoryRoot(t)
-	dir := t.TempDir()
-	binary := filepath.Join(dir, "agora")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/agora")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build checkout CLI: %v\n%s", err, output)
-	}
+	root, dir, binary, baseEnv := buildCLIWithFakeOpenCode(t)
 	version := runBuiltCLI(t, root, os.Environ(), binary, "--version")
 	if !strings.Contains(version, "agora version ") {
 		t.Fatalf("built CLI version output: %q", version)
 	}
-
-	fakeDir := filepath.Join(dir, "bin")
-	if err := os.Mkdir(fakeDir, 0o755); err != nil {
-		t.Fatalf("create fake PATH directory: %v", err)
-	}
-	testBinary, err := os.Executable()
-	if err != nil {
-		t.Fatalf("test executable: %v", err)
-	}
-	if err := os.Symlink(testBinary, filepath.Join(fakeDir, "opencode")); err != nil {
-		t.Fatalf("link fake opencode: %v", err)
-	}
-
-	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte(`topology: ring
-consensus_threshold: 2
-min_rounds: 3
-ledger: true
-agents:
-  - id: alpha
-    model: fake/non-provider
-  - id: beta
-    model: fake/non-provider
-`), 0o644); err != nil {
-		t.Fatalf("write integration config: %v", err)
-	}
-
-	baseEnv := builtCLIEnvironment(fakeDir, filepath.Join(dir, "config-home"), filepath.Join(dir, "data-home"))
+	configPath := writeBuiltCLIConfig(t, dir, "")
 	for _, tc := range []builtCLITerminalExpectation{
 		{
 			name:            "authenticated consensus",
@@ -151,6 +117,53 @@ agents:
 			}
 		})
 	}
+}
+
+// buildCLIWithFakeOpenCode builds the checkout CLI and returns an environment
+// whose PATH resolves opencode to this test binary's deterministic responder.
+func buildCLIWithFakeOpenCode(t *testing.T) (root, dir, binary string, env []string) {
+	t.Helper()
+	root = builtCLIRepositoryRoot(t)
+	dir = t.TempDir()
+	binary = filepath.Join(dir, "agora")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/agora")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build checkout CLI: %v\n%s", err, output)
+	}
+
+	fakeDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(fakeDir, 0o755); err != nil {
+		t.Fatalf("create fake PATH directory: %v", err)
+	}
+	testBinary, err := os.Executable()
+	if err != nil {
+		t.Fatalf("test executable: %v", err)
+	}
+	if err := os.Symlink(testBinary, filepath.Join(fakeDir, "opencode")); err != nil {
+		t.Fatalf("link fake opencode: %v", err)
+	}
+	return root, dir, binary, builtCLIEnvironment(fakeDir, filepath.Join(dir, "config-home"), filepath.Join(dir, "data-home"))
+}
+
+// writeBuiltCLIConfig writes the two-agent integration config. extra holds
+// additional top-level YAML lines.
+func writeBuiltCLIConfig(t *testing.T, dir, extra string) string {
+	t.Helper()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`topology: ring
+consensus_threshold: 2
+min_rounds: 3
+ledger: true
+`+extra+`agents:
+  - id: alpha
+    model: fake/non-provider
+  - id: beta
+    model: fake/non-provider
+`), 0o644); err != nil {
+		t.Fatalf("write integration config: %v", err)
+	}
+	return configPath
 }
 
 type builtCLITerminalExpectation struct {
@@ -292,6 +305,22 @@ func runBuiltCLI(t *testing.T, root string, env []string, binary string, args ..
 	return string(output)
 }
 
+// runBuiltCLIStreams runs the built CLI and returns stdout and stderr apart,
+// so tests can assert that a structured format keeps stdout to one document.
+func runBuiltCLIStreams(t *testing.T, root string, env []string, binary string, args ...string) (string, string) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = root
+	cmd.Env = env
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("built CLI %s: %v\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, stdout.String(), stderr.String())
+	}
+	return stdout.String(), stderr.String()
+}
+
 func fakeOpenCodeResponse(input, scenario string) (string, error) {
 	envelope, err := fakeOpenCodeEnvelope(input)
 	if err != nil {
@@ -303,10 +332,48 @@ func fakeOpenCodeResponse(input, scenario string) (string, error) {
 	if strings.Contains(input, "mid-deliberation ledger updater") {
 		return `{"round":0,"positions":[],"agreements":[],"cruxes":[],"draft":{"status":"none"}}`, nil
 	}
+	if _, ok := envelope["total_turns"]; ok {
+		return `{"key_arguments":["fake argument"],"points_of_agreement":[],"unresolved_tensions":["fake tension"],"recommended_decision":"fake recommendation","confidence":"medium"}`, nil
+	}
 	if _, ok := envelope["contribution_contract"]; !ok {
 		return "", fmt.Errorf("unexpected fake opencode envelope")
 	}
-	return fakeContributionResponse(envelope, scenario)
+	response, err := fakeContributionResponse(envelope, scenario)
+	if err != nil {
+		return "", err
+	}
+	return fakeScoredContribution(envelope, response)
+}
+
+// fakeScoredContribution adds a score only when the contract requires one.
+// alpha rates 7 in its opening and 9 afterwards; beta always declines, so the
+// report must carry a latest score and a null score side by side.
+func fakeScoredContribution(envelope map[string]any, response string) (string, error) {
+	contract, _ := envelope["contribution_contract"].(map[string]any)
+	required, _ := contract["required"].([]any)
+	scored := false
+	for _, field := range required {
+		scored = scored || field == "score"
+	}
+	if !scored {
+		return response, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(response), &payload); err != nil {
+		return "", err
+	}
+	payload["score"] = nil
+	if envelope["agent_id"] == "alpha" {
+		payload["score"] = 9
+		if control, _ := envelope["control_state"].(map[string]any); control["phase"] == string(types.PhaseOpening) {
+			payload["score"] = 7
+		}
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func fakeOpenCodeEnvelope(input string) (map[string]any, error) {
@@ -412,4 +479,156 @@ func fakeInteger(value any) int {
 		return int(number)
 	}
 	return 0
+}
+
+type builtCLIRunReport struct {
+	Command string `json:"command"`
+	Data    struct {
+		DocumentType   string  `json:"document_type"`
+		TranscriptPath string  `json:"transcript_path"`
+		Failure        *string `json:"failure"`
+		Scoring        bool    `json:"scoring"`
+		Outcome        struct {
+			Kind       types.TerminalOutcomeKind `json:"kind"`
+			HaltReason string                    `json:"halt_reason"`
+		} `json:"outcome"`
+		Agents []struct {
+			ID       string  `json:"id"`
+			Model    string  `json:"model"`
+			Score    *int    `json:"score"`
+			Vote     *string `json:"vote"`
+			Position string  `json:"position"`
+			Turns    int     `json:"turns"`
+		} `json:"agents"`
+		UnresolvedObjections []types.Objection `json:"unresolved_objections"`
+		Synthesis            map[string]any    `json:"synthesis"`
+		Totals               struct {
+			Turns int `json:"turns"`
+		} `json:"totals"`
+	} `json:"data"`
+}
+
+func decodeBuiltCLIRunReport(t *testing.T, stdout string) builtCLIRunReport {
+	t.Helper()
+	decoder := json.NewDecoder(strings.NewReader(stdout))
+	var report builtCLIRunReport
+	if err := decoder.Decode(&report); err != nil {
+		t.Fatalf("decode run report: %v\n%s", err, stdout)
+	}
+	if decoder.More() {
+		t.Fatalf("stdout carries more than one document:\n%s", stdout)
+	}
+	assertStringNotContains(t, stdout, "\x1b[")
+	return report
+}
+
+func TestBuiltCLIRunReportKeepsStdoutToOneDocumentWithScores(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake opencode uses a temporary executable symlink")
+	}
+	root, dir, binary, baseEnv := buildCLIWithFakeOpenCode(t)
+	configPath := writeBuiltCLIConfig(t, dir, "scoring: true\n")
+	noConsensusEnv := append(append([]string{}, baseEnv...), fakeOpenCodeScenarioEnv+"=no-consensus")
+	consensusEnv := append(append([]string{}, baseEnv...), fakeOpenCodeScenarioEnv+"=consensus")
+
+	outputPath := filepath.Join(dir, "report.jsonl")
+	stdout, stderr := runBuiltCLIStreams(t, root, noConsensusEnv, binary,
+		"run", "--config", configPath, "--topic", "Report a scored review", "--max-turns", "6",
+		"--time", "30", "--output", outputPath, "--synthesize", "--format", "json")
+	report := decodeBuiltCLIRunReport(t, stdout)
+
+	if report.Command != "run" || report.Data.DocumentType != "agora.run.report" {
+		t.Fatalf("report identity: command=%q document_type=%q", report.Command, report.Data.DocumentType)
+	}
+	if report.Data.TranscriptPath != outputPath || report.Data.Failure != nil || !report.Data.Scoring {
+		t.Fatalf("report header: path=%q failure=%v scoring=%v", report.Data.TranscriptPath, report.Data.Failure, report.Data.Scoring)
+	}
+	if report.Data.Outcome.Kind != types.OutcomeNoConsensus || report.Data.Outcome.HaltReason != "max_turns (6)" || report.Data.Totals.Turns != 6 {
+		t.Fatalf("report outcome: %#v turns=%d", report.Data.Outcome, report.Data.Totals.Turns)
+	}
+	if len(report.Data.UnresolvedObjections) != 1 || report.Data.UnresolvedObjections[0].ID != "safety-objection" ||
+		report.Data.UnresolvedObjections[0].Summary != "safety evidence remains unresolved" {
+		t.Fatalf("report unresolved objections: %#v", report.Data.UnresolvedObjections)
+	}
+	if len(report.Data.Agents) != 2 || report.Data.Agents[0].ID != "alpha" || report.Data.Agents[1].ID != "beta" {
+		t.Fatalf("report agents: %#v", report.Data.Agents)
+	}
+	alpha, beta := report.Data.Agents[0], report.Data.Agents[1]
+	if alpha.Score == nil || *alpha.Score != 9 || beta.Score != nil {
+		t.Fatalf("report scores: alpha=%v beta=%v, want latest 9 and null", alpha.Score, beta.Score)
+	}
+	if alpha.Model != "fake/non-provider" || alpha.Turns+beta.Turns != 6 || alpha.Position == "" || beta.Position == "" || alpha.Vote != nil {
+		t.Fatalf("report agent detail: alpha=%#v beta=%#v", alpha, beta)
+	}
+	if report.Data.Synthesis["recommended_decision"] != "fake recommendation" {
+		t.Fatalf("report synthesis: %#v", report.Data.Synthesis)
+	}
+	if _, embedded := report.Data.Synthesis["terminal_state"]; embedded {
+		t.Fatalf("report synthesis repeats the terminal state: %#v", report.Data.Synthesis)
+	}
+	for _, live := range []string{"Deliberation complete", "[SUCCESS] Transcript:", "AGENT CONTENT", "Synthesis"} {
+		assertStringContains(t, stderr, live)
+	}
+	for _, live := range []string{"Deliberation complete", "[SUCCESS]", "[INFO]", "AGENT CONTENT", "TURN "} {
+		assertStringNotContains(t, stdout, live)
+	}
+
+	// The scores are read back from the persisted transcript, not only from
+	// the in-memory result.
+	records, err := transcript.LoadFileStrict(outputPath)
+	if err != nil {
+		t.Fatalf("strictly load scored transcript: %v", err)
+	}
+	persisted := map[string][]any{}
+	for _, contribution := range types.TerminalStateFromRecords(records).Control.Contributions {
+		var score any
+		if contribution.Score != nil {
+			score = *contribution.Score
+		}
+		persisted[contribution.AgentID] = append(persisted[contribution.AgentID], score)
+	}
+	if want := map[string][]any{"alpha": {7, 9, 9, 9}, "beta": {nil, nil}}; !reflect.DeepEqual(persisted, want) {
+		t.Fatalf("persisted scores: got %#v, want %#v", persisted, want)
+	}
+
+	markdown, markdownErr := runBuiltCLIStreams(t, root, noConsensusEnv, binary,
+		"run", "--config", configPath, "--topic", "Report a scored review", "--max-turns", "6",
+		"--time", "30", "--output", filepath.Join(dir, "report-markdown.jsonl"), "--synthesize", "--quiet", "--format", "markdown")
+	if !strings.HasPrefix(markdown, "# Agora run report\n") {
+		t.Fatalf("markdown report must start the document:\n%s", markdown)
+	}
+	for _, want := range []string{
+		"- **Outcome:** no_consensus", "- **Halt reason:** max_turns (6)",
+		"| Agent | Model | Score | Vote | Turns | Tokens | Cost |",
+		"| alpha | `fake/non-provider` | 9/10 | no vote |", "| beta | `fake/non-provider` | no score | no vote |",
+		"## Unresolved objections", "`safety-objection` (", "## Latest positions", "## Synthesis", "fake recommendation",
+	} {
+		assertStringContains(t, markdown, want)
+	}
+	assertStringNotContains(t, markdown, "\x1b[")
+	assertStringNotContains(t, markdown, "Deliberation complete")
+	assertStringContains(t, markdownErr, "Deliberation complete")
+
+	consensusPath := filepath.Join(dir, "report-consensus.jsonl")
+	stdout, _ = runBuiltCLIStreams(t, root, consensusEnv, binary,
+		"run", "--config", configPath, "--topic", "Report a consensus", "--max-turns", "8",
+		"--time", "30", "--output", consensusPath, "--quiet", "--format", "json")
+	consensus := decodeBuiltCLIRunReport(t, stdout)
+	if consensus.Data.Outcome.Kind != types.OutcomeConsensus || consensus.Data.Synthesis != nil {
+		t.Fatalf("consensus report: outcome=%#v synthesis=%#v", consensus.Data.Outcome, consensus.Data.Synthesis)
+	}
+	for _, agent := range consensus.Data.Agents {
+		if agent.Vote == nil || *agent.Vote != string(types.VoteEndorse) {
+			t.Fatalf("consensus report vote for %s: %v", agent.ID, agent.Vote)
+		}
+	}
+
+	stdout, stderr = runBuiltCLIStreams(t, root, consensusEnv, binary,
+		"resume", consensusPath, "--config", configPath, "--topic", "Report a resume", "--max-turns", "1",
+		"--time", "30", "--output", filepath.Join(dir, "report-resumed.jsonl"), "--quiet", "--format", "json")
+	resumed := decodeBuiltCLIRunReport(t, stdout)
+	if resumed.Command != "resume" || resumed.Data.Outcome.Kind != types.OutcomeConsensus {
+		t.Fatalf("resume report: command=%q outcome=%#v", resumed.Command, resumed.Data.Outcome)
+	}
+	assertStringContains(t, stderr, "Resumed deliberation complete")
 }

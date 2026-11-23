@@ -558,3 +558,52 @@ func TestExecuteTurnDeliversEachDirectiveToTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestScoringConfigScoresIndependentOpenings(t *testing.T) {
+	agents := []types.AgentConfig{{ID: "alpha", Model: "test"}, {ID: "beta", Model: "test"}, {ID: "gamma", Model: "test"}}
+	state := newTestState(&types.DeliberationConfig{Topology: types.TopologyRing, Agents: agents, Scoring: true})
+	state.MaxTurns = 3
+	state.Control = types.NewDeliberationControlState([]string{"alpha", "beta", "gamma"}, 0)
+	runner := &recordingRunner{responses: []mockResponse{
+		{content: `{"position":"independent opening alpha","score":7}`},
+		{content: `{"position":"independent opening beta","score":null}`},
+		{content: `{"position":"independent opening gamma","score":0}`},
+	}}
+	tm := transcript.NewTranscriptManager(t.TempDir() + "/opening-scored.jsonl")
+	NewOrchestrator(state, tm, runner).Run()
+
+	if state.Failure != nil || len(state.Control.Contributions) != 3 {
+		t.Fatalf("scored opening state: failure=%v contributions=%d", state.Failure, len(state.Control.Contributions))
+	}
+	for i := 0; i < 3; i++ {
+		envelope := runner.envelopes[i]
+		contract, ok := envelope["contribution_contract"].(map[string]any)
+		if !ok || contract["mode"] != "position_only" {
+			t.Fatalf("opening %d contribution contract: %#v", i, envelope["contribution_contract"])
+		}
+		if required, ok := contract["required"].([]string); !ok || !reflect.DeepEqual(required, []string{"position", "score"}) {
+			t.Fatalf("opening %d required fields: %#v", i, contract["required"])
+		}
+		payload, err := json.Marshal(envelope)
+		if err != nil {
+			t.Fatalf("marshal opening %d envelope: %v", i, err)
+		}
+		// Scoring must not leak another agent's opening or score.
+		for _, priorWork := range []string{"independent opening alpha", "independent opening beta", `"score":7`} {
+			if strings.Contains(string(payload), priorWork) {
+				t.Fatalf("opening %d envelope contains prior model work %q: %s", i, priorWork, payload)
+			}
+		}
+	}
+	scores := make([]any, 0, 3)
+	for _, contribution := range state.Control.Contributions {
+		if contribution.Score == nil {
+			scores = append(scores, nil)
+			continue
+		}
+		scores = append(scores, *contribution.Score)
+	}
+	if want := []any{7, nil, 0}; !reflect.DeepEqual(scores, want) {
+		t.Fatalf("recorded opening scores: got %#v, want %#v", scores, want)
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -71,6 +72,7 @@ type runFlagValues struct {
 	NoLedger    bool
 	Context     []string // local text context paths (repeatable)
 	Workdir     string
+	Format      string // final report format; json and markdown reserve stdout
 }
 
 var (
@@ -126,7 +128,7 @@ var runCmd = &cobra.Command{
 				return err
 			}
 
-			outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
+			outMgr := liveOutputManager(cmd, runFlags)
 
 			if runFlags.DryRun {
 				cfg, err = autogen.GenerateDryRunConfig(runFlags.Topic, level, runFlags.Model)
@@ -147,8 +149,8 @@ var runCmd = &cobra.Command{
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
 			if !runFlags.Yes {
-				if !confirmProceed() {
-					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
+				if !confirmProceed(liveWriter(cmd, runFlags)) {
+					_, _ = fmt.Fprintln(liveWriter(cmd, runFlags), output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
 					return nil
 				}
 			}
@@ -181,7 +183,7 @@ var runCmd = &cobra.Command{
 		evidenceRequest.ContextPaths = resolveContextPaths(evidenceRequest.ContextPaths, workdir)
 		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, gconf)
 
-		outMgr := output.NewOutputManagerWithMode(liveOutputMode(runFlags.Quiet, runFlags.Verbose))
+		outMgr := liveOutputManager(cmd, runFlags)
 		req := session.RunRequest{
 			Topic:        runFlags.Topic,
 			Config:       cfg,
@@ -206,7 +208,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return printSessionResult(outMgr, result, fmt.Sprintf("Deliberation complete (%d agent turns)", result.Stats.TotalTurns))
+		return finishSession(cmd, "run", runFlags, outMgr, result, fmt.Sprintf("Deliberation complete (%d agent turns)", result.Stats.TotalTurns))
 	},
 }
 
@@ -220,6 +222,9 @@ func init() {
 		runFlags.BudgetSet = cmd.Flags().Changed("budget")
 		if runFlags.Quiet && runFlags.Verbose {
 			return fmt.Errorf("cannot use --quiet and --verbose together")
+		}
+		if err := validateFormat(runFlags.Format); err != nil {
+			return err
 		}
 		if cmd.Flags().Changed("research") && cmd.Flags().Changed("no-research") {
 			return fmt.Errorf("cannot use --research and --no-research together")
@@ -364,6 +369,42 @@ func sessionHooks(outMgr *output.OutputManager) session.Hooks {
 		OnActivity: outMgr.Activity,
 		OnHeader:   outMgr.DeliberationHeader,
 	}
+}
+
+// structuredFormat reports whether format reserves stdout for one document.
+func structuredFormat(format string) bool {
+	return format == formatJSON || format == formatMarkdown
+}
+
+// liveWriter is where a run prints live progress and prompts. A structured
+// format reserves stdout for the final report, so progress moves to stderr.
+func liveWriter(cmd *cobra.Command, flags runFlagValues) io.Writer {
+	if structuredFormat(flags.Format) {
+		return cmd.ErrOrStderr()
+	}
+	return os.Stdout
+}
+
+func liveOutputManager(cmd *cobra.Command, flags runFlagValues) *output.OutputManager {
+	mode := liveOutputMode(flags.Quiet, flags.Verbose)
+	if structuredFormat(flags.Format) {
+		return output.NewOutputManagerWithWriter(mode, cmd.ErrOrStderr())
+	}
+	return output.NewOutputManagerWithMode(mode)
+}
+
+// finishSession prints the human summary and, for a structured format, writes
+// the single report document to stdout. A failed session still gets its
+// report before the failure is returned.
+func finishSession(cmd *cobra.Command, command string, flags runFlagValues, outMgr *output.OutputManager, result session.Result, completeMsg string) error {
+	sessionErr := printSessionResult(outMgr, result, completeMsg)
+	if !structuredFormat(flags.Format) {
+		return sessionErr
+	}
+	if err := writeRunReport(cmd.OutOrStdout(), flags.Format, command, runReportData(result, flags.Topic)); err != nil {
+		return err
+	}
+	return sessionErr
 }
 
 func printSessionResult(outMgr *output.OutputManager, result session.Result, completeMsg string) error {
@@ -707,6 +748,9 @@ var resumeCmd = &cobra.Command{
 		if resumeFlags.Quiet && resumeFlags.Verbose {
 			return fmt.Errorf("cannot use --quiet and --verbose together")
 		}
+		if err := validateFormat(resumeFlags.Format); err != nil {
+			return err
+		}
 		if resumeEvidenceRequestChanged(cmd) {
 			return fmt.Errorf("resume cannot change research or context evidence; existing transcript evidence is reused")
 		}
@@ -775,7 +819,7 @@ var resumeCmd = &cobra.Command{
 				return err
 			}
 
-			outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
+			outMgr := liveOutputManager(cmd, resumeFlags)
 
 			if resumeFlags.DryRun {
 				cfg, err = autogen.GenerateDryRunConfig(resumeFlags.Topic, level, resumeFlags.Model)
@@ -796,8 +840,8 @@ var resumeCmd = &cobra.Command{
 			outMgr.ConfigPreview(cfg, level, levelCaps)
 
 			if !resumeFlags.Yes {
-				if !confirmProceed() {
-					fmt.Println(output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
+				if !confirmProceed(liveWriter(cmd, resumeFlags)) {
+					_, _ = fmt.Fprintln(liveWriter(cmd, resumeFlags), output.RenderStatus("Deliberation", [][]string{{"Status", "Aborted"}}, "3"))
 					return nil
 				}
 			}
@@ -830,7 +874,7 @@ var resumeCmd = &cobra.Command{
 		}
 		ledgerPolicy := resolveLedgerPolicy(cmd, cfg, gconf)
 
-		outMgr := output.NewOutputManagerWithMode(liveOutputMode(resumeFlags.Quiet, resumeFlags.Verbose))
+		outMgr := liveOutputManager(cmd, resumeFlags)
 		req := session.ResumeRequest{
 			RunRequest: session.RunRequest{
 				Topic:       resumeFlags.Topic,
@@ -857,7 +901,7 @@ var resumeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return printSessionResult(outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d agent turns)", result.Stats.TotalTurns))
+		return finishSession(cmd, "resume", resumeFlags, outMgr, result, fmt.Sprintf("Resumed deliberation complete (%d agent turns)", result.Stats.TotalTurns))
 	},
 }
 
@@ -930,6 +974,7 @@ func sharedRunFlags(cmd *cobra.Command, prefix string) {
 	cmd.Flags().BoolVar(&v.NoLedger, "no-ledger", false, noLedgerDesc)
 	cmd.Flags().StringArrayVar(&v.Context, "context", nil, contextDesc)
 	cmd.Flags().StringVar(&v.Workdir, "workdir", "", workdirDesc)
+	cmd.Flags().StringVar(&v.Format, "format", formatText, "Final report format (text, json, markdown); json and markdown print one report on stdout and move live output to stderr")
 }
 
 func liveOutputMode(quiet, verbose bool) output.OutputMode {
@@ -1084,11 +1129,11 @@ func envAutoYes() bool {
 	return value == "1" || value == "true" || value == "yes"
 }
 
-func confirmProceed() bool {
+func confirmProceed(prompt io.Writer) bool {
 	if !stdinIsTerminal() {
 		return true
 	}
-	fmt.Print("Proceed with deliberation? [y/N] ")
+	_, _ = fmt.Fprint(prompt, "Proceed with deliberation? [y/N] ")
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
